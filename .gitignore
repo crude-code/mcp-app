@@ -1,0 +1,27 @@
+# --- Secrets & local env ---
+.env
+
+# --- Python ---
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# --- Node / renderer ---
+node_modules/
+renderer/src/App.css
+renderer/src/assets/
+renderer/public/icons.svg
+
+# --- Runtime / scratch ---
+logs/
+sessions/
+test_output/
+.DS_Store
+repomix-*
+
+# --- Deploy tooling (kept locally, not published) ---
+deploy/
+deploy.sh
+deploy-dev.sh
+.last-mcp-deployed-sha

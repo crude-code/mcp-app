@@ -1,0 +1,2349 @@
+{
+  "kind": "briefing",
+  "layout": "deal_sheet",
+  "headline": "PV: $35.1MM on a Midland WI package",
+  "tldr": "Value concentrates in the producing Wolfcamp core; the undeveloped wells add upside but are discounted hardest for development risk.",
+  "headline_npv": 35100000.0,
+  "sections": [
+    {
+      "layout": "full-width",
+      "widgets": [
+        {
+          "type": "deal_sheet",
+          "title": "Midland \u00b7 Wolfcamp/Spraberry",
+          "tldr": "Value concentrates in the producing Wolfcamp core; the undeveloped wells add upside but are discounted hardest for development risk.",
+          "facts": {
+            "deal_type": "Working Interest",
+            "interest": "25% WI \u00b7 18.75% NRI",
+            "operator": "Surgeon Energy +2",
+            "area": "Midland \u00b7 Wolfcamp/Spraberry"
+          },
+          "decks": [
+            "Strip",
+            "$70",
+            "$75",
+            "$80"
+          ],
+          "default_deck": "Strip",
+          "default_rates": {
+            "PDP": "15",
+            "DUC": "20",
+            "PUD": "25"
+          },
+          "statuses": [
+            {
+              "code": "PDP",
+              "label": "Producing",
+              "tag": "(PDP)",
+              "dot": "var(--change-up)",
+              "gross_wells": 156,
+              "net_wells": 39.0,
+              "rates": [
+                "12.5",
+                "15",
+                "17.5"
+              ]
+            },
+            {
+              "code": "DUC",
+              "label": "DUC",
+              "tag": "+18mo",
+              "dot": "var(--content-accent)",
+              "gross_wells": 36,
+              "net_wells": 9.0,
+              "rates": [
+                "17.5",
+                "20",
+                "22.5"
+              ]
+            },
+            {
+              "code": "PUD",
+              "label": "Permitted",
+              "tag": "(PUD) +36mo",
+              "dot": "var(--text-dim)",
+              "gross_wells": 48,
+              "net_wells": 12.0,
+              "rates": [
+                "22.5",
+                "25",
+                "27.5"
+              ]
+            }
+          ],
+          "cube": {
+            "Strip": {
+              "PDP": {
+                "12.5": 29480000.0,
+                "15": 26800000.0,
+                "17.5": 24120000.0
+              },
+              "DUC": {
+                "17.5": 4840000.0,
+                "20": 4400000.0,
+                "22.5": 3960000.0
+              },
+              "PUD": {
+                "22.5": 4290000.0,
+                "25": 3900000.0,
+                "27.5": 3510000.0
+              }
+            },
+            "$70": {
+              "PDP": {
+                "12.5": 28661111.11,
+                "15": 26055555.56,
+                "17.5": 23450000.0
+              },
+              "DUC": {
+                "17.5": 4705555.56,
+                "20": 4277777.78,
+                "22.5": 3850000.0
+              },
+              "PUD": {
+                "22.5": 4170833.33,
+                "25": 3791666.67,
+                "27.5": 3412500.0
+              }
+            },
+            "$75": {
+              "PDP": {
+                "12.5": 30708333.33,
+                "15": 27916666.67,
+                "17.5": 25125000.0
+              },
+              "DUC": {
+                "17.5": 5041666.67,
+                "20": 4583333.33,
+                "22.5": 4125000.0
+              },
+              "PUD": {
+                "22.5": 4468750.0,
+                "25": 4062500.0,
+                "27.5": 3656250.0
+              }
+            },
+            "$80": {
+              "PDP": {
+                "12.5": 32755555.56,
+                "15": 29777777.78,
+                "17.5": 26800000.0
+              },
+              "DUC": {
+                "17.5": 5377777.78,
+                "20": 4888888.89,
+                "22.5": 4400000.0
+              },
+              "PUD": {
+                "22.5": 4766666.67,
+                "25": 4333333.33,
+                "27.5": 3900000.0
+              }
+            }
+          },
+          "production": {
+            "series": [
+              {
+                "m": 0,
+                "date": "2026-07",
+                "oil": 1687.5,
+                "gas": 2868.8,
+                "cashflow": 81962
+              },
+              {
+                "m": 1,
+                "date": "2026-08",
+                "oil": 1623.8,
+                "gas": 2760.5,
+                "cashflow": 78869
+              },
+              {
+                "m": 2,
+                "date": "2026-09",
+                "oil": 1562.6,
+                "gas": 2656.4,
+                "cashflow": 75894
+              },
+              {
+                "m": 3,
+                "date": "2026-10",
+                "oil": 1503.6,
+                "gas": 2556.1,
+                "cashflow": 73030
+              },
+              {
+                "m": 4,
+                "date": "2026-11",
+                "oil": 1446.9,
+                "gas": 2459.7,
+                "cashflow": 70274
+              },
+              {
+                "m": 5,
+                "date": "2026-12",
+                "oil": 1392.3,
+                "gas": 2366.9,
+                "cashflow": 67623
+              },
+              {
+                "m": 6,
+                "date": "2027-01",
+                "oil": 1339.7,
+                "gas": 2277.6,
+                "cashflow": 65071
+              },
+              {
+                "m": 7,
+                "date": "2027-02",
+                "oil": 1289.2,
+                "gas": 2191.6,
+                "cashflow": 62616
+              },
+              {
+                "m": 8,
+                "date": "2027-03",
+                "oil": 1240.6,
+                "gas": 2108.9,
+                "cashflow": 60254
+              },
+              {
+                "m": 9,
+                "date": "2027-04",
+                "oil": 1193.7,
+                "gas": 2029.4,
+                "cashflow": 57980
+              },
+              {
+                "m": 10,
+                "date": "2027-05",
+                "oil": 1148.7,
+                "gas": 1952.8,
+                "cashflow": 55792
+              },
+              {
+                "m": 11,
+                "date": "2027-06",
+                "oil": 1105.4,
+                "gas": 1879.1,
+                "cashflow": 53687
+              },
+              {
+                "m": 12,
+                "date": "2027-07",
+                "oil": 1063.7,
+                "gas": 1808.2,
+                "cashflow": 51662
+              },
+              {
+                "m": 13,
+                "date": "2027-08",
+                "oil": 1023.5,
+                "gas": 1740.0,
+                "cashflow": 49712
+              },
+              {
+                "m": 14,
+                "date": "2027-09",
+                "oil": 984.9,
+                "gas": 1674.3,
+                "cashflow": 47837
+              },
+              {
+                "m": 15,
+                "date": "2027-10",
+                "oil": 947.7,
+                "gas": 1611.2,
+                "cashflow": 46032
+              },
+              {
+                "m": 16,
+                "date": "2027-11",
+                "oil": 912.0,
+                "gas": 1550.4,
+                "cashflow": 44295
+              },
+              {
+                "m": 17,
+                "date": "2027-12",
+                "oil": 877.6,
+                "gas": 1491.9,
+                "cashflow": 42624
+              },
+              {
+                "m": 18,
+                "date": "2028-01",
+                "oil": 1632.0,
+                "gas": 2774.3,
+                "cashflow": -2920736
+              },
+              {
+                "m": 19,
+                "date": "2028-02",
+                "oil": 1568.0,
+                "gas": 2665.5,
+                "cashflow": 76156
+              },
+              {
+                "m": 20,
+                "date": "2028-03",
+                "oil": 1506.5,
+                "gas": 2561.0,
+                "cashflow": 73169
+              },
+              {
+                "m": 21,
+                "date": "2028-04",
+                "oil": 1447.4,
+                "gas": 2460.6,
+                "cashflow": 70300
+              },
+              {
+                "m": 22,
+                "date": "2028-05",
+                "oil": 1390.6,
+                "gas": 2364.1,
+                "cashflow": 67544
+              },
+              {
+                "m": 23,
+                "date": "2028-06",
+                "oil": 1336.1,
+                "gas": 2271.4,
+                "cashflow": 64895
+              },
+              {
+                "m": 24,
+                "date": "2028-07",
+                "oil": 1283.7,
+                "gas": 2182.4,
+                "cashflow": 62351
+              },
+              {
+                "m": 25,
+                "date": "2028-08",
+                "oil": 1233.4,
+                "gas": 2096.8,
+                "cashflow": 59907
+              },
+              {
+                "m": 26,
+                "date": "2028-09",
+                "oil": 1185.1,
+                "gas": 2014.6,
+                "cashflow": 57559
+              },
+              {
+                "m": 27,
+                "date": "2028-10",
+                "oil": 1138.6,
+                "gas": 1935.6,
+                "cashflow": 55302
+              },
+              {
+                "m": 28,
+                "date": "2028-11",
+                "oil": 1094.0,
+                "gas": 1859.8,
+                "cashflow": 53135
+              },
+              {
+                "m": 29,
+                "date": "2028-12",
+                "oil": 1051.1,
+                "gas": 1786.9,
+                "cashflow": 51052
+              },
+              {
+                "m": 30,
+                "date": "2029-01",
+                "oil": 1009.9,
+                "gas": 1716.9,
+                "cashflow": 49052
+              },
+              {
+                "m": 31,
+                "date": "2029-02",
+                "oil": 970.3,
+                "gas": 1649.6,
+                "cashflow": 47129
+              },
+              {
+                "m": 32,
+                "date": "2029-03",
+                "oil": 932.3,
+                "gas": 1584.9,
+                "cashflow": 45283
+              },
+              {
+                "m": 33,
+                "date": "2029-04",
+                "oil": 895.8,
+                "gas": 1522.8,
+                "cashflow": 43508
+              },
+              {
+                "m": 34,
+                "date": "2029-05",
+                "oil": 860.7,
+                "gas": 1463.2,
+                "cashflow": 41804
+              },
+              {
+                "m": 35,
+                "date": "2029-06",
+                "oil": 827.0,
+                "gas": 1405.8,
+                "cashflow": 40166
+              },
+              {
+                "m": 36,
+                "date": "2029-07",
+                "oil": 1844.6,
+                "gas": 3135.8,
+                "cashflow": -3910409
+              },
+              {
+                "m": 37,
+                "date": "2029-08",
+                "oil": 1766.8,
+                "gas": 3003.5,
+                "cashflow": 85813
+              },
+              {
+                "m": 38,
+                "date": "2029-09",
+                "oil": 1692.3,
+                "gas": 2876.9,
+                "cashflow": 82195
+              },
+              {
+                "m": 39,
+                "date": "2029-10",
+                "oil": 1621.0,
+                "gas": 2755.6,
+                "cashflow": 78730
+              },
+              {
+                "m": 40,
+                "date": "2029-11",
+                "oil": 1552.6,
+                "gas": 2639.5,
+                "cashflow": 75412
+              },
+              {
+                "m": 41,
+                "date": "2029-12",
+                "oil": 1487.2,
+                "gas": 2528.3,
+                "cashflow": 72234
+              },
+              {
+                "m": 42,
+                "date": "2030-01",
+                "oil": 1424.6,
+                "gas": 2421.8,
+                "cashflow": 69191
+              },
+              {
+                "m": 43,
+                "date": "2030-02",
+                "oil": 1364.6,
+                "gas": 2319.8,
+                "cashflow": 66277
+              },
+              {
+                "m": 44,
+                "date": "2030-03",
+                "oil": 1307.1,
+                "gas": 2222.1,
+                "cashflow": 63486
+              },
+              {
+                "m": 45,
+                "date": "2030-04",
+                "oil": 1252.1,
+                "gas": 2128.5,
+                "cashflow": 60813
+              },
+              {
+                "m": 46,
+                "date": "2030-05",
+                "oil": 1199.4,
+                "gas": 2038.9,
+                "cashflow": 58253
+              },
+              {
+                "m": 47,
+                "date": "2030-06",
+                "oil": 1148.9,
+                "gas": 1953.1,
+                "cashflow": 55801
+              },
+              {
+                "m": 48,
+                "date": "2030-07",
+                "oil": 1100.5,
+                "gas": 1870.9,
+                "cashflow": 53453
+              }
+            ],
+            "start_month": 0,
+            "end_month": 48,
+            "origin": "2026-07-01"
+          }
+        }
+      ]
+    }
+  ],
+  "commentary": "Synthetic fixture for renderer iteration \u2014 not a real deal.",
+  "advanced": {
+    "asset": {
+      "operator": "Surgeon Energy +2",
+      "area": "Midland \u00b7 Wolfcamp/Spraberry",
+      "formations": [
+        "Wolfcamp",
+        "Spraberry"
+      ],
+      "groups": [
+        {
+          "status": "DUC",
+          "lateral_band": "2-mile",
+          "formation": "Wolfcamp",
+          "n_wells": 18
+        },
+        {
+          "status": "DUC",
+          "lateral_band": "3-mile",
+          "formation": "Spraberry",
+          "n_wells": 18
+        },
+        {
+          "status": "PDP",
+          "lateral_band": "2-mile",
+          "formation": "Wolfcamp",
+          "n_wells": 78
+        },
+        {
+          "status": "PDP",
+          "lateral_band": "3-mile",
+          "formation": "Spraberry",
+          "n_wells": 78
+        },
+        {
+          "status": "PUD",
+          "lateral_band": "2-mile",
+          "formation": "Wolfcamp",
+          "n_wells": 24
+        },
+        {
+          "status": "PUD",
+          "lateral_band": "3-mile",
+          "formation": "Spraberry",
+          "n_wells": 24
+        }
+      ],
+      "total_wells": 240
+    },
+    "production": {
+      "now_date": "2026-07-01",
+      "estimates": [
+        {
+          "key": "pdp",
+          "name": "PDP \u2014 producing base",
+          "kind": "history",
+          "series": [
+            {
+              "date": "2025-01",
+              "oil": 171681.7,
+              "gas": 291858.9,
+              "actual": true
+            },
+            {
+              "date": "2025-02",
+              "oil": 169633.9,
+              "gas": 288377.6,
+              "actual": true
+            },
+            {
+              "date": "2025-03",
+              "oil": 167610.4,
+              "gas": 284937.7,
+              "actual": true
+            },
+            {
+              "date": "2025-04",
+              "oil": 165611.1,
+              "gas": 281538.9,
+              "actual": true
+            },
+            {
+              "date": "2025-05",
+              "oil": 163635.7,
+              "gas": 278180.7,
+              "actual": true
+            },
+            {
+              "date": "2025-06",
+              "oil": 161683.8,
+              "gas": 274862.5,
+              "actual": true
+            },
+            {
+              "date": "2025-07",
+              "oil": 159755.2,
+              "gas": 271583.8,
+              "actual": true
+            },
+            {
+              "date": "2025-08",
+              "oil": 157849.6,
+              "gas": 268344.3,
+              "actual": true
+            },
+            {
+              "date": "2025-09",
+              "oil": 155966.7,
+              "gas": 265143.4,
+              "actual": true
+            },
+            {
+              "date": "2025-10",
+              "oil": 154106.3,
+              "gas": 261980.7,
+              "actual": true
+            },
+            {
+              "date": "2025-11",
+              "oil": 152268.0,
+              "gas": 258855.6,
+              "actual": true
+            },
+            {
+              "date": "2025-12",
+              "oil": 150451.7,
+              "gas": 255767.9,
+              "actual": true
+            },
+            {
+              "date": "2026-01",
+              "oil": 148657.1,
+              "gas": 252717.1,
+              "actual": true
+            },
+            {
+              "date": "2026-02",
+              "oil": 146883.9,
+              "gas": 249702.6,
+              "actual": true
+            },
+            {
+              "date": "2026-03",
+              "oil": 145131.8,
+              "gas": 246724.1,
+              "actual": true
+            },
+            {
+              "date": "2026-04",
+              "oil": 143400.6,
+              "gas": 243781.0,
+              "actual": true
+            },
+            {
+              "date": "2026-05",
+              "oil": 141690.1,
+              "gas": 240873.2,
+              "actual": true
+            },
+            {
+              "date": "2026-06",
+              "oil": 140000.0,
+              "gas": 238000.0,
+              "actual": true
+            },
+            {
+              "date": "2026-07",
+              "oil": 140400.0,
+              "gas": 265200.0,
+              "actual": false
+            },
+            {
+              "date": "2026-08",
+              "oil": 122143.7,
+              "gas": 230715.8,
+              "actual": false
+            },
+            {
+              "date": "2026-09",
+              "oil": 108169.4,
+              "gas": 204320.0,
+              "actual": false
+            },
+            {
+              "date": "2026-10",
+              "oil": 97121.3,
+              "gas": 183451.3,
+              "actual": false
+            },
+            {
+              "date": "2026-11",
+              "oil": 88162.5,
+              "gas": 166529.1,
+              "actual": false
+            },
+            {
+              "date": "2026-12",
+              "oil": 80748.2,
+              "gas": 152524.4,
+              "actual": false
+            },
+            {
+              "date": "2027-01",
+              "oil": 74508.5,
+              "gas": 140738.2,
+              "actual": false
+            },
+            {
+              "date": "2027-02",
+              "oil": 69183.0,
+              "gas": 130679.0,
+              "actual": false
+            },
+            {
+              "date": "2027-03",
+              "oil": 64583.4,
+              "gas": 121990.9,
+              "actual": false
+            },
+            {
+              "date": "2027-04",
+              "oil": 60569.8,
+              "gas": 114409.6,
+              "actual": false
+            },
+            {
+              "date": "2027-05",
+              "oil": 57036.2,
+              "gas": 107735.1,
+              "actual": false
+            },
+            {
+              "date": "2027-06",
+              "oil": 53900.8,
+              "gas": 101812.7,
+              "actual": false
+            },
+            {
+              "date": "2027-07",
+              "oil": 51099.5,
+              "gas": 96521.3,
+              "actual": false
+            },
+            {
+              "date": "2027-08",
+              "oil": 48581.2,
+              "gas": 91764.5,
+              "actual": false
+            },
+            {
+              "date": "2027-09",
+              "oil": 46304.8,
+              "gas": 87464.6,
+              "actual": false
+            },
+            {
+              "date": "2027-10",
+              "oil": 44236.8,
+              "gas": 83558.5,
+              "actual": false
+            },
+            {
+              "date": "2027-11",
+              "oil": 42349.7,
+              "gas": 79993.9,
+              "actual": false
+            },
+            {
+              "date": "2027-12",
+              "oil": 40620.5,
+              "gas": 76727.7,
+              "actual": false
+            },
+            {
+              "date": "2028-01",
+              "oil": 39030.1,
+              "gas": 73723.6,
+              "actual": false
+            },
+            {
+              "date": "2028-02",
+              "oil": 37562.4,
+              "gas": 70951.1,
+              "actual": false
+            },
+            {
+              "date": "2028-03",
+              "oil": 36203.4,
+              "gas": 68384.3,
+              "actual": false
+            },
+            {
+              "date": "2028-04",
+              "oil": 34941.6,
+              "gas": 66000.8,
+              "actual": false
+            },
+            {
+              "date": "2028-05",
+              "oil": 33766.8,
+              "gas": 63781.7,
+              "actual": false
+            },
+            {
+              "date": "2028-06",
+              "oil": 32670.1,
+              "gas": 61710.3,
+              "actual": false
+            },
+            {
+              "date": "2028-07",
+              "oil": 31644.1,
+              "gas": 59772.2,
+              "actual": false
+            },
+            {
+              "date": "2028-08",
+              "oil": 30682.0,
+              "gas": 57955.0,
+              "actual": false
+            },
+            {
+              "date": "2028-09",
+              "oil": 29778.1,
+              "gas": 56247.5,
+              "actual": false
+            },
+            {
+              "date": "2028-10",
+              "oil": 28927.1,
+              "gas": 54640.0,
+              "actual": false
+            },
+            {
+              "date": "2028-11",
+              "oil": 28124.4,
+              "gas": 53124.0,
+              "actual": false
+            },
+            {
+              "date": "2028-12",
+              "oil": 27366.2,
+              "gas": 51691.7,
+              "actual": false
+            },
+            {
+              "date": "2029-01",
+              "oil": 26648.7,
+              "gas": 50336.4,
+              "actual": false
+            },
+            {
+              "date": "2029-02",
+              "oil": 25968.7,
+              "gas": 49052.1,
+              "actual": false
+            },
+            {
+              "date": "2029-03",
+              "oil": 25323.4,
+              "gas": 47833.1,
+              "actual": false
+            },
+            {
+              "date": "2029-04",
+              "oil": 24710.1,
+              "gas": 46674.7,
+              "actual": false
+            },
+            {
+              "date": "2029-05",
+              "oil": 24126.5,
+              "gas": 45572.4,
+              "actual": false
+            },
+            {
+              "date": "2029-06",
+              "oil": 23570.5,
+              "gas": 44522.1,
+              "actual": false
+            },
+            {
+              "date": "2029-07",
+              "oil": 23040.2,
+              "gas": 43520.3,
+              "actual": false
+            },
+            {
+              "date": "2029-08",
+              "oil": 22533.7,
+              "gas": 42563.6,
+              "actual": false
+            },
+            {
+              "date": "2029-09",
+              "oil": 22049.5,
+              "gas": 41649.1,
+              "actual": false
+            },
+            {
+              "date": "2029-10",
+              "oil": 21586.2,
+              "gas": 40774.0,
+              "actual": false
+            },
+            {
+              "date": "2029-11",
+              "oil": 21142.4,
+              "gas": 39935.7,
+              "actual": false
+            },
+            {
+              "date": "2029-12",
+              "oil": 20717.0,
+              "gas": 39132.0,
+              "actual": false
+            },
+            {
+              "date": "2030-01",
+              "oil": 20308.7,
+              "gas": 38360.8,
+              "actual": false
+            },
+            {
+              "date": "2030-02",
+              "oil": 19916.5,
+              "gas": 37620.1,
+              "actual": false
+            },
+            {
+              "date": "2030-03",
+              "oil": 19539.6,
+              "gas": 36908.2,
+              "actual": false
+            },
+            {
+              "date": "2030-04",
+              "oil": 19177.1,
+              "gas": 36223.3,
+              "actual": false
+            },
+            {
+              "date": "2030-05",
+              "oil": 18828.0,
+              "gas": 35564.0,
+              "actual": false
+            },
+            {
+              "date": "2030-06",
+              "oil": 18491.8,
+              "gas": 34928.9,
+              "actual": false
+            },
+            {
+              "date": "2030-07",
+              "oil": 18167.6,
+              "gas": 34316.5,
+              "actual": false
+            },
+            {
+              "date": "2030-08",
+              "oil": 17854.8,
+              "gas": 33725.8,
+              "actual": false
+            },
+            {
+              "date": "2030-09",
+              "oil": 17552.9,
+              "gas": 33155.5,
+              "actual": false
+            },
+            {
+              "date": "2030-10",
+              "oil": 17261.3,
+              "gas": 32604.7,
+              "actual": false
+            },
+            {
+              "date": "2030-11",
+              "oil": 16979.5,
+              "gas": 32072.3,
+              "actual": false
+            },
+            {
+              "date": "2030-12",
+              "oil": 16706.9,
+              "gas": 31557.4,
+              "actual": false
+            },
+            {
+              "date": "2031-01",
+              "oil": 16443.1,
+              "gas": 31059.2,
+              "actual": false
+            },
+            {
+              "date": "2031-02",
+              "oil": 16187.8,
+              "gas": 30576.9,
+              "actual": false
+            },
+            {
+              "date": "2031-03",
+              "oil": 15940.4,
+              "gas": 30109.6,
+              "actual": false
+            },
+            {
+              "date": "2031-04",
+              "oil": 15700.7,
+              "gas": 29656.8,
+              "actual": false
+            },
+            {
+              "date": "2031-05",
+              "oil": 15468.2,
+              "gas": 29217.7,
+              "actual": false
+            },
+            {
+              "date": "2031-06",
+              "oil": 15242.7,
+              "gas": 28791.7,
+              "actual": false
+            },
+            {
+              "date": "2031-07",
+              "oil": 15023.8,
+              "gas": 28378.3,
+              "actual": false
+            },
+            {
+              "date": "2031-08",
+              "oil": 14811.3,
+              "gas": 27976.9,
+              "actual": false
+            },
+            {
+              "date": "2031-09",
+              "oil": 14604.8,
+              "gas": 27586.9,
+              "actual": false
+            },
+            {
+              "date": "2031-10",
+              "oil": 14404.2,
+              "gas": 27207.9,
+              "actual": false
+            },
+            {
+              "date": "2031-11",
+              "oil": 14209.1,
+              "gas": 26839.5,
+              "actual": false
+            },
+            {
+              "date": "2031-12",
+              "oil": 14019.4,
+              "gas": 26481.1,
+              "actual": false
+            },
+            {
+              "date": "2032-01",
+              "oil": 13834.8,
+              "gas": 26132.4,
+              "actual": false
+            },
+            {
+              "date": "2032-02",
+              "oil": 13655.1,
+              "gas": 25793.0,
+              "actual": false
+            },
+            {
+              "date": "2032-03",
+              "oil": 13480.1,
+              "gas": 25462.5,
+              "actual": false
+            },
+            {
+              "date": "2032-04",
+              "oil": 13309.7,
+              "gas": 25140.5,
+              "actual": false
+            },
+            {
+              "date": "2032-05",
+              "oil": 13143.6,
+              "gas": 24826.8,
+              "actual": false
+            },
+            {
+              "date": "2032-06",
+              "oil": 12981.7,
+              "gas": 24521.0,
+              "actual": false
+            },
+            {
+              "date": "2032-07",
+              "oil": 12823.9,
+              "gas": 24222.9,
+              "actual": false
+            },
+            {
+              "date": "2032-08",
+              "oil": 12669.9,
+              "gas": 23932.1,
+              "actual": false
+            },
+            {
+              "date": "2032-09",
+              "oil": 12519.7,
+              "gas": 23648.3,
+              "actual": false
+            },
+            {
+              "date": "2032-10",
+              "oil": 12373.1,
+              "gas": 23371.4,
+              "actual": false
+            },
+            {
+              "date": "2032-11",
+              "oil": 12229.9,
+              "gas": 23101.0,
+              "actual": false
+            },
+            {
+              "date": "2032-12",
+              "oil": 12090.2,
+              "gas": 22837.0,
+              "actual": false
+            },
+            {
+              "date": "2033-01",
+              "oil": 11953.6,
+              "gas": 22579.0,
+              "actual": false
+            },
+            {
+              "date": "2033-02",
+              "oil": 11820.2,
+              "gas": 22327.0,
+              "actual": false
+            },
+            {
+              "date": "2033-03",
+              "oil": 11689.8,
+              "gas": 22080.7,
+              "actual": false
+            },
+            {
+              "date": "2033-04",
+              "oil": 11562.3,
+              "gas": 21839.9,
+              "actual": false
+            },
+            {
+              "date": "2033-05",
+              "oil": 11437.6,
+              "gas": 21604.4,
+              "actual": false
+            },
+            {
+              "date": "2033-06",
+              "oil": 11315.7,
+              "gas": 21374.0,
+              "actual": false
+            },
+            {
+              "date": "2033-07",
+              "oil": 11196.4,
+              "gas": 21148.7,
+              "actual": false
+            },
+            {
+              "date": "2033-08",
+              "oil": 11079.6,
+              "gas": 20928.1,
+              "actual": false
+            },
+            {
+              "date": "2033-09",
+              "oil": 10965.3,
+              "gas": 20712.2,
+              "actual": false
+            },
+            {
+              "date": "2033-10",
+              "oil": 10853.4,
+              "gas": 20500.9,
+              "actual": false
+            },
+            {
+              "date": "2033-11",
+              "oil": 10743.8,
+              "gas": 20293.9,
+              "actual": false
+            },
+            {
+              "date": "2033-12",
+              "oil": 10636.5,
+              "gas": 20091.1,
+              "actual": false
+            },
+            {
+              "date": "2034-01",
+              "oil": 10531.3,
+              "gas": 19892.5,
+              "actual": false
+            },
+            {
+              "date": "2034-02",
+              "oil": 10428.3,
+              "gas": 19697.8,
+              "actual": false
+            },
+            {
+              "date": "2034-03",
+              "oil": 10327.3,
+              "gas": 19507.0,
+              "actual": false
+            },
+            {
+              "date": "2034-04",
+              "oil": 10228.2,
+              "gas": 19320.0,
+              "actual": false
+            },
+            {
+              "date": "2034-05",
+              "oil": 10131.1,
+              "gas": 19136.6,
+              "actual": false
+            },
+            {
+              "date": "2034-06",
+              "oil": 10035.9,
+              "gas": 18956.7,
+              "actual": false
+            },
+            {
+              "date": "2034-07",
+              "oil": 9942.5,
+              "gas": 18780.3,
+              "actual": false
+            },
+            {
+              "date": "2034-08",
+              "oil": 9850.9,
+              "gas": 18607.2,
+              "actual": false
+            },
+            {
+              "date": "2034-09",
+              "oil": 9760.9,
+              "gas": 18437.3,
+              "actual": false
+            },
+            {
+              "date": "2034-10",
+              "oil": 9672.7,
+              "gas": 18270.6,
+              "actual": false
+            },
+            {
+              "date": "2034-11",
+              "oil": 9586.0,
+              "gas": 18106.9,
+              "actual": false
+            },
+            {
+              "date": "2034-12",
+              "oil": 9501.0,
+              "gas": 17946.3,
+              "actual": false
+            },
+            {
+              "date": "2035-01",
+              "oil": 9417.4,
+              "gas": 17788.5,
+              "actual": false
+            },
+            {
+              "date": "2035-02",
+              "oil": 9335.4,
+              "gas": 17633.5,
+              "actual": false
+            },
+            {
+              "date": "2035-03",
+              "oil": 9254.8,
+              "gas": 17481.3,
+              "actual": false
+            },
+            {
+              "date": "2035-04",
+              "oil": 9175.6,
+              "gas": 17331.7,
+              "actual": false
+            },
+            {
+              "date": "2035-05",
+              "oil": 9097.8,
+              "gas": 17184.8,
+              "actual": false
+            },
+            {
+              "date": "2035-06",
+              "oil": 9021.4,
+              "gas": 17040.4,
+              "actual": false
+            },
+            {
+              "date": "2035-07",
+              "oil": 8946.2,
+              "gas": 16898.4,
+              "actual": false
+            },
+            {
+              "date": "2035-08",
+              "oil": 8872.3,
+              "gas": 16758.9,
+              "actual": false
+            },
+            {
+              "date": "2035-09",
+              "oil": 8799.7,
+              "gas": 16621.7,
+              "actual": false
+            },
+            {
+              "date": "2035-10",
+              "oil": 8728.3,
+              "gas": 16486.7,
+              "actual": false
+            },
+            {
+              "date": "2035-11",
+              "oil": 8658.0,
+              "gas": 16354.0,
+              "actual": false
+            },
+            {
+              "date": "2035-12",
+              "oil": 8588.9,
+              "gas": 16223.5,
+              "actual": false
+            },
+            {
+              "date": "2036-01",
+              "oil": 8520.9,
+              "gas": 16095.1,
+              "actual": false
+            },
+            {
+              "date": "2036-02",
+              "oil": 8454.0,
+              "gas": 15968.8,
+              "actual": false
+            },
+            {
+              "date": "2036-03",
+              "oil": 8388.2,
+              "gas": 15844.4,
+              "actual": false
+            },
+            {
+              "date": "2036-04",
+              "oil": 8323.5,
+              "gas": 15722.1,
+              "actual": false
+            },
+            {
+              "date": "2036-05",
+              "oil": 8259.7,
+              "gas": 15601.6,
+              "actual": false
+            },
+            {
+              "date": "2036-06",
+              "oil": 8196.9,
+              "gas": 15483.1,
+              "actual": false
+            }
+          ],
+          "meta": {
+            "analogs": null,
+            "wells": 156,
+            "radius_mi": null,
+            "b_median": null,
+            "basis": "own history"
+          }
+        },
+        {
+          "key": "cohort",
+          "name": "Analog cohort",
+          "kind": "cohort",
+          "series": [
+            {
+              "date": "2026-07",
+              "oil": 620.0,
+              "gas": 1100.0,
+              "actual": false
+            },
+            {
+              "date": "2026-08",
+              "oil": 539.4,
+              "gas": 957.0,
+              "actual": false
+            },
+            {
+              "date": "2026-09",
+              "oil": 477.7,
+              "gas": 847.5,
+              "actual": false
+            },
+            {
+              "date": "2026-10",
+              "oil": 428.9,
+              "gas": 760.9,
+              "actual": false
+            },
+            {
+              "date": "2026-11",
+              "oil": 389.3,
+              "gas": 690.7,
+              "actual": false
+            },
+            {
+              "date": "2026-12",
+              "oil": 356.6,
+              "gas": 632.6,
+              "actual": false
+            },
+            {
+              "date": "2027-01",
+              "oil": 329.0,
+              "gas": 583.8,
+              "actual": false
+            },
+            {
+              "date": "2027-02",
+              "oil": 305.5,
+              "gas": 542.0,
+              "actual": false
+            },
+            {
+              "date": "2027-03",
+              "oil": 285.2,
+              "gas": 506.0,
+              "actual": false
+            },
+            {
+              "date": "2027-04",
+              "oil": 267.5,
+              "gas": 474.5,
+              "actual": false
+            },
+            {
+              "date": "2027-05",
+              "oil": 251.9,
+              "gas": 446.9,
+              "actual": false
+            },
+            {
+              "date": "2027-06",
+              "oil": 238.0,
+              "gas": 422.3,
+              "actual": false
+            },
+            {
+              "date": "2027-07",
+              "oil": 225.7,
+              "gas": 400.4,
+              "actual": false
+            },
+            {
+              "date": "2027-08",
+              "oil": 214.5,
+              "gas": 380.6,
+              "actual": false
+            },
+            {
+              "date": "2027-09",
+              "oil": 204.5,
+              "gas": 362.8,
+              "actual": false
+            },
+            {
+              "date": "2027-10",
+              "oil": 195.3,
+              "gas": 346.6,
+              "actual": false
+            },
+            {
+              "date": "2027-11",
+              "oil": 187.0,
+              "gas": 331.8,
+              "actual": false
+            },
+            {
+              "date": "2027-12",
+              "oil": 179.4,
+              "gas": 318.3,
+              "actual": false
+            },
+            {
+              "date": "2028-01",
+              "oil": 172.4,
+              "gas": 305.8,
+              "actual": false
+            },
+            {
+              "date": "2028-02",
+              "oil": 165.9,
+              "gas": 294.3,
+              "actual": false
+            },
+            {
+              "date": "2028-03",
+              "oil": 159.9,
+              "gas": 283.6,
+              "actual": false
+            },
+            {
+              "date": "2028-04",
+              "oil": 154.3,
+              "gas": 273.8,
+              "actual": false
+            },
+            {
+              "date": "2028-05",
+              "oil": 149.1,
+              "gas": 264.6,
+              "actual": false
+            },
+            {
+              "date": "2028-06",
+              "oil": 144.3,
+              "gas": 256.0,
+              "actual": false
+            },
+            {
+              "date": "2028-07",
+              "oil": 139.7,
+              "gas": 247.9,
+              "actual": false
+            },
+            {
+              "date": "2028-08",
+              "oil": 135.5,
+              "gas": 240.4,
+              "actual": false
+            },
+            {
+              "date": "2028-09",
+              "oil": 131.5,
+              "gas": 233.3,
+              "actual": false
+            },
+            {
+              "date": "2028-10",
+              "oil": 127.7,
+              "gas": 226.6,
+              "actual": false
+            },
+            {
+              "date": "2028-11",
+              "oil": 124.2,
+              "gas": 220.3,
+              "actual": false
+            },
+            {
+              "date": "2028-12",
+              "oil": 120.8,
+              "gas": 214.4,
+              "actual": false
+            },
+            {
+              "date": "2029-01",
+              "oil": 117.7,
+              "gas": 208.8,
+              "actual": false
+            },
+            {
+              "date": "2029-02",
+              "oil": 114.7,
+              "gas": 203.5,
+              "actual": false
+            },
+            {
+              "date": "2029-03",
+              "oil": 111.8,
+              "gas": 198.4,
+              "actual": false
+            },
+            {
+              "date": "2029-04",
+              "oil": 109.1,
+              "gas": 193.6,
+              "actual": false
+            },
+            {
+              "date": "2029-05",
+              "oil": 106.5,
+              "gas": 189.0,
+              "actual": false
+            },
+            {
+              "date": "2029-06",
+              "oil": 104.1,
+              "gas": 184.7,
+              "actual": false
+            },
+            {
+              "date": "2029-07",
+              "oil": 101.7,
+              "gas": 180.5,
+              "actual": false
+            },
+            {
+              "date": "2029-08",
+              "oil": 99.5,
+              "gas": 176.5,
+              "actual": false
+            },
+            {
+              "date": "2029-09",
+              "oil": 97.4,
+              "gas": 172.8,
+              "actual": false
+            },
+            {
+              "date": "2029-10",
+              "oil": 95.3,
+              "gas": 169.1,
+              "actual": false
+            },
+            {
+              "date": "2029-11",
+              "oil": 93.4,
+              "gas": 165.6,
+              "actual": false
+            },
+            {
+              "date": "2029-12",
+              "oil": 91.5,
+              "gas": 162.3,
+              "actual": false
+            },
+            {
+              "date": "2030-01",
+              "oil": 89.7,
+              "gas": 159.1,
+              "actual": false
+            },
+            {
+              "date": "2030-02",
+              "oil": 88.0,
+              "gas": 156.0,
+              "actual": false
+            },
+            {
+              "date": "2030-03",
+              "oil": 86.3,
+              "gas": 153.1,
+              "actual": false
+            },
+            {
+              "date": "2030-04",
+              "oil": 84.7,
+              "gas": 150.2,
+              "actual": false
+            },
+            {
+              "date": "2030-05",
+              "oil": 83.1,
+              "gas": 147.5,
+              "actual": false
+            },
+            {
+              "date": "2030-06",
+              "oil": 81.7,
+              "gas": 144.9,
+              "actual": false
+            },
+            {
+              "date": "2030-07",
+              "oil": 80.2,
+              "gas": 142.3,
+              "actual": false
+            },
+            {
+              "date": "2030-08",
+              "oil": 78.8,
+              "gas": 139.9,
+              "actual": false
+            },
+            {
+              "date": "2030-09",
+              "oil": 77.5,
+              "gas": 137.5,
+              "actual": false
+            },
+            {
+              "date": "2030-10",
+              "oil": 76.2,
+              "gas": 135.2,
+              "actual": false
+            },
+            {
+              "date": "2030-11",
+              "oil": 75.0,
+              "gas": 133.0,
+              "actual": false
+            },
+            {
+              "date": "2030-12",
+              "oil": 73.8,
+              "gas": 130.9,
+              "actual": false
+            },
+            {
+              "date": "2031-01",
+              "oil": 72.6,
+              "gas": 128.8,
+              "actual": false
+            },
+            {
+              "date": "2031-02",
+              "oil": 71.5,
+              "gas": 126.8,
+              "actual": false
+            },
+            {
+              "date": "2031-03",
+              "oil": 70.4,
+              "gas": 124.9,
+              "actual": false
+            },
+            {
+              "date": "2031-04",
+              "oil": 69.3,
+              "gas": 123.0,
+              "actual": false
+            },
+            {
+              "date": "2031-05",
+              "oil": 68.3,
+              "gas": 121.2,
+              "actual": false
+            },
+            {
+              "date": "2031-06",
+              "oil": 67.3,
+              "gas": 119.4,
+              "actual": false
+            },
+            {
+              "date": "2031-07",
+              "oil": 66.3,
+              "gas": 117.7,
+              "actual": false
+            },
+            {
+              "date": "2031-08",
+              "oil": 65.4,
+              "gas": 116.0,
+              "actual": false
+            },
+            {
+              "date": "2031-09",
+              "oil": 64.5,
+              "gas": 114.4,
+              "actual": false
+            },
+            {
+              "date": "2031-10",
+              "oil": 63.6,
+              "gas": 112.9,
+              "actual": false
+            },
+            {
+              "date": "2031-11",
+              "oil": 62.7,
+              "gas": 111.3,
+              "actual": false
+            },
+            {
+              "date": "2031-12",
+              "oil": 61.9,
+              "gas": 109.8,
+              "actual": false
+            },
+            {
+              "date": "2032-01",
+              "oil": 61.1,
+              "gas": 108.4,
+              "actual": false
+            },
+            {
+              "date": "2032-02",
+              "oil": 60.3,
+              "gas": 107.0,
+              "actual": false
+            },
+            {
+              "date": "2032-03",
+              "oil": 59.5,
+              "gas": 105.6,
+              "actual": false
+            },
+            {
+              "date": "2032-04",
+              "oil": 58.8,
+              "gas": 104.3,
+              "actual": false
+            },
+            {
+              "date": "2032-05",
+              "oil": 58.0,
+              "gas": 103.0,
+              "actual": false
+            },
+            {
+              "date": "2032-06",
+              "oil": 57.3,
+              "gas": 101.7,
+              "actual": false
+            },
+            {
+              "date": "2032-07",
+              "oil": 56.6,
+              "gas": 100.5,
+              "actual": false
+            },
+            {
+              "date": "2032-08",
+              "oil": 55.9,
+              "gas": 99.3,
+              "actual": false
+            },
+            {
+              "date": "2032-09",
+              "oil": 55.3,
+              "gas": 98.1,
+              "actual": false
+            },
+            {
+              "date": "2032-10",
+              "oil": 54.6,
+              "gas": 96.9,
+              "actual": false
+            },
+            {
+              "date": "2032-11",
+              "oil": 54.0,
+              "gas": 95.8,
+              "actual": false
+            },
+            {
+              "date": "2032-12",
+              "oil": 53.4,
+              "gas": 94.7,
+              "actual": false
+            },
+            {
+              "date": "2033-01",
+              "oil": 52.8,
+              "gas": 93.7,
+              "actual": false
+            },
+            {
+              "date": "2033-02",
+              "oil": 52.2,
+              "gas": 92.6,
+              "actual": false
+            },
+            {
+              "date": "2033-03",
+              "oil": 51.6,
+              "gas": 91.6,
+              "actual": false
+            },
+            {
+              "date": "2033-04",
+              "oil": 51.1,
+              "gas": 90.6,
+              "actual": false
+            },
+            {
+              "date": "2033-05",
+              "oil": 50.5,
+              "gas": 89.6,
+              "actual": false
+            },
+            {
+              "date": "2033-06",
+              "oil": 50.0,
+              "gas": 88.7,
+              "actual": false
+            },
+            {
+              "date": "2033-07",
+              "oil": 49.4,
+              "gas": 87.7,
+              "actual": false
+            },
+            {
+              "date": "2033-08",
+              "oil": 48.9,
+              "gas": 86.8,
+              "actual": false
+            },
+            {
+              "date": "2033-09",
+              "oil": 48.4,
+              "gas": 85.9,
+              "actual": false
+            },
+            {
+              "date": "2033-10",
+              "oil": 47.9,
+              "gas": 85.0,
+              "actual": false
+            },
+            {
+              "date": "2033-11",
+              "oil": 47.4,
+              "gas": 84.2,
+              "actual": false
+            },
+            {
+              "date": "2033-12",
+              "oil": 47.0,
+              "gas": 83.3,
+              "actual": false
+            },
+            {
+              "date": "2034-01",
+              "oil": 46.5,
+              "gas": 82.5,
+              "actual": false
+            },
+            {
+              "date": "2034-02",
+              "oil": 46.1,
+              "gas": 81.7,
+              "actual": false
+            },
+            {
+              "date": "2034-03",
+              "oil": 45.6,
+              "gas": 80.9,
+              "actual": false
+            },
+            {
+              "date": "2034-04",
+              "oil": 45.2,
+              "gas": 80.1,
+              "actual": false
+            },
+            {
+              "date": "2034-05",
+              "oil": 44.7,
+              "gas": 79.4,
+              "actual": false
+            },
+            {
+              "date": "2034-06",
+              "oil": 44.3,
+              "gas": 78.6,
+              "actual": false
+            },
+            {
+              "date": "2034-07",
+              "oil": 43.9,
+              "gas": 77.9,
+              "actual": false
+            },
+            {
+              "date": "2034-08",
+              "oil": 43.5,
+              "gas": 77.2,
+              "actual": false
+            },
+            {
+              "date": "2034-09",
+              "oil": 43.1,
+              "gas": 76.5,
+              "actual": false
+            },
+            {
+              "date": "2034-10",
+              "oil": 42.7,
+              "gas": 75.8,
+              "actual": false
+            },
+            {
+              "date": "2034-11",
+              "oil": 42.3,
+              "gas": 75.1,
+              "actual": false
+            },
+            {
+              "date": "2034-12",
+              "oil": 42.0,
+              "gas": 74.4,
+              "actual": false
+            },
+            {
+              "date": "2035-01",
+              "oil": 41.6,
+              "gas": 73.8,
+              "actual": false
+            },
+            {
+              "date": "2035-02",
+              "oil": 41.2,
+              "gas": 73.1,
+              "actual": false
+            },
+            {
+              "date": "2035-03",
+              "oil": 40.9,
+              "gas": 72.5,
+              "actual": false
+            },
+            {
+              "date": "2035-04",
+              "oil": 40.5,
+              "gas": 71.9,
+              "actual": false
+            },
+            {
+              "date": "2035-05",
+              "oil": 40.2,
+              "gas": 71.3,
+              "actual": false
+            },
+            {
+              "date": "2035-06",
+              "oil": 39.8,
+              "gas": 70.7,
+              "actual": false
+            },
+            {
+              "date": "2035-07",
+              "oil": 39.5,
+              "gas": 70.1,
+              "actual": false
+            },
+            {
+              "date": "2035-08",
+              "oil": 39.2,
+              "gas": 69.5,
+              "actual": false
+            },
+            {
+              "date": "2035-09",
+              "oil": 38.9,
+              "gas": 68.9,
+              "actual": false
+            },
+            {
+              "date": "2035-10",
+              "oil": 38.5,
+              "gas": 68.4,
+              "actual": false
+            },
+            {
+              "date": "2035-11",
+              "oil": 38.2,
+              "gas": 67.8,
+              "actual": false
+            },
+            {
+              "date": "2035-12",
+              "oil": 37.9,
+              "gas": 67.3,
+              "actual": false
+            },
+            {
+              "date": "2036-01",
+              "oil": 37.6,
+              "gas": 66.8,
+              "actual": false
+            },
+            {
+              "date": "2036-02",
+              "oil": 37.3,
+              "gas": 66.2,
+              "actual": false
+            },
+            {
+              "date": "2036-03",
+              "oil": 37.0,
+              "gas": 65.7,
+              "actual": false
+            },
+            {
+              "date": "2036-04",
+              "oil": 36.8,
+              "gas": 65.2,
+              "actual": false
+            },
+            {
+              "date": "2036-05",
+              "oil": 36.5,
+              "gas": 64.7,
+              "actual": false
+            },
+            {
+              "date": "2036-06",
+              "oil": 36.2,
+              "gas": 64.2,
+              "actual": false
+            }
+          ],
+          "meta": {
+            "analogs": 31,
+            "wells": 84,
+            "radius_mi": 15.0,
+            "b_median": 1.05,
+            "basis": "cohort"
+          },
+          "analog_wells": [
+            {
+              "api": "42-329-20000",
+              "operator": "Permian Resources",
+              "formation": "Wolfcamp A",
+              "lateral_ft": 10560.0
+            },
+            {
+              "api": "42-329-20001",
+              "operator": "Permian Resources",
+              "formation": "Wolfcamp A",
+              "lateral_ft": 10560.0
+            },
+            {
+              "api": "42-329-20002",
+              "operator": "Permian Resources",
+              "formation": "Wolfcamp A",
+              "lateral_ft": 10560.0
+            },
+            {
+              "api": "42-329-20003",
+              "operator": "Permian Resources",
+              "formation": "Wolfcamp A",
+              "lateral_ft": 10560.0
+            },
+            {
+              "api": "42-329-20004",
+              "operator": "Permian Resources",
+              "formation": "Wolfcamp A",
+              "lateral_ft": 10560.0
+            },
+            {
+              "api": "42-329-20005",
+              "operator": "Permian Resources",
+              "formation": "Wolfcamp A",
+              "lateral_ft": 10560.0
+            },
+            {
+              "api": "42-329-20006",
+              "operator": "Permian Resources",
+              "formation": "Wolfcamp A",
+              "lateral_ft": 10560.0
+            },
+            {
+              "api": "42-329-20007",
+              "operator": "Permian Resources",
+              "formation": "Wolfcamp A",
+              "lateral_ft": 10560.0
+            },
+            {
+              "api": "42-329-20008",
+              "operator": "Permian Resources",
+              "formation": "Wolfcamp A",
+              "lateral_ft": 10560.0
+            },
+            {
+              "api": "42-329-20009",
+              "operator": "Permian Resources",
+              "formation": "Wolfcamp A",
+              "lateral_ft": 10560.0
+            },
+            {
+              "api": "42-329-20010",
+              "operator": "Permian Resources",
+              "formation": "Wolfcamp A",
+              "lateral_ft": 10560.0
+            },
+            {
+              "api": "42-329-20011",
+              "operator": "Permian Resources",
+              "formation": "Wolfcamp A",
+              "lateral_ft": 10560.0
+            },
+            {
+              "api": "42-329-20012",
+              "operator": "Permian Resources",
+              "formation": "Wolfcamp A",
+              "lateral_ft": 10560.0
+            },
+            {
+              "api": "42-329-20013",
+              "operator": "Permian Resources",
+              "formation": "Wolfcamp A",
+              "lateral_ft": 10560.0
+            },
+            {
+              "api": "42-329-20014",
+              "operator": "Permian Resources",
+              "formation": "Wolfcamp A",
+              "lateral_ft": 10560.0
+            },
+            {
+              "api": "42-329-20015",
+              "operator": "Permian Resources",
+              "formation": "Wolfcamp A",
+              "lateral_ft": 10560.0
+            },
+            {
+              "api": "42-329-20016",
+              "operator": "Permian Resources",
+              "formation": "Wolfcamp A",
+              "lateral_ft": 10560.0
+            },
+            {
+              "api": "42-329-20017",
+              "operator": "Permian Resources",
+              "formation": "Wolfcamp A",
+              "lateral_ft": 10560.0
+            },
+            {
+              "api": "42-329-20018",
+              "operator": "Permian Resources",
+              "formation": "Wolfcamp A",
+              "lateral_ft": 10560.0
+            },
+            {
+              "api": "42-329-20019",
+              "operator": "Permian Resources",
+              "formation": "Wolfcamp A",
+              "lateral_ft": 10560.0
+            },
+            {
+              "api": "42-329-20020",
+              "operator": "Permian Resources",
+              "formation": "Wolfcamp A",
+              "lateral_ft": 10560.0
+            },
+            {
+              "api": "42-329-20021",
+              "operator": "Permian Resources",
+              "formation": "Wolfcamp A",
+              "lateral_ft": 10560.0
+            },
+            {
+              "api": "42-329-20022",
+              "operator": "Permian Resources",
+              "formation": "Wolfcamp A",
+              "lateral_ft": 10560.0
+            },
+            {
+              "api": "42-329-20023",
+              "operator": "Permian Resources",
+              "formation": "Wolfcamp A",
+              "lateral_ft": 10560.0
+            },
+            {
+              "api": "42-329-20024",
+              "operator": "Permian Resources",
+              "formation": "Wolfcamp A",
+              "lateral_ft": 10560.0
+            },
+            {
+              "api": "42-329-20025",
+              "operator": "Permian Resources",
+              "formation": "Wolfcamp A",
+              "lateral_ft": 10560.0
+            },
+            {
+              "api": "42-329-20026",
+              "operator": "Permian Resources",
+              "formation": "Wolfcamp A",
+              "lateral_ft": 10560.0
+            },
+            {
+              "api": "42-329-20027",
+              "operator": "Permian Resources",
+              "formation": "Wolfcamp A",
+              "lateral_ft": 10560.0
+            },
+            {
+              "api": "42-329-20028",
+              "operator": "Permian Resources",
+              "formation": "Wolfcamp A",
+              "lateral_ft": 10560.0
+            },
+            {
+              "api": "42-329-20029",
+              "operator": "Permian Resources",
+              "formation": "Wolfcamp A",
+              "lateral_ft": 10560.0
+            },
+            {
+              "api": "42-329-20030",
+              "operator": "Permian Resources",
+              "formation": "Wolfcamp A",
+              "lateral_ft": 10560.0
+            }
+          ]
+        }
+      ]
+    },
+    "econ": {
+      "price": {
+        "mode": "strip",
+        "strip_trade_date": "2026-06-23",
+        "oil_deck": 70.0,
+        "gas_deck": 3.5,
+        "oil_diff": 2.25,
+        "gas_diff": 0.4,
+        "oil_realized": 67.75,
+        "gas_realized": 3.1
+      },
+      "costs": {
+        "opex_var": 6.5,
+        "opex_fixed": 1200.0,
+        "drilling_afe": 9200000.0,
+        "sev_tax_pct": 0.07,
+        "gpt_pct": 0.045
+      },
+      "interest": {
+        "type": "wi",
+        "wi_pct": 0.25,
+        "nri_pct": 0.1875
+      },
+      "timing": {
+        "effective_date": "2026-07-01",
+        "horizon_months": 360,
+        "online_lag": {
+          "DUC": 18,
+          "PUD": 36
+        }
+      }
+    }
+  }
+}

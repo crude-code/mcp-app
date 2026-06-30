@@ -1,0 +1,116 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/space-grotesk";
+@import "@fontsource/space-mono/400.css";
+@import "@fontsource/space-mono/700.css";
+
+
+*:focus {
+  outline: none;
+}
+
+@theme inline {
+  /* Headings + numbers share the chrome faces so content matches the console
+     wrapper; body prose stays Inter for long-form readability. --font-heading
+     intentionally coincides with --font-chrome (likewise the mono pair) — kept
+     as distinct names for role clarity. */
+  --font-heading: 'Space Grotesk Variable', 'Space Grotesk', Inter, system-ui, sans-serif;
+  --font-sans: 'Inter Variable', sans-serif;
+  --font-mono: 'Space Mono', ui-monospace, SFMono-Regular, monospace;
+  --font-chrome: 'Space Grotesk Variable', 'Space Grotesk', Inter, system-ui, sans-serif;
+  --font-chrome-mono: 'Space Mono', ui-monospace, SFMono-Regular, monospace;
+  /* Only the theme colors @layer base actually applies (border-border,
+     outline-ring, bg-background, text-foreground). Components use the
+     semantic --* tokens below via inline style, not Tailwind color classes. */
+  --color-ring: var(--ring);
+  --color-border: var(--border);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+}
+
+:root {
+  --background: #fafaf8;
+  --foreground: #0a0a0a;
+  --border: #ececea;
+  --ring: #d97706;
+  --accent-foreground: #ffffff;
+
+  /* Spec semantic tokens — used by new components. */
+  --bg-page: #fafaf8;
+  --bg-surface: #ffffff;
+  --bg-panel-mute: #f6f7f4;
+
+  --border-default: #ececea;
+  --border-subtle: #f0f0ee;
+
+  --text-primary: #0a0a0a;
+  --text-body: #374151;
+  --text-muted: #4b5563;
+  --text-dim: #6b7280;
+
+  /* Content accent — deep teal, the chrome cyan family tuned for the white
+     content surface. Frame = bright cyan (--ac-accent), content = this. */
+  --content-accent: #0e7490;
+  --change-up: #059669;
+  --change-down: #dc2626;
+
+  /* Chart series + faint divider — were inline fallbacks in widgets.tsx */
+  --accent-blue: #6aa7ff;
+  --accent-purple: #b28aff;
+  --border-faint: rgba(255,255,255,0.05);
+
+  /* Agent console chrome — the LIVE token set AgentContainer renders from.
+     Color identity, fonts, surface fills, gradients live here; pure
+     black/white depth shadows stay inline in the component (depth, not design). */
+  --ac-accent: #0a9ec2;
+  --ac-accent-rgb: 10 158 194;        /* space-separated for rgb(... / <alpha>) */
+  --ac-accent-dim: #0e7490;
+  --ac-error: #e5484d;
+  --ac-error-rgb: 229 72 77;
+  --ac-error-dim: #7a1f22;
+
+  --ac-panel-bg: linear-gradient(180deg,#1c2024 0%,#15181b 60%,#101316 100%);
+  --ac-panel-border: #07090b;
+  --ac-emblem-bg: radial-gradient(circle at 32% 26%, #2a3036, #0e1114);
+  --ac-line: #2c3439;
+  --ac-bar-idle: #39424a;
+
+  --ac-title: #eef3f5;
+  --ac-muted: #7d868d;
+  --ac-meta: #5b7e86;
+  --ac-button-bg: rgba(255,255,255,.04);
+  --ac-button-text: #9aa3ab;
+
+  --ac-pill-text: #06262b;
+  --ac-pill-bg: linear-gradient(180deg,#13aacb,#0a7e99);
+  --ac-pill-border: #0a3a42;
+  --ac-pill-divider: rgba(6,38,43,.45);
+
+  --ac-screen: #fff;
+  --ac-screen-border: #06080a;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-variant-numeric: tabular-nums;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+/* Tabular nums on every monospace element by default. */
+.font-mono,
+[class*="font-mono"] {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes live-pulse    { 0%,100% { opacity: 0.5; } 50% { opacity: 1; } }
+@keyframes spin          { to { transform: rotate(360deg); } }
+@keyframes signal-eq     { 0% { transform: scaleY(0.26); } 100% { transform: scaleY(1); } }
+@keyframes signal-pulse  { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+

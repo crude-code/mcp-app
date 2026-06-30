@@ -15,7 +15,7 @@ You are NOT writing a report or running a valuation. You are extracting **facts,
 
 - **Output contract:** `extraction.json`, an `ExtractionResult` exactly as defined in **`schema.py`** (bundled here). Read `schema.py` once — it is the authoritative target. Every field is optional and typed; there is no escape-valve `extras` dict.
 - **Worked example:** **`example.json`** is a complete, filled extraction for a small synthetic deal. Match its shape exactly — every record carries a `provenance` block; entity lists are empty/omitted when the room doesn't support them.
-- **Then a viewer:** a self-contained React artifact that displays the extraction (see *The viewer artifact*). **`viewer_template.jsx`** is the scaffold to build it from.
+- **Then a viewer:** a self-contained React artifact that displays the extraction (see *The viewer artifact*). **`DataroomViewer.jsx`** is the finished, frozen component — you paste the extraction in, you don't rebuild it.
 
 ## Workflow
 
@@ -28,7 +28,8 @@ You are NOT writing a report or running a valuation. You are extracting **facts,
 3. **Scope.** Decide which entities this room actually supports. Extract what's there; skip what isn't. A room with no LOS has no `expenses`; a working-interest package usually has no `tracts`.
 4. **Extract** into the schema (see *What matters* and *Conventions*).
 5. **Write `extraction.json`** — one `ExtractionResult`.
-6. **Build the viewer artifact** that displays it (see *The viewer artifact*).
+6. **Produce the viewer** — paste the extraction into the bundled component (see
+   *The viewer artifact*). Do this every run, even when a valuation follows.
 
 ## What matters (for valuation)
 
@@ -73,46 +74,46 @@ You are NOT writing a report or running a valuation. You are extracting **facts,
 
 ## The viewer artifact
 
-Once `extraction.json` is written, build **one self-contained React artifact** that
-displays it, so the buyer can see the package at a glance and trust every number
-back to its file. The extraction is the source of truth; the viewer only *shows*
-it. **`viewer_template.jsx`** (bundled here) is a scaffold of the available
-sections — build from it, keep what the room supports, delete the rest. Don't ship
-the skeleton as-is and don't clone it field-for-field; every room emphasizes
-different things.
+Once `extraction.json` is written, give the user a viewer so they can see the
+package at a glance and trust every number back to its file. **`DataroomViewer.jsx`**
+(bundled here) is the finished, frozen component — you do **not** build, redesign,
+or adapt it. To produce the viewer:
 
-**Trust rules — the display-side analog of "never fabricate":**
-- **Derive nothing.** Every number on screen is a field from `extraction.json`,
-  shown as-is. No invented totals, no PV, no per-BOE math in the component. Roll-ups
-  come from the extraction or not at all.
-- **Provenance on every record.** Render each record's `source_file` (+ locator) —
-  it's the audit trail that makes the view trustworthy.
-- **Lead with `extraction_notes`** as a data-quality banner near the top: caveats,
-  excluded offsets, un-OCR'd files, inferred values.
-- **Render only what's present.** Null field → omit it. Empty list → no section.
+1. Open `DataroomViewer.jsx`.
+2. Paste this room's `extraction.json` into the one marked `const EXTRACTION = {}`.
+3. Ship that as the artifact. That's the whole job.
 
-**The structure (well is the spine):**
+The component re-derives the entire view from the schema, so it already handles
+everything that varies room to room — **don't reinvent any of it:**
+- **Spine** — wells if present, else tracts (minerals/royalty rooms). Automatic.
+- **Prominence** — a well with `production_history` leads with its decline curve;
+  otherwise a field summary. Automatic.
+- **Presence** — every section renders only when its data exists; null fields are
+  omitted. Automatic.
+- **Trust** — provenance on every record, `extraction_notes` as the data-quality
+  banner, and **nothing derived** (every number is a field shown as-is) are baked
+  into the component, not your responsibility to re-enforce each run.
 
-| Section | Source | Notes |
-|---|---|---|
-| Deal header | `deal` | Lead metadata: title, seller/operator/broker, county·state·basin·formation, headline stat tiles, `summary`. |
-| Data-quality banner | `extraction_notes` | Always, near the top. |
-| **Wells (spine)** | `wells` | One expandable row per well. Nest everything carrying its `well_api` underneath: `interests`, `expenses`, `revenue_observations`, `production_history`. |
-| Standalone | `tracts`, `division_orders`, `documents` | Entities that don't join a well — each its own table, only when non-empty. |
+So there are no per-room layout decisions to make and nothing to overfit to: same
+component, just this room's data. Deps are `react` + `recharts` + `lucide-react`
+(the claude.ai Artifact runtime) — don't add others.
 
-**Pick the spine from the deal.** Most rooms (WI / well packages) are **well-spine**
-— wells carry the deal. A **minerals / royalty** room (`category` MI / RI / ORRI /
-NPRI) usually has an empty `wells` list; there, flip to a **tract-spine** and nest
-`interests` / `division_orders` under each tract.
+## When the dataroom feeds a valuation
 
-**Charts when the data supports them** — a flat field grid is the weak default:
-- `production_history` present → a **decline chart** (monthly oil/gas/water), not a grid.
-- `revenue_observations` across several months → a **realized-price / differential**
-  chart, or a gross→net breakdown.
-- Otherwise a table is fine.
+Often the room isn't the end goal — the user wants to **value** the interest. The
+dataroom is the input that makes that possible: the `wells` and the `interests`
+decimal are exactly what `forecast_wells` / `run_valuation` need. In that case:
 
-**Keep it runnable.** Self-contained, `react` + `recharts` + `lucide-react` only,
-no network calls, the extraction embedded in the file.
+1. Extract → write `extraction.json`.
+2. **Show the viewer first** — it's the confirm-before-you-value step. The user
+   eyeballs what came out of the room (which wells, what interest decimal, what the
+   production looks like) and confirms it's right before any money number is built.
+3. Then proceed into the valuation flow (`forecast_wells` → assumptions grid →
+   `run_valuation`), carrying the wells and the interest from the extraction.
+
+**Build the viewer every time you process a dataroom**, whether or not a valuation
+follows. It's the deliverable that makes the extraction auditable — not an optional
+extra to skip when the goal is downstream.
 
 ## Hard rules
 

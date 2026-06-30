@@ -18,23 +18,40 @@ git reset --hard origin/main
 NEW_SHA=$(git rev-parse HEAD)
 
 # --- nginx config sync ----------------------------------------------------
-# The canonical nginx config lives in deploy/nginx/crudecode.conf in the
-# repo. If it differs from what's installed on the host, back up the live
-# file, copy the new one in, validate, and reload. On validation failure
-# we restore the backup and bail before touching the MCP server.
-NGINX_LIVE=/etc/nginx/conf.d/crudecode.conf
-NGINX_REPO=deploy/nginx/crudecode.conf
-if ! cmp -s "$NGINX_REPO" "$NGINX_LIVE"; then
-    echo "nginx config differs — applying update"
-    TS=$(date +%Y%m%d-%H%M%S)
-    sudo cp "$NGINX_LIVE" "${NGINX_LIVE}.bak-${TS}"
-    sudo cp "$NGINX_REPO" "$NGINX_LIVE"
+# The canonical prod nginx configs live in deploy/nginx/ in the repo, one file
+# per /etc/nginx/conf.d/ entry. For each, if it differs from what's installed
+# on the host, back up the live file, copy the new one in. Only the prod files
+# are synced here (the dev vhost is owned by deploy-dev.sh). nginx is validated
+# and reloaded once at the end; on validation failure every change is rolled
+# back and we bail before touching the MCP server.
+NGINX_CONFS=(crudecode-mcp.conf crudecode-site.conf)
+NGINX_TS=$(date +%Y%m%d-%H%M%S)
+NGINX_CHANGED=0
+NGINX_ROLLBACK=()   # entries: "live|backup" (existing file) or "live|NEW" (created)
+for name in "${NGINX_CONFS[@]}"; do
+    REPO_CONF="deploy/nginx/${name}"
+    LIVE_CONF="/etc/nginx/conf.d/${name}"
+    cmp -s "$REPO_CONF" "$LIVE_CONF" && continue
+    echo "nginx config differs — applying ${name}"
+    if [ -f "$LIVE_CONF" ]; then
+        sudo cp "$LIVE_CONF" "${LIVE_CONF}.bak-${NGINX_TS}"
+        NGINX_ROLLBACK+=("${LIVE_CONF}|${LIVE_CONF}.bak-${NGINX_TS}")
+    else
+        NGINX_ROLLBACK+=("${LIVE_CONF}|NEW")
+    fi
+    sudo cp "$REPO_CONF" "$LIVE_CONF"
+    NGINX_CHANGED=1
+done
+if [ "$NGINX_CHANGED" = "1" ]; then
     if sudo nginx -t; then
         sudo systemctl reload nginx
         echo "nginx reloaded"
     else
-        echo "nginx -t failed — restoring backup"
-        sudo cp "${NGINX_LIVE}.bak-${TS}" "$NGINX_LIVE"
+        echo "nginx -t failed — rolling back nginx changes"
+        for entry in "${NGINX_ROLLBACK[@]}"; do
+            live="${entry%%|*}"; bak="${entry##*|}"
+            if [ "$bak" = "NEW" ]; then sudo rm -f "$live"; else sudo cp "$bak" "$live"; fi
+        done
         exit 1
     fi
 fi

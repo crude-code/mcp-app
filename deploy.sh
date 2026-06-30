@@ -67,8 +67,8 @@ npm run build --prefix renderer
 # Restart the MCP server only when paths it loaded into memory at startup
 # changed: server code, utils, prompts, the renderer HTML (read into
 # APP_HTML at module load), or pip requirements. Doc-only, nginx-only,
-# signup-only, ingest-only, scripts-only, and tests-only changes deploy
-# without disconnecting active users.
+# ingest-only, scripts-only, and tests-only changes deploy without
+# disconnecting active users.
 RESTART_PATHS_REGEX='^(server/|utils/|prompts/|renderer/|requirements\.txt$)'
 LAST_DEPLOYED_SHA_FILE=/home/ubuntu/crudecode/.last-mcp-deployed-sha
 
@@ -96,33 +96,6 @@ fi
 
 if [ "$NEEDS_RESTART" = "1" ]; then
     sudo systemctl restart crudecode-mcp
-fi
-
-# Restart the signup service only when code the running process loaded at
-# startup changed: signup/app.py or the utils modules it imports
-# (utils.platform, utils.ses). The signup HTML (index.html/setup.html) is
-# served via FileResponse from disk per request, so HTML-only changes go
-# live on the git pull with no restart. deploy.sh owns this because nothing
-# else restarts crudecode-signup — the app.py + utils/ses.py waitlist change
-# on 2026-06-10 reached disk but stayed dormant until a manual restart.
-# Reuses the same LAST_SHA→NEW_SHA window as the MCP decision above.
-SIGNUP_RESTART_PATHS_REGEX='^(signup/app\.py$|utils/)'
-NEEDS_SIGNUP_RESTART=1
-if [ -f "$LAST_DEPLOYED_SHA_FILE" ] && git cat-file -e "$LAST_SHA" 2>/dev/null; then
-    if [ "$LAST_SHA" = "$NEW_SHA" ]; then
-        echo "signup already at $NEW_SHA — no restart needed"
-        NEEDS_SIGNUP_RESTART=0
-    elif git diff --name-only "$LAST_SHA" "$NEW_SHA" | grep -Eq "$SIGNUP_RESTART_PATHS_REGEX"; then
-        echo "signup-relevant paths changed since $LAST_SHA — restarting"
-        git diff --name-only "$LAST_SHA" "$NEW_SHA" | grep -E "$SIGNUP_RESTART_PATHS_REGEX" | sed 's/^/  changed: /'
-    else
-        echo "no signup-relevant changes since $LAST_SHA — leaving signup running"
-        NEEDS_SIGNUP_RESTART=0
-    fi
-fi
-
-if [ "$NEEDS_SIGNUP_RESTART" = "1" ]; then
-    sudo systemctl restart crudecode-signup
 fi
 
 echo "$NEW_SHA" > "$LAST_DEPLOYED_SHA_FILE"

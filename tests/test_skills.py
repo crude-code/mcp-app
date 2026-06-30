@@ -35,8 +35,8 @@ def test_load_skill_returns_instructions_and_files():
     assert "dataroom" in bundle["description"].lower()
     # instructions is the SKILL.md body text
     assert "# Dataroom Extract" in bundle["instructions"]
-    # the three bundled files are present, SKILL.md is NOT in files
-    assert set(bundle["files"]) == {"schema.py", "triage.py", "example.json"}
+    # the bundled files are present, SKILL.md is NOT in files
+    assert set(bundle["files"]) == {"schema.py", "triage.py", "example.json", "viewer_template.jsx"}
     assert "SKILL.md" not in bundle["files"]
     assert "ExtractionResult" in bundle["files"]["schema.py"]
 

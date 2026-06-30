@@ -44,3 +44,33 @@ def test_load_skill_returns_instructions_and_files():
 def test_load_skill_unknown_raises():
     with pytest.raises(SkillNotFound):
         load_skill("does-not-exist")
+
+
+import json
+
+from server.mcp_server import get_skill
+
+
+def _call(fn):
+    """get_skill is registered as a FastMCP tool; unwrap to the plain fn if needed."""
+    return getattr(fn, "fn", fn)
+
+
+def test_get_skill_tool_returns_bundle_json():
+    out = json.loads(_call(get_skill)("dataroom-extract"))
+    assert out["name"] == "dataroom-extract"
+    assert "# Dataroom Extract" in out["instructions"]
+    assert "schema.py" in out["files"]
+
+
+def test_get_skill_tool_no_name_returns_catalog():
+    out = json.loads(_call(get_skill)(""))
+    names = [s["name"] for s in out["available_skills"]]
+    assert "dataroom-extract" in names
+
+
+def test_get_skill_tool_unknown_name_returns_catalog():
+    out = json.loads(_call(get_skill)("nope"))
+    assert "available_skills" in out
+    names = [s["name"] for s in out["available_skills"]]
+    assert "dataroom-extract" in names

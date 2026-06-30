@@ -43,6 +43,7 @@ from server.valuation.deal_sheet import roll_up_facts
 from server.valuation import config as _vconfig
 from server.maps.spec import parse_map_spec, MapSpecError
 from server.maps.hydrate import hydrate_map, MapHydrateError
+from server.skills import list_skills, load_skill, SkillNotFound
 
 
 _log_setup()
@@ -213,6 +214,27 @@ def run_sql(sql: str, schema: str = "public") -> str:
             {"rows": result["rows"], "count": result["count"]},
             default=str,
         )
+
+
+# ── get_skill ────────────────────────────────────────────────────────────────
+
+_get_skill_log = _logging.getLogger("ei.get_skill")
+
+
+@mcp.tool(description=_load_prompt("outer/tool_get_skill.md"))
+def get_skill(name: str = "") -> str:
+    """Return a packaged skill bundle (instructions + files), or the catalog
+    when called with no/unknown name. Static repo files — no DB or identity."""
+    try:
+        if not name or not name.strip():
+            return _json.dumps({"available_skills": list_skills()})
+        try:
+            return _json.dumps(load_skill(name.strip()))
+        except SkillNotFound:
+            return _json.dumps({"available_skills": list_skills()})
+    except Exception as e:
+        _get_skill_log.error("get_skill failed: %s", e)
+        return _json.dumps({"error": str(e)})
 
 
 # ── map ────────────────────────────────────────────────────────────────────

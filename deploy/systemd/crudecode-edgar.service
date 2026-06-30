@@ -1,0 +1,14 @@
+[Unit]
+Description=Crude Code SEC EDGAR ingest
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/crudecode
+ExecStart=/home/ubuntu/crudecode/.venv/bin/python -m ingest edgar
+StandardOutput=journal
+StandardError=journal
+EnvironmentFile=/home/ubuntu/crudecode/.env
+TimeoutStartSec=30min

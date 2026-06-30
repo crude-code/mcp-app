@@ -1,0 +1,11 @@
+[Unit]
+Description=Six-hourly Crude Code staleness check
+Requires=crudecode-stale-check.service
+
+[Timer]
+OnCalendar=*-*-* 00,06,12,18:30:00 UTC
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

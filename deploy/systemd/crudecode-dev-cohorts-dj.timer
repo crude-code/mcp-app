@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Crude Code DJ dev-cohort feature build
+Requires=crudecode-dev-cohorts-dj.service
+
+[Timer]
+OnCalendar=*-*-* 07:30:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

@@ -20,8 +20,5 @@ test_output/
 .DS_Store
 repomix-*
 
-# --- Deploy tooling (kept locally, not published) ---
-deploy/
-deploy.sh
-deploy-dev.sh
+# --- Deploy runtime state (per-host, not source) ---
 .last-mcp-deployed-sha

@@ -1,0 +1,14 @@
+[Unit]
+Description=Crude Code DDE wells ingest (wells + directionals + shapes + production)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/crudecode
+ExecStart=/home/ubuntu/crudecode/.venv/bin/python -m ingest dde_wells
+StandardOutput=journal
+StandardError=journal
+EnvironmentFile=/home/ubuntu/crudecode/.env
+TimeoutStartSec=2h

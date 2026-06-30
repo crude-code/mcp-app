@@ -1,0 +1,36 @@
+name: Deploy to production
+
+# Runs ONLY after a merge to main (never on pull_request), so it executes in the
+# trusted base-repo context where secrets are available. Pull requests — including
+# from forks — never trigger this and never receive the secrets below.
+on:
+  push:
+    branches: [main]
+
+# Never run two production deploys at once; queue them instead of racing.
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest          # ephemeral GitHub-hosted runner (not self-hosted)
+    steps:
+      - name: SSH to the EC2 host and run deploy.sh
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # accept-new: trust the host on first connect, but fail if a known key ever changes
+          ssh -o StrictHostKeyChecking=accept-new -i ~/.ssh/deploy_key \
+            "ubuntu@${DEPLOY_HOST}" '
+              set -euo pipefail
+              cd /home/ubuntu/crudecode
+              git fetch --quiet origin main
+              git reset --hard origin/main
+              ./deploy.sh
+            '

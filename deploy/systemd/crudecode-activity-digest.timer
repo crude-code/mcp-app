@@ -1,0 +1,11 @@
+[Unit]
+Description=10-minute Crude Code activity digest
+Requires=crudecode-activity-digest.service
+
+[Timer]
+OnCalendar=*:00/10
+Persistent=true
+RandomizedDelaySec=30
+
+[Install]
+WantedBy=timers.target

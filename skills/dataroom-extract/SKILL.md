@@ -15,6 +15,7 @@ You are NOT writing a report or running a valuation. You are extracting **facts,
 
 - **Output contract:** `extraction.json`, an `ExtractionResult` exactly as defined in **`schema.py`** (bundled here). Read `schema.py` once — it is the authoritative target. Every field is optional and typed; there is no escape-valve `extras` dict.
 - **Worked example:** **`example.json`** is a complete, filled extraction for a small synthetic deal. Match its shape exactly — every record carries a `provenance` block; entity lists are empty/omitted when the room doesn't support them.
+- **Then a viewer:** a self-contained React artifact that displays the extraction (see *The viewer artifact*). **`viewer_template.jsx`** is the scaffold to build it from.
 
 ## Workflow
 
@@ -26,7 +27,8 @@ You are NOT writing a report or running a valuation. You are extracting **facts,
 2. **Orient.** Read `triage.md`, then the overview/teaser document if there is one (most rooms have a one-pager naming the operator, basin, county, well count, and asset type).
 3. **Scope.** Decide which entities this room actually supports. Extract what's there; skip what isn't. A room with no LOS has no `expenses`; a working-interest package usually has no `tracts`.
 4. **Extract** into the schema (see *What matters* and *Conventions*).
-5. **Write `extraction.json`** — one `ExtractionResult` — and stop.
+5. **Write `extraction.json`** — one `ExtractionResult`.
+6. **Build the viewer artifact** that displays it (see *The viewer artifact*).
 
 ## What matters (for valuation)
 
@@ -68,6 +70,49 @@ You are NOT writing a report or running a valuation. You are extracting **facts,
 **No database here.** Unlike the server pipeline, you have **no access to the Energy Insights well database** in this sandbox. Leave `Well.public_well_object` null. When the room gives only a well **name**, leave `api` null and say so in `notes` / `extraction_notes` — a later server step resolves APIs against public data.
 
 **API formatting.** When the room states an API, normalize to `SS-CCC-WWWWW` (10 digits, two dashes; strip a 14-digit API to its first 10). Never fabricate digits to reach that shape.
+
+## The viewer artifact
+
+Once `extraction.json` is written, build **one self-contained React artifact** that
+displays it, so the buyer can see the package at a glance and trust every number
+back to its file. The extraction is the source of truth; the viewer only *shows*
+it. **`viewer_template.jsx`** (bundled here) is a scaffold of the available
+sections — build from it, keep what the room supports, delete the rest. Don't ship
+the skeleton as-is and don't clone it field-for-field; every room emphasizes
+different things.
+
+**Trust rules — the display-side analog of "never fabricate":**
+- **Derive nothing.** Every number on screen is a field from `extraction.json`,
+  shown as-is. No invented totals, no PV, no per-BOE math in the component. Roll-ups
+  come from the extraction or not at all.
+- **Provenance on every record.** Render each record's `source_file` (+ locator) —
+  it's the audit trail that makes the view trustworthy.
+- **Lead with `extraction_notes`** as a data-quality banner near the top: caveats,
+  excluded offsets, un-OCR'd files, inferred values.
+- **Render only what's present.** Null field → omit it. Empty list → no section.
+
+**The structure (well is the spine):**
+
+| Section | Source | Notes |
+|---|---|---|
+| Deal header | `deal` | Lead metadata: title, seller/operator/broker, county·state·basin·formation, headline stat tiles, `summary`. |
+| Data-quality banner | `extraction_notes` | Always, near the top. |
+| **Wells (spine)** | `wells` | One expandable row per well. Nest everything carrying its `well_api` underneath: `interests`, `expenses`, `revenue_observations`, `production_history`. |
+| Standalone | `tracts`, `division_orders`, `documents` | Entities that don't join a well — each its own table, only when non-empty. |
+
+**Pick the spine from the deal.** Most rooms (WI / well packages) are **well-spine**
+— wells carry the deal. A **minerals / royalty** room (`category` MI / RI / ORRI /
+NPRI) usually has an empty `wells` list; there, flip to a **tract-spine** and nest
+`interests` / `division_orders` under each tract.
+
+**Charts when the data supports them** — a flat field grid is the weak default:
+- `production_history` present → a **decline chart** (monthly oil/gas/water), not a grid.
+- `revenue_observations` across several months → a **realized-price / differential**
+  chart, or a gross→net breakdown.
+- Otherwise a table is fine.
+
+**Keep it runnable.** Self-contained, `react` + `recharts` + `lucide-react` only,
+no network calls, the extraction embedded in the file.
 
 ## Hard rules
 

@@ -1,37 +1,69 @@
 name: Deploy to production
 
 # Runs ONLY after a merge to main (never on pull_request), so it executes in the
-# trusted base-repo context where secrets are available. Pull requests — including
-# from forks — never trigger this and never receive the secrets below.
+# trusted base-repo context. Deploys via AWS SSM — no inbound SSH, no long-lived
+# keys: the runner assumes an IAM role through GitHub OIDC and tells the SSM agent
+# already running on the EC2 to run deploy.sh. Port 22 stays locked to admin IPs.
 on:
   push:
     branches: [main]
-  workflow_dispatch:        # manual "Run workflow" button in the Actions tab (re-deploy / re-run)
+  workflow_dispatch:        # manual "Run workflow" button (re-deploy / re-run)
 
 # Never run two production deploys at once; queue them instead of racing.
 concurrency:
   group: production-deploy
   cancel-in-progress: false
 
+permissions:
+  id-token: write           # required to mint the OIDC token used to assume the role
+  contents: read
+
 jobs:
   deploy:
-    runs-on: ubuntu-latest          # ephemeral GitHub-hosted runner (not self-hosted)
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: us-east-1
+      INSTANCE_ID: i-02079850579ca9ebb
     steps:
-      - name: SSH to the EC2 host and run deploy.sh
-        env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Configure AWS credentials (OIDC, no stored keys)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Deploy via SSM RunShellScript
         run: |
           set -euo pipefail
-          mkdir -p ~/.ssh
-          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          # accept-new: trust the host on first connect, but fail if a known key ever changes
-          ssh -o StrictHostKeyChecking=accept-new -i ~/.ssh/deploy_key \
-            "ubuntu@${DEPLOY_HOST}" '
-              set -euo pipefail
-              cd /home/ubuntu/crudecode
-              git fetch --quiet origin main
-              git reset --hard origin/main
-              ./deploy.sh
-            '
+
+          # Run deploy.sh as the ubuntu user (SSM runs as root by default).
+          cat > params.json <<'JSON'
+          {
+            "commands": [
+              "sudo -u ubuntu -H bash -lc 'cd /home/ubuntu/crudecode && git fetch --quiet origin main && git reset --hard origin/main && ./deploy.sh'"
+            ]
+          }
+          JSON
+
+          CMD_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "GHA deploy ${GITHUB_SHA::7}" \
+            --parameters file://params.json \
+            --query 'Command.CommandId' --output text)
+          echo "SSM CommandId: $CMD_ID"
+
+          # Wait for a terminal state (waiter exits non-zero on Failed/TimedOut).
+          set +e
+          aws ssm wait command-executed --command-id "$CMD_ID" --instance-id "$INSTANCE_ID"
+          set -e
+
+          STATUS=$(aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" --query 'Status' --output text)
+          echo "::group::deploy stdout"
+          aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" --query 'StandardOutputContent' --output text
+          echo "::endgroup::"
+          echo "::group::deploy stderr"
+          aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" --query 'StandardErrorContent' --output text
+          echo "::endgroup::"
+
+          echo "Final SSM status: $STATUS"
+          [ "$STATUS" = "Success" ]

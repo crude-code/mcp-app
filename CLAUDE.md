@@ -16,8 +16,8 @@ everything through a handful of MCP tools:
 - When the chat becomes a deliverable, **Claude itself authors the briefing
   spec** and calls `run_data_analysis(spec)`; the server validates, hydrates
   (re-runs each widget's SQL), persists, and hands back a token + summary.
-- For deals it calls `forecast_wells` → `run_valuation` → gets an interactive
-  `deal_sheet`, with `export_valuation_xlsx` for a live Excel model.
+- For deals it calls `forecast_wells` → `run_valuation` → gets the data to build
+  a deal-sheet artifact, with `export_valuation_xlsx` for a live Excel model.
 - For geography it calls `map`.
 - For a one-off packaged procedure (e.g. extracting a dataroom upload) it
   calls `get_skill(name)` to fetch the instructions and follows them directly.

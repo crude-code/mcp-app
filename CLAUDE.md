@@ -63,9 +63,13 @@ Tools (all return JSON strings):
 - **run_valuation** — Takes `run_id` (from `forecast_wells`) and `params`
   (interest type + blanket numbers, optional `by_api` per-well overrides,
   optional `economics_overrides`). Runs econ on the forecast stage in the run
-  record, assembles the interactive **`deal_sheet`** widget, mints a handle,
-  returns `{surface: "deal_sheet", briefing_token, run_id, npv_at_centers}`.
-  See `server/valuation/`.
+  record, assembles a slim artifact payload (`build_artifact_payload` in
+  `server/valuation/artifact_payload.py` — exec facts, a net production
+  series when the deal has one, and the blended NPV at price centers), and
+  returns `{surface: "deal_sheet_artifact", run_id, data}`. Claude builds the
+  deal-sheet artifact itself (react + recharts + lucide-react) from `data`,
+  per the guardrail in `prompts/outer/tool_run_valuation.md` — no MCP-app
+  render, no widget spec, no PV cube in the payload. See `server/valuation/`.
 - **export_valuation_xlsx** — Renderer-only (`app`-scoped). Builds the live,
   editable Excel model for a completed run and returns `{filename,
   xlsx_base64}`. See `server/valuation/export_xlsx.py`.
@@ -99,12 +103,14 @@ Inline React app rendered inside Claude Desktop. Single-pass build:
 
 **Render flow:** `EIApp` parses `ontoolresult` payloads and dispatches on the
 invoking tool name. A `TOOL_AGENTS` map gives `run_data_analysis` → "Data
-Analyst" and `run_valuation` → "Valuation Analyst"; both render `SpecSurface`,
-which calls `get_briefing_full(briefingToken)` **once** on mount and renders the
-returned spec through `SpecRenderer` inside `AgentChrome`. The `map` tool renders
-`MapView` (a MapLibre GL well/unit/PLSS map). There is no streaming/event-log
-path — `SpecSurface`'s "working" state is just the brief moment before the
-single fetch resolves.
+Analyst", which renders `SpecSurface` — it calls `get_briefing_full(briefingToken)`
+**once** on mount and renders the returned spec through `SpecRenderer` inside
+`AgentChrome`. The `map` tool renders `MapView` (a MapLibre GL well/unit/PLSS
+map). `run_valuation` has no `app=` config and never triggers an `ontoolresult`
+render at all — Claude builds the deal-sheet as a claude.ai artifact directly
+from the tool's `data` payload instead. There is no streaming/event-log path —
+`SpecSurface`'s "working" state is just the brief moment before the single
+fetch resolves.
 
 **Component tree:**
 - `src/EIApp.tsx` — app shell; routes tool results to `SpecSurface` or `MapView`.
@@ -122,9 +128,11 @@ single fetch resolves.
 - `src/components/DealSheet.tsx` — interactive risked deal sheet: facts grid,
   PDP/DUC/PUD status rows, deck/rate selectors indexing the PV cube, a recharts
   forecast chart (Production ↔ Net Cashflow toggle), and the "Download export"
-  button wired to `export_valuation_xlsx`.
+  button wired to `export_valuation_xlsx`. **Unused** since `run_valuation`
+  moved to a Claude-built artifact — kept pending cleanup, not wired to any
+  tool result anymore.
 - `src/components/AdvancedView.tsx` — "Behind the Valuation" tabs: `AssetPanel`,
-  `ProductionPanel`, `EconPanel`.
+  `ProductionPanel`, `EconPanel`. **Unused**, same reason as `DealSheet.tsx`.
 - `src/components/valuationUI.tsx` — shared valuation primitives (`Segmented`,
   `fmtUSD`/`fmtDate`/`fmtCompact`, `LBL`).
 - `src/components/AgentContainer.tsx` — agent chrome ("signal instrument":

@@ -2,7 +2,8 @@ Run economics on the wells you've already forecast and build the deal sheet. Cal
 this AFTER `forecast_wells` — pass the same `run_id` it returned. `forecast_wells`
 mints the `run_id` on the first call; thread that exact id into every later call.
 `run_valuation` reads whatever forecast stages exist under the run, applies the
-cashflow model, and returns risked PV plus the interactive deal sheet, rendered inline.
+cashflow model, and returns risked PV plus the data to build an interactive
+deal-sheet artifact from — see "Returns" below.
 
 ## REQUIRED: show the assumptions and get a yes before you run
 
@@ -102,9 +103,24 @@ A working-interest deal instead looks like:
 }
 ```
 
-Returns `{"surface": "deal_sheet", "briefing_token", "run_id", "npv_at_centers"}` —
-`npv_at_centers.total` is the headline PV; `npv_at_centers.by_status` breaks it out by
-PDP/DUC/PUD. Narrate the result in chat from those numbers.
+### Returns
+
+`{"surface": "deal_sheet_artifact", "run_id", "data": {"facts", "production", "economics"}}`.
+
+- `data.facts` — exec summary: `deal_type`, `interest`, `operator`, `area`.
+- `data.production` — net monthly oil/gas/cashflow series over the deal's active
+  window, or `null` when the deal has no active status yet to show.
+- `data.economics.npv_at_centers` — the blended bottom line. `.total` is the
+  headline PV; `.by_status` breaks it out by PDP/DUC/PUD. Narrate the result in
+  chat from these numbers.
+
+**Build a claude.ai artifact from `data`** — a single React component using only
+`react`, `recharts`, and `lucide-react` (no other dependencies; this runs in the
+claude.ai artifact sandbox, not your own app). Show the facts, the
+production/forecast chart when `data.production` isn't `null`, and the
+economics. Use only what's in `data` — don't omit a field you were given, and
+don't invent numbers that aren't there. There's no fixed layout to follow;
+use your judgment on how to present it well.
 
 On a malformed `params` the tool returns `{"error": "..."}` naming the exact field
 that's wrong (e.g. `interest_type must be 'wi' or 'minerals'`, `asset_list must be an

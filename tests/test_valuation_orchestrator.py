@@ -7,6 +7,7 @@ from server.valuation.orchestrator import (
     _SCHEDULE_COLS,
     _build_schedule,
     _serialize_schedule,
+    compose_artifact_payload_for_run,
     compose_briefing_for_run,
 )
 
@@ -314,6 +315,39 @@ def test_compose_briefing_for_run_raises_without_economics(monkeypatch):
         lambda self, run_id, *, stage: None)
     with pytest.raises(ValueError, match="no economics stage"):
         compose_briefing_for_run(run_id="r1", headline="h", tldr="t", commentary="c")
+
+
+def test_compose_artifact_payload_for_run_reads_stages(monkeypatch):
+    """compose reads the wells + economics stages and returns the slim payload."""
+    economics = {
+        "rate_centers": {"PDP": 0.175, "DUC": 0.225, "PUD": 0.275},
+        "interest": {"interest_type": "wi", "wi_pct": 0.25, "nri_pct": 0.1875},
+        "schedule": {"origin": "2026-07-01", "totals": {
+            "net_oil": [100.0] * 360, "net_gas": [50.0] * 360,
+            "net_cashflow": [1000.0] * 360}},
+        "horizon_months": 360,
+        "npv_at_centers": {"by_status": {"PDP": 20e6, "DUC": 4e6, "PUD": 3e6}, "total": 27e6},
+    }
+    wells = {"well_meta": {"A": {"status": "PRODUCING", "operator": "SURGEON ENERGY",
+                                  "basin": "MIDLAND", "formation": "WOLFCAMP"}}}
+
+    def fake_read_stage(self, run_id, *, stage):
+        return {"economics": economics, "wells": wells}.get(stage)
+    monkeypatch.setattr(
+        "server.valuation.orchestrator.ValuationRunStore.read_stage", fake_read_stage)
+
+    payload = compose_artifact_payload_for_run("r1")
+    assert payload["facts"]["deal_type"] == "Working Interest"
+    assert payload["production"] is not None
+    assert payload["economics"]["npv_at_centers"]["total"] == 27e6
+
+
+def test_compose_artifact_payload_for_run_raises_without_economics(monkeypatch):
+    monkeypatch.setattr(
+        "server.valuation.orchestrator.ValuationRunStore.read_stage",
+        lambda self, run_id, *, stage: None)
+    with pytest.raises(ValueError, match="no economics stage"):
+        compose_artifact_payload_for_run("r1")
 
 
 # ── per-well interest in the schedule (by_api overrides + net volumes) ─────

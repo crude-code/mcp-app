@@ -613,6 +613,20 @@ def compose_briefing_for_run(
     return spec
 
 
+def compose_artifact_payload_for_run(run_id: str) -> dict:
+    """Read the wells + economics stages and build the slim artifact payload
+    `run_valuation` returns for Claude to build a deal-sheet artifact from.
+    See `server.valuation.artifact_payload.build_artifact_payload`."""
+    from server.valuation.artifact_payload import build_artifact_payload
+
+    store = ValuationRunStore()
+    economics = store.read_stage(run_id, stage="economics")
+    if not economics:
+        raise ValueError(f"run {run_id}: no economics stage (call run_economics first)")
+    wells = store.read_stage(run_id, stage="wells") or {}
+    return build_artifact_payload(economics=economics, wells=wells)
+
+
 def _well_meta_payload(apis: list[str], meta_by_api: dict) -> dict:
     """Per-well facts for the deal sheet, keyed by API. Missing wells → all-None."""
     out: dict[str, dict] = {}

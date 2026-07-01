@@ -5,9 +5,12 @@ Oil & gas data analytics platform. MCP server + spec-driven inline renderer.
 ## Architecture
 
 **Outer Claude does the thinking; the server does deterministic work.** There are
-no inner agents anymore — the managed-agents / inner-Opus / skills / pip-package
-era was removed in the rebuild. Outer Claude (in Claude Desktop / claude.ai)
-orchestrates everything through a handful of MCP tools:
+no inner agents anymore — the managed-agents / inner-Opus / pip-package era was
+removed in the rebuild. The one exception is `get_skill`: a static file bundle
+(instructions + supporting files) Claude fetches and follows directly for
+occasional, procedure-heavy tasks — not an agent, no code execution on the
+server side. Outer Claude (in Claude Desktop / claude.ai) orchestrates
+everything through a handful of MCP tools:
 
 - It explores with `run_sql` (direct, capped SELECT access) right in the chat.
 - When the chat becomes a deliverable, **Claude itself authors the briefing
@@ -16,6 +19,8 @@ orchestrates everything through a handful of MCP tools:
 - For deals it calls `forecast_wells` → `run_valuation` → gets an interactive
   `deal_sheet`, with `export_valuation_xlsx` for a live Excel model.
 - For geography it calls `map`.
+- For a one-off packaged procedure (e.g. extracting a dataroom upload) it
+  calls `get_skill(name)` to fetch the instructions and follows them directly.
 
 Every tool is synchronous and server-side. The renderer fetches the finished,
 hydrated spec **once** via `get_briefing_full(token)` and renders it inline — no
@@ -66,6 +71,11 @@ Tools (all return JSON strings):
   xlsx_base64}`. See `server/valuation/export_xlsx.py`.
 - **map** — Takes a map `spec`, validates + mints a map handle, returns
   `{surface: "map", map_token}`. See `server/maps/`.
+- **get_skill** — Takes an optional skill `name`. With no/unknown name,
+  returns the catalog (`{available_skills: [{name, description}, ...]}`).
+  With a valid name, returns the full bundle (`{name, description,
+  instructions, files}`) via `server/skills.py`. Pure/static — no DB, no
+  network. See `server/skills.py` and `skills/`.
 - **get_map_full** — Renderer-only. Returns the full hydrated map spec.
 - **get_briefing_full** — Renderer-only (`app`-scoped). Returns
   `{spec: <full hydrated spec>}` by ephemeral token from the in-memory
@@ -192,14 +202,29 @@ authors this code). Pure, unit-tested modules:
 - **`hydrate.py`** — `hydrate_map` / `MapHydrateError`: fill layer data.
 - **`catalog.py`** — layer/source catalog the hydrator draws from.
 
+### Skills (`skills/`)
+
+Static, occasional-use procedures Claude fetches on demand via `get_skill`
+rather than having permanently in its system prompt. Each skill is a subfolder
+with a `SKILL.md` (YAML-ish `name`/`description` frontmatter + instructions)
+plus whatever supporting files it references; `server/skills.py` scans the
+directory (`list_skills`) and loads a bundle (`load_skill`) — pure file I/O,
+no DB/network/identity, so it works with no `EI_DB_URL` set. Drop a new
+subfolder with a `SKILL.md` in to add a skill; nothing else registers it.
+- **`dataroom-extract/`** — turns an uploaded oil & gas dataroom (LOS, check
+  stubs, AFEs, production reports, title, division orders) into a structured
+  `extraction.json` plus a bundled, frozen React viewer artifact
+  (`DataroomViewer.jsx`) Claude pastes the extraction into. Feeds
+  `forecast_wells` / `run_valuation` when the room is headed for a deal.
+
 ### Prompts (`prompts/`)
 
 LLM-facing text, loaded via `utils/prompts.py` (`load("outer/...")`).
 - **`outer/`** — text outer Claude reads: `system_prompt.md` (lead-analyst
   posture, available-data summary) + one docstring per tool
   (`tool_run_sql.md`, `tool_run_data_analysis.md`, `tool_forecast_wells.md`,
-  `tool_run_valuation.md`, `tool_export_valuation_xlsx.md`, `tool_map.md`)
-  + `widget_palette.md`. `compose_outer_system_prompt()`
+  `tool_run_valuation.md`, `tool_export_valuation_xlsx.md`, `tool_map.md`,
+  `tool_get_skill.md`) + `widget_palette.md`. `compose_outer_system_prompt()`
   assembles `system_prompt.md` + the shared DB schema so Claude can write
   `run_sql` SELECTs without a separate schema tool.
 - **`inner/shared_schema.md`** — the DB schema reference. Despite the legacy
@@ -264,6 +289,21 @@ The renderer runs **inside** Claude Desktop, not a browser. To update it:
 Always use `.venv/bin/python`. Never bare `python` / `python3`.
 
 `.env` at repo root needs at least `EI_DB_URL` and `ANTHROPIC_API_KEY`.
+
+## Deploy
+
+- **`deploy.sh`** / **`deploy-dev.sh`** — idempotent scripts run on the host by
+  GitHub Actions (`.github/workflows/deploy.yml` / `deploy-dev.yml`) on push to
+  `main` / `dev`. Pull, sync the nginx config, rebuild the renderer, and
+  restart the MCP server only when a path it actually loaded into memory
+  changed since the last successful deploy (tracked in
+  `.last-mcp-deployed-sha`).
+- **`deploy/nginx/`** — the canonical prod/dev vhost configs, synced onto the
+  host by the deploy scripts.
+- **`deploy/systemd/`** — timer units for this deployment's own scheduled jobs
+  (market/well ingestion, activity digests, staleness checks). They invoke an
+  `ingest` package that lives outside this repo — populating the database is
+  out of scope here (see Market data above).
 
 ## Testing
 

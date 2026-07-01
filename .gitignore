@@ -22,3 +22,6 @@ repomix-*
 
 # --- Deploy runtime state (per-host, not source) ---
 .last-mcp-deployed-sha
+
+# --- Personal planning/spec notes, never part of the shipped repo ---
+docs/

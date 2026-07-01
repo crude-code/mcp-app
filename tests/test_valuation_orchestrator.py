@@ -478,3 +478,58 @@ def test_resolve_asset_list_empty_raises_clear_error():
         _resolve_asset_list({})
 
 
+# ── run_valuation_for_run: compose_briefing_for_run failure must not propagate ─
+
+def test_run_valuation_for_run_survives_compose_briefing_failure(monkeypatch):
+    """compose_briefing_for_run is the legacy widget-spec path — nothing in the
+    new artifact-payload flow reads its output. If it raises, run_valuation_for_run
+    must still return normally (briefing_spec_written: False), not blow up the
+    whole valuation call."""
+    from server.valuation.orchestrator import run_valuation_for_run
+    from server.valuation.types import WellMeta
+
+    monkeypatch.setattr(
+        "server.valuation.orchestrator.ValuationRunStore.read_stage",
+        lambda self, run_id, *, stage: {"forecasts": {"42-329-00001": {}}} if stage == "forecast" else None,
+    )
+    written = {}
+    monkeypatch.setattr(
+        "server.valuation.orchestrator.ValuationRunStore.write_stage",
+        lambda self, run_id, *, stage, payload: written.update({stage: payload}),
+    )
+    monkeypatch.setattr(
+        "server.valuation.orchestrator.bulk_load_wells",
+        lambda apis: [WellMeta(
+            api=api, status="PRODUCING", basin="MIDLAND", formation="WOLFCAMP",
+            county="MIDLAND", lateral_ft=9800.0, spud_date=None, completion_date=None,
+            first_prod_date=None, last_prod_date=None, n_history_months=12,
+            planned_first_prod_date=None, operator="OP",
+        ) for api in apis],
+    )
+    monkeypatch.setattr(
+        "server.valuation.orchestrator._load_forecast_stage",
+        lambda *, forecast, as_of, months_override: ({"42-329-00001": {}}, {"42-329-00001": "history"},
+                                                       {"42-329-00001": "PRODUCING"}),
+    )
+    monkeypatch.setattr(
+        "server.valuation.orchestrator._economics_from_forecasts",
+        lambda **kw: {"npv_at_centers": {"by_status": {"PDP": 20e6}, "total": 20e6}},
+    )
+
+    def _boom(**kw):
+        raise RuntimeError("legacy path exploded")
+    monkeypatch.setattr("server.valuation.orchestrator.compose_briefing_for_run", _boom)
+
+    params = {
+        "interest_type": "wi",
+        "interest": {"wi_pct": 0.25, "nri_pct": 0.1875},
+        "asset_list": {"well_apis": ["42-329-00001"]},
+    }
+    result = run_valuation_for_run(run_id="r1", params=params)
+
+    assert result == {"run_id": "r1", "npv_at_centers": {"by_status": {"PDP": 20e6}, "total": 20e6},
+                       "briefing_spec_written": False}
+    assert written["economics"]["npv_at_centers"]["total"] == 20e6
+    assert "wells" in written
+
+

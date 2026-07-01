@@ -1,4 +1,5 @@
 """Valuation orchestrator. Runs forecast_wells → economics → deal-sheet assembly."""
+import logging
 import math
 from datetime import date
 
@@ -16,6 +17,8 @@ from server.valuation.forecast import fit_curve, percentile_curves, project
 from server.valuation.run_record import ValuationRunStore
 from server.valuation.types import DeclineCurve, Forecast, ForecastProvenance, WellMeta
 from server.valuation.wells import bulk_load_production, bulk_load_wells
+
+_log = logging.getLogger("ei.run_valuation")
 
 
 class CohortError(Exception):
@@ -872,5 +875,16 @@ def run_valuation_for_run(*, run_id: str, params: dict) -> dict:
     # Deterministic headline — no agent prose. Claude narrates in chat.
     total = econ["npv_at_centers"]["total"]
     headline = f"Total value: ${total/1e6:.2f}M across {len(apis)} well(s)"
-    compose_briefing_for_run(run_id=run_id, headline=headline, tldr="", commentary="")
-    return {"run_id": run_id, "npv_at_centers": econ["npv_at_centers"], "briefing_spec_written": True}
+    # Legacy widget-spec path the new artifact response doesn't depend on; must
+    # not fail a valuation over it.
+    briefing_spec_written = True
+    try:
+        compose_briefing_for_run(run_id=run_id, headline=headline, tldr="", commentary="")
+    except Exception:
+        _log.warning(
+            "compose_briefing_for_run failed for run %s (legacy path, non-fatal)",
+            run_id, exc_info=True,
+        )
+        briefing_spec_written = False
+    return {"run_id": run_id, "npv_at_centers": econ["npv_at_centers"],
+            "briefing_spec_written": briefing_spec_written}

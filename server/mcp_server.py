@@ -36,7 +36,8 @@ from server.valuation.run_record import ValuationRunStore
 _valuation_store = ValuationRunStore()
 
 from server.valuation.orchestrator import (
-    forecast_wells_for_run, run_valuation_for_run, AnalogsRequired,
+    compose_artifact_payload_for_run, forecast_wells_for_run,
+    run_valuation_for_run, AnalogsRequired,
 )
 from server.valuation.export_xlsx import build_workbook_bytes, export_filename, ExportError
 from server.valuation.deal_sheet import roll_up_facts
@@ -106,19 +107,6 @@ def briefing_view() -> str:
 
     Same bundle as `app_view` — distinct URI so the host renders a new
     inline iframe per data_analyst tool call.
-    """
-    return APP_HTML
-
-
-_app_config_valuation_agent = AppConfig(resource_uri="ui://app/valuation.html")
-
-
-@mcp.resource("ui://app/valuation.html")
-def valuation_view() -> str:
-    """Serve the Energy Insights app for valuation_agent renders.
-
-    Same bundle as `briefing_view` — distinct URI so the host renders a new
-    inline iframe per valuation_agent tool call.
     """
     return APP_HTML
 
@@ -314,25 +302,21 @@ def forecast_wells(groups: list[dict], run_id: str | None = None) -> str:
         return _json.dumps(result, default=str)
 
 
-@mcp.tool(app=_app_config_valuation_agent, description=_load_prompt("outer/tool_run_valuation.md"))
+@mcp.tool(description=_load_prompt("outer/tool_run_valuation.md"))
 def run_valuation(run_id: str, params: dict) -> str:
-    """Union forecasts → econ → deal sheet. See prompts/outer/tool_run_valuation.md."""
+    """Union forecasts → econ → slim artifact payload. See prompts/outer/tool_run_valuation.md."""
     identity = get_current_identity()
     if not identity:
         return _json.dumps({"error": "Could not identify user"})
     user_slug = identity["user_slug"]
     with trace("run_valuation", user=user_slug):
         try:
-            result = run_valuation_for_run(run_id=run_id, params=params)
-            spec = _valuation_store.read_stage(run_id, stage="briefing_spec")
-            if not spec:
-                return _json.dumps({"error": "valuation produced no deal sheet"})
-            token = _briefing_handles.mint(user_slug=user_slug, spec=spec)
+            run_valuation_for_run(run_id=run_id, params=params)
+            data = compose_artifact_payload_for_run(run_id)
             return _json.dumps({
-                "surface": "deal_sheet",
-                "briefing_token": token,
+                "surface": "deal_sheet_artifact",
                 "run_id": run_id,
-                "npv_at_centers": result["npv_at_centers"],
+                "data": data,
             }, default=str)
         except Exception as e:  # noqa: BLE001
             return _json.dumps({"error": str(e)})

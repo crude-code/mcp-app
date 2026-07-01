@@ -36,21 +36,22 @@ def test_forecast_wells_tool_surfaces_bounce(monkeypatch):
     assert out["needs_analogs"] == [{"area": "A", "wells": ["x"]}]
 
 
-def test_run_valuation_tool_mints_token(monkeypatch):
+def test_run_valuation_tool_returns_artifact_payload(monkeypatch):
     monkeypatch.setattr(srv, "get_current_identity",
                         lambda: {"user_slug": "acme", "user_id": 7})
     monkeypatch.setattr(srv, "run_valuation_for_run",
                         lambda **kw: {"run_id": "run-9",
                                       "npv_at_centers": {"total": 1234.0, "by_status": {}}})
-    monkeypatch.setattr(srv._valuation_store, "read_stage",
-                        lambda run_id, *, stage: {"layout": "deal_sheet"})
-    monkeypatch.setattr(srv._briefing_handles, "mint",
-                        lambda *, user_slug, spec: "tok-1")
+    monkeypatch.setattr(srv, "compose_artifact_payload_for_run",
+                        lambda run_id: {"facts": {"deal_type": "Minerals / Royalty"},
+                                        "production": None,
+                                        "economics": {"npv_at_centers": {"total": 1234.0, "by_status": {}}}})
     out = json.loads(srv.run_valuation(run_id="run-9", params={
         "interest_type": "minerals", "interest": {"decimal": 0.05},
         "asset_list": {"well_apis": ["42-000-1"]}, "economics_overrides": {}}))
-    assert out["surface"] == "deal_sheet"
-    assert out["briefing_token"] == "tok-1"
-    assert out["npv_at_centers"]["total"] == 1234.0
+    assert out["surface"] == "deal_sheet_artifact"
+    assert out["run_id"] == "run-9"
+    assert out["data"]["facts"]["deal_type"] == "Minerals / Royalty"
+    assert out["data"]["economics"]["npv_at_centers"]["total"] == 1234.0
 
 

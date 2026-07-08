@@ -75,7 +75,7 @@ def get_current_identity() -> dict | None:
 
 # ── MCP Server ───────────────────────────────────────────────────────────────
 
-mcp = FastMCP("EnergyInsights", instructions=compose_outer_system_prompt())
+mcp = FastMCP("Crude Code", instructions=compose_outer_system_prompt())
 
 
 _app_path = Path(__file__).resolve().parent.parent / "renderer" / "dist" / "app.html"

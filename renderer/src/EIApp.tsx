@@ -1,22 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import type { McpUiHostContext } from "@modelcontextprotocol/ext-apps";
 import { useApp } from "@modelcontextprotocol/ext-apps/react";
-import { SpecSurface } from "@/components/SpecSurface";
 import { MapView } from "./components/MapView";
-import type { Agent } from "@/types";
-
-const TOOL_AGENTS: Record<string, Agent> = {
-  run_data_analysis: {
-    code: "DA",
-    name: "Data Analyst",
-    description: "investigates wells, prices, filings & news → sourced briefings",
-  },
-  run_valuation: {
-    code: "VA",
-    name: "Valuation Analyst",
-    description: "forecasts wells & runs cashflow → PV at any discount rate",
-  },
-};
 
 function extractText(result: any): string {
   if (Array.isArray(result?.content)) {
@@ -46,7 +31,6 @@ function tryParse(raw: string): any | null {
 }
 
 export function EIApp() {
-  const [briefingToken, setBriefingToken] = useState<string | undefined>();
   const [mapToken, setMapToken] = useState<string | undefined>();
   const [error, setError] = useState<string | null>(null);
   const [hostContext, setHostContext] = useState<McpUiHostContext | undefined>();
@@ -67,10 +51,6 @@ export function EIApp() {
         // code (e.g. at_capacity) — prefer it for the card.
         setError(parsed.message ?? parsed.error);
         return;
-      }
-      if (parsed.briefing_token) {
-        setBriefingToken(parsed.briefing_token);
-        setError(null);
       }
       if (parsed.map_token) {
         setMapToken(parsed.map_token);
@@ -110,25 +90,11 @@ export function EIApp() {
   }
 
   const toolName = hostContext?.toolInfo?.tool?.name as string | undefined;
-  const agent = toolName ? TOOL_AGENTS[toolName] : undefined;
 
   if (isConnected && toolName === "map") {
     return (
       <div className="w-full" style={{ background: "var(--bg-page)" }}>
         <MapView mapToken={mapToken} app={app} errorMessage={error} />
-      </div>
-    );
-  }
-
-  if (isConnected && agent) {
-    return (
-      <div className="w-full" style={{ background: "var(--bg-page)" }}>
-        <SpecSurface
-          agent={agent}
-          briefingToken={briefingToken}
-          errorMessage={error}
-          app={app}
-        />
       </div>
     );
   }

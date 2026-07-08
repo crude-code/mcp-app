@@ -10,12 +10,12 @@ from collections import Counter, defaultdict
 from server.valuation import config
 from server.valuation.econ import resolve_well_interest
 
-# Display order + labels/tags for the three status buckets. Colors are EI
-# semantic CSS vars resolved in the renderer.
+# Display order + labels/tags for the three status buckets. This display
+# metadata feeds the artifact payload; colors live in the deal-sheet template.
 _STATUS_DISPLAY = [
-    {"code": "PDP", "label": "Producing", "tag": "(PDP)", "dot": "var(--change-up)"},
-    {"code": "DUC", "label": "DUC", "tag": "+18mo", "dot": "var(--content-accent)"},
-    {"code": "PUD", "label": "Permitted", "tag": "(PUD) +36mo", "dot": "var(--text-dim)"},
+    {"code": "PDP", "label": "Producing", "tag": "(PDP)"},
+    {"code": "DUC", "label": "DUC", "tag": "+18mo"},
+    {"code": "PUD", "label": "Permitted", "tag": "(PUD) +36mo"},
 ]
 
 

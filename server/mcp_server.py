@@ -4,7 +4,6 @@ Synchronous tool registry — run_sql, forecast_wells, run_valuation, map, get_s
 plus the renderer-only read tool (get_map_full). No inner agents.
 """
 
-import base64 as _b64
 import json as _json
 import logging as _logging
 import sys
@@ -27,14 +26,10 @@ from utils.sql_guard import GuardError, run_guarded
 
 _briefing_handles = BriefingHandleStore(ttl_seconds=86_400.0)  # 24h
 
-from server.valuation.run_record import ValuationRunStore
-_valuation_store = ValuationRunStore()
-
 from server.valuation.orchestrator import (
     compose_artifact_payload_for_run, forecast_wells_for_run,
     run_valuation_for_run, AnalogsRequired,
 )
-from server.valuation import config as _vconfig
 from server.maps.spec import parse_map_spec, MapSpecError
 from server.maps.hydrate import hydrate_map, MapHydrateError
 from server.skills import list_skills, load_skill, SkillNotFound
@@ -111,9 +106,8 @@ _map_log = _logging.getLogger("ei.map")
 
 @mcp.tool(description=_load_prompt("outer/tool_run_sql.md"))
 def run_sql(sql: str, schema: str = "public") -> str:
-    """Outer Claude's SELECT-only data tool. Same guard as the inner agent
-    plugin, but with a row cap because results land in the chat
-    thread."""
+    """SELECT-only data tool under the shared SQL guard; tighter caps because
+    results land in the chat thread."""
     identity = get_current_identity()
     if not identity:
         return _json.dumps({"error": "Could not identify user"})
@@ -216,7 +210,7 @@ def get_map_full(token: str) -> str:
     return _json.dumps({"spec": spec}, default=str)
 
 
-# ── valuation tools (synchronous; the inner agent is retired in Plan 3) ──────
+# ── valuation tools (synchronous) ────────────────────────────────────────────
 
 @mcp.tool(description=_load_prompt("outer/tool_forecast_wells.md"))
 def forecast_wells(groups: list[dict], run_id: str | None = None) -> str:

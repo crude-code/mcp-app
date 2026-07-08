@@ -74,3 +74,15 @@ def test_get_skill_tool_unknown_name_returns_catalog():
     assert "available_skills" in out
     names = [s["name"] for s in out["available_skills"]]
     assert "dataroom-extract" in names
+
+
+def test_load_skill_deal_sheet_bundle():
+    skills = list_skills()
+    assert "deal-sheet" in [s["name"] for s in skills]
+    bundle = load_skill("deal-sheet")
+    assert "run_valuation" in bundle["instructions"]
+    assert set(bundle["files"]) == {"DealSheet.jsx"}
+    jsx = bundle["files"]["DealSheet.jsx"]
+    assert "export default function App" in jsx
+    assert "callServerTool" not in jsx     # no host-API leakage
+    assert "var(--" not in jsx             # no CSS-var leakage

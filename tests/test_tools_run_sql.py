@@ -50,7 +50,7 @@ def test_run_sql_returns_rows_on_happy_path(patched_identity, monkeypatch):
     assert out == {"rows": [{"n": 1}], "count": 1}
 
 
-def test_run_sql_passes_50_row_cap(patched_identity, monkeypatch):
+def test_run_sql_passes_200_row_cap(patched_identity, monkeypatch):
     captured = {}
 
     def fake_run_guarded(sql, **kwargs):
@@ -59,8 +59,8 @@ def test_run_sql_passes_50_row_cap(patched_identity, monkeypatch):
 
     monkeypatch.setattr(mcp_server, "run_guarded", fake_run_guarded)
     mcp_server.run_sql(sql="SELECT 1")
-    assert captured["row_cap"] == 50
-    assert captured["size_cap_bytes"] == 50_000
+    assert captured["row_cap"] == 200
+    assert captured["size_cap_bytes"] == 100_000
     # Schema scope = exploration (wider than widget hydration).
     from utils.schemas import EXPLORATION_SCHEMAS
     assert captured["allowed_schemas"] == EXPLORATION_SCHEMAS

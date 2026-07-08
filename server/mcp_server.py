@@ -112,7 +112,7 @@ _map_log = _logging.getLogger("ei.map")
 @mcp.tool(description=_load_prompt("outer/tool_run_sql.md"))
 def run_sql(sql: str, schema: str = "public") -> str:
     """Outer Claude's SELECT-only data tool. Same guard as the inner agent
-    plugin, but with a tighter row cap because results land in the chat
+    plugin, but with a row cap because results land in the chat
     thread."""
     identity = get_current_identity()
     if not identity:
@@ -129,8 +129,8 @@ def run_sql(sql: str, schema: str = "public") -> str:
                 sql,
                 schema=schema,
                 allowed_schemas=EXPLORATION_SCHEMAS,
-                row_cap=50,
-                size_cap_bytes=50_000,
+                row_cap=200,
+                size_cap_bytes=100_000,
             )
         except GuardError as e:
             return _json.dumps({"error": str(e)})

@@ -14,8 +14,7 @@ The well identifier column is **`well_api`** (text) on both `public.wells`
 and `public.production` — never `api`, `uwi`, or `api_uwi` (`api_uwi` exists
 only on `shapes.landtrac_unit_wells`). Join production to wells on `well_api`.
 
-Caps: 50 rows / 50 KB / 5s. The cap is tight on purpose — chat-visible
-results need to be presentable. Use `LIMIT` plus aggregation; don't
+Caps: 200 rows / 100 KB / 5s. The cap exists because rows land in chat context — pre-aggregate (monthly, top-N) rather than paging through raw data. Use `LIMIT` plus aggregation; don't
 SELECT * a table and skim. For ranking, ORDER BY + LIMIT 10. For
 distributions, bucket and count.
 

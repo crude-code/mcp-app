@@ -39,8 +39,6 @@ from server.valuation.orchestrator import (
     compose_artifact_payload_for_run, forecast_wells_for_run,
     run_valuation_for_run, AnalogsRequired,
 )
-from server.valuation.export_xlsx import build_workbook_bytes, export_filename, ExportError
-from server.valuation.deal_sheet import roll_up_facts
 from server.valuation import config as _vconfig
 from server.maps.spec import parse_map_spec, MapSpecError
 from server.maps.hydrate import hydrate_map, MapHydrateError
@@ -433,42 +431,6 @@ def get_briefing_by_run(run_id: str) -> str:
         return _json.dumps({"error": "not found"})
     return _json.dumps({"spec": spec}, default=str)
 
-
-@mcp.tool(
-    app=_app_config_app_only,
-    description=_load_prompt("outer/tool_export_valuation_xlsx.md"),
-)
-def export_valuation_xlsx(run_id: str) -> str:
-    """Renderer-only: build the editable Excel model for a completed run."""
-    identity = get_current_identity()
-    if not identity:
-        return _json.dumps({"error": "Could not identify user"})
-    user_id = identity["user_id"]
-    with trace("export_valuation_xlsx", user=identity["user_slug"]):
-        try:
-            rec = _valuation_store.get(run_id)
-            if not rec or rec.get("user_id") != user_id:
-                return _json.dumps({"error": "unknown run"})
-            economics = rec.get("economics")
-            wells = rec.get("wells")
-            if not economics or not wells:
-                return _json.dumps({"error": "run has no economics yet"})
-            if isinstance(economics, str):
-                economics = _json.loads(economics)
-            if isinstance(wells, str):
-                wells = _json.loads(wells)
-            interest = economics.get("interest") or {}
-            rate_centers = economics.get("rate_centers") or _vconfig.resolve_rate_centers(None)
-            facts, _ = roll_up_facts(wells.get("well_meta", {}), interest, rate_centers)
-            data = build_workbook_bytes(run_id, economics, wells, facts)
-            return _json.dumps({
-                "filename": export_filename(facts, run_id),
-                "xlsx_base64": _b64.b64encode(data).decode(),
-            })
-        except ExportError as e:
-            return _json.dumps({"error": str(e)})
-        except Exception as e:  # noqa: BLE001
-            return _json.dumps({"error": str(e)})
 
 
 def _briefing_summary(*, token: str, spec: dict) -> dict:

@@ -16,9 +16,8 @@ def test_compose_outer_system_prompt_has_schema_section_header():
     assert "## Database schema" in composed
 
 
-def test_outer_prompt_includes_palette_and_no_inner_agent():
-    from utils.prompts import compose_outer_system_prompt
+def test_outer_prompt_has_no_briefing_vocabulary():
     p = compose_outer_system_prompt()
-    assert "## Widget palette" in p
-    assert "run_data_analysis" in p          # new authoring tool framed
-    assert "delegate" not in p.lower() or "data_analyst" not in p  # no inner-agent delegation
+    assert "## Widget palette" not in p
+    assert "run_data_analysis" not in p
+    assert "run_valuation" in p          # valuation flow still framed

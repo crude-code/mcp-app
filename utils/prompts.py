@@ -40,16 +40,14 @@ def _skills_section() -> str:
 
 
 def compose_outer_system_prompt() -> str:
-    """Outer Claude's system prompt + skills + DB schema + widget palette.
+    """Outer Claude's system prompt + skills + DB schema.
 
-    The orchestrator now authors briefing specs directly, so it gets the
-    widget vocabulary inline (moved here from the retired inner-agent
-    composition). Schema is inline too, so a lookup is one round-trip. The
-    skills catalog is inline so packaged playbooks are discoverable up front.
+    The outer prompt frames the artifact-first workflow. Schema is inline so
+    a lookup is one round-trip. The skills catalog is inline so packaged
+    playbooks are discoverable up front.
     """
     outer = load("outer/system_prompt.md").rstrip()
     schema = load("inner/shared_schema.md").strip()
-    palette = load("outer/widget_palette.md").strip()
     skills = _skills_section()
     skills_block = f"{skills}\n\n" if skills else ""
-    return f"{outer}\n\n{skills_block}## Database schema\n\n{schema}\n\n## Widget palette\n\n{palette}\n"
+    return f"{outer}\n\n{skills_block}## Database schema\n\n{schema}\n"

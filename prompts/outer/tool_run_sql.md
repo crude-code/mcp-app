@@ -33,10 +33,10 @@ How to use the results in chat:
 - For follow-ups answerable from rows you already pulled, answer from
   context — don't re-call.
 
-When the user wants a deliverable (multi-widget artifact, chart,
-narrative): once you've explored and have a thesis, author the briefing
-spec yourself and publish it with `run_data_analysis(spec)` — you write the
-sections/widgets; each chart/table carries a SQL query the server re-runs.
+When the user wants a deliverable (a chart, a report, a document to keep):
+explore until you have a thesis, pull the final series with focused,
+pre-aggregated SELECTs, and build a claude.ai artifact from those rows.
 For a deal valuation, call `forecast_wells(groups)` to classify and forecast
-the wells, then call `run_valuation(run_id, params)`. There is no separate analyst
-agent to delegate to — you do the analysis and hand over a finished spec.
+the wells, then `run_valuation(run_id, params)` — and build its deal sheet
+via `get_skill("deal-sheet")`. You do the analysis; there is no analyst
+agent to delegate to.

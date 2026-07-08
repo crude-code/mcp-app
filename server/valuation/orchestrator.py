@@ -1,5 +1,4 @@
 """Valuation orchestrator. Runs forecast_wells → economics → deal-sheet assembly."""
-import logging
 import math
 from datetime import date
 
@@ -17,8 +16,6 @@ from server.valuation.forecast import fit_curve, percentile_curves, project
 from server.valuation.run_record import ValuationRunStore
 from server.valuation.types import DeclineCurve, Forecast, ForecastProvenance, WellMeta
 from server.valuation.wells import bulk_load_production, bulk_load_wells
-
-_log = logging.getLogger("ei.run_valuation")
 
 
 class CohortError(Exception):
@@ -482,140 +479,6 @@ def _economics_from_forecasts(*, forecasts: dict, classifications: dict,
     }
 
 
-def _advanced_from_stages(*, run_id, store, well_meta, inputs, interest, origin) -> dict | None:
-    """Build the advanced 'Behind the Valuation' block from the single forecast stage.
-    Returns None when the stage carries no advanced-ready data (keeps the compact
-    deal sheet valid)."""
-    from server.valuation import deal_sheet as ds
-
-    forecast = store.read_stage(run_id, stage="forecast") or {}
-    actual_history = forecast.get("actual_history")
-    all_fc = forecast.get("forecasts") or {}
-    # Producing forecasts = entries with an anchor_month (own history).
-    producing_well_forecasts = {a: fc for a, fc in all_fc.items() if fc.get("anchor_month")}
-    # First group's analog type curve represents the cohort for the advanced view.
-    gm = (forecast.get("groups") or [])
-    tc = next((g.get("type_curve") for g in gm if g.get("type_curve")), None)
-    am = next((g.get("analog_meta") for g in gm if g.get("analog_meta")), {}) or {}
-    if not actual_history and not tc:
-        return None
-    non_producing_count = sum(1 for fc in all_fc.values() if not fc.get("anchor_month"))
-
-    # PDP producing forecasts: place each well's dateless curve at its anchor so the
-    # advanced PDP estimate's dashed projection lines up with the history.
-    # Pass each stream's peak_month as peak_date so the dashed forecast continues
-    # from the anchor rate rather than restarting at qi_peak.
-    def _norm_adv(d: str | None) -> str | None:
-        return d if (d is None or len(d) != 7) else d + "-01"
-
-    producing_forecasts = []
-    for fc in producing_well_forecasts.values():
-        raw_anchor = fc.get("anchor_month") or origin
-        # anchor_month may be a partial "YYYY-MM" string; ensure full ISO date for fromisoformat.
-        if len(raw_anchor) == 7:
-            raw_anchor = raw_anchor + "-01"
-        oil_peak = _norm_adv(fc["oil"].get("peak_month")) or raw_anchor
-        gas_peak = _norm_adv(fc["gas"].get("peak_month")) or raw_anchor
-        producing_forecasts.append({
-            "oil": _deserialize_forecast(
-                _place_curve(self_curve=fc["oil"]["curve"], start_date=raw_anchor,
-                             strategy="pdp", peak_date=oil_peak)),
-            "gas": _deserialize_forecast(
-                _place_curve(self_curve=fc["gas"]["curve"], start_date=raw_anchor,
-                             strategy="pdp", peak_date=gas_peak)),
-        })
-
-    cohort_curves = ({"oil": _deserialize_curve(tc["oil"]), "gas": _deserialize_curve(tc["gas"])}
-                     if tc else None)
-    cohort_diag = None
-    if tc:
-        # Hydrate the analog APIs into well objects the Production tab can render
-        # (operator / formation / lateral). The stage only persists bare APIs.
-        analog_apis = am.get("analog_apis", [])
-        analog_metas = bulk_load_wells(analog_apis) if analog_apis else []
-        cohort_diag = {
-            "n_wells": am.get("n_fit"), "final_radius_mi": None,
-            "analog_wells": [
-                {"api": m.api, "operator": m.operator,
-                 "formation": m.formation, "lateral_ft": m.lateral_ft}
-                for m in analog_metas
-            ],
-        }
-
-    return ds.build_advanced_block(
-        well_meta=well_meta,
-        producing_forecasts=producing_forecasts,
-        cohort_curves=cohort_curves,
-        cohort_diag=cohort_diag,
-        non_producing_count=non_producing_count,
-        actual_history=actual_history or {"dates": [], "oil": [], "gas": []},
-        inputs=inputs,
-        interest=interest,
-        effective_date=origin,
-        origin=origin,
-    )
-
-
-def compose_briefing_for_run(
-    *,
-    run_id: str,
-    headline: str,
-    tldr: str,
-    commentary: str,
-) -> dict:
-    """Build the deal-sheet briefing spec from the run record + agent narrative.
-
-    Reads the wells stage (per-well meta + statuses) and the economics stage
-    (risked-PV cube, assumptions, schedule), assembles the interactive
-    `deal_sheet` widget, and writes it under the briefing_spec stage. The agent
-    supplies headline + tldr (narrative); commentary is retained on the spec for
-    triage but is not rendered as a widget in v1."""
-    from server.valuation import deal_sheet as ds
-
-    store = ValuationRunStore()
-
-    economics = store.read_stage(run_id, stage="economics")
-    if not economics:
-        raise ValueError(f"run {run_id}: no economics stage (call run_economics first)")
-    wells = store.read_stage(run_id, stage="wells") or {}
-
-    cube = economics["npv_by_status"]
-    rate_centers = economics.get("rate_centers") or config.resolve_rate_centers(None)
-    well_meta = wells.get("well_meta", {})
-    # Interest (incl. per-well by_api) is persisted on the economics stage.
-    # ``assumptions`` is the legacy key for pre-server-sourced records.
-    interest = economics.get("interest") or economics.get("assumptions") or {}
-
-    price_mode = (economics.get("inputs") or {}).get("price_mode", "strip")
-
-    facts, statuses = ds.roll_up_facts(well_meta, interest, rate_centers)
-    production = ds.build_production_series(
-        schedule_totals=economics["schedule"]["totals"],
-        horizon_months=int(economics.get("horizon_months", 360)),
-        origin=economics["schedule"]["origin"],
-        statuses=statuses,
-    )
-    title = facts["area"]
-
-    spec = ds.build_deal_sheet_spec(
-        headline=headline, tldr=tldr, title=title,
-        facts=facts, statuses=statuses, cube=cube, production=production,
-        rate_centers=rate_centers, price_mode=price_mode, run_id=run_id,
-    )
-    spec["commentary"] = commentary        # retained for triage; not rendered in v1
-
-    advanced = _advanced_from_stages(
-        run_id=run_id, store=store, well_meta=well_meta,
-        inputs=economics.get("inputs") or {}, interest=interest,
-        origin=economics["schedule"]["origin"],
-    )
-    if advanced:
-        spec["advanced"] = advanced
-
-    store.write_stage(run_id, stage="briefing_spec", payload=spec)
-    return spec
-
-
 def compose_artifact_payload_for_run(run_id: str) -> dict:
     """Read the wells + economics stages and build the slim artifact payload
     `run_valuation` returns for Claude to build a deal-sheet artifact from.
@@ -872,19 +735,4 @@ def run_valuation_for_run(*, run_id: str, params: dict) -> dict:
         "classifications": classifications,
     })
 
-    # Deterministic headline — no agent prose. Claude narrates in chat.
-    total = econ["npv_at_centers"]["total"]
-    headline = f"Total value: ${total/1e6:.2f}M across {len(apis)} well(s)"
-    # Legacy widget-spec path the new artifact response doesn't depend on; must
-    # not fail a valuation over it.
-    briefing_spec_written = True
-    try:
-        compose_briefing_for_run(run_id=run_id, headline=headline, tldr="", commentary="")
-    except Exception:
-        _log.warning(
-            "compose_briefing_for_run failed for run %s (legacy path, non-fatal)",
-            run_id, exc_info=True,
-        )
-        briefing_spec_written = False
-    return {"run_id": run_id, "npv_at_centers": econ["npv_at_centers"],
-            "briefing_spec_written": briefing_spec_written}
+    return {"run_id": run_id, "npv_at_centers": econ["npv_at_centers"]}

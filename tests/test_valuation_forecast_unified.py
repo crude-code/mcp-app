@@ -107,5 +107,4 @@ def test_forecast_then_run_valuation_round_trip(monkeypatch):
     res = orch.run_valuation_for_run(run_id=out["run_id"], params={
         "interest_type": "minerals", "interest": {"decimal": 0.05},
         "asset_list": {"well_apis": ["H1", "PUD1"]}, "economics_overrides": {}})
-    assert res["briefing_spec_written"] is True
     assert "total" in res["npv_at_centers"]

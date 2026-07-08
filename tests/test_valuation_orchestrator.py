@@ -8,7 +8,6 @@ from server.valuation.orchestrator import (
     _build_schedule,
     _serialize_schedule,
     compose_artifact_payload_for_run,
-    compose_briefing_for_run,
 )
 
 
@@ -272,51 +271,6 @@ def test_curve_serde_roundtrip_preserves_fields_and_infinity():
     assert back.provenance.source == "fit"
 
 
-def test_compose_briefing_for_run_emits_deal_sheet(monkeypatch):
-    """compose reads the wells + economics stages and emits the deal_sheet spec."""
-    economics = {
-        "npv_by_status": {
-            d: {"PDP": {"15": 20e6, "17.5": 18e6, "20": 17e6},
-                "DUC": {"20": 4e6, "22.5": 3.8e6, "25": 3.5e6},
-                "PUD": {"25": 3e6, "27.5": 2.8e6, "30": 2.6e6}}
-            for d in ("Strip", "$70", "$75", "$80")
-        },
-        "interest": {"interest_type": "wi", "wi_pct": 0.25, "nri_pct": 0.1875},
-        "inputs": {"price_mode": "strip", "strip_trade_date": None,
-                   "oil_price": 70.0, "gas_price": 3.5},
-        "schedule": {"origin": "2026-07-01", "totals": {
-            "net_oil": [100.0] * 360, "net_gas": [50.0] * 360,
-            "net_cashflow": [1000.0] * 360}},
-        "horizon_months": 360,
-    }
-    wells = {"well_meta": {"A": {"status": "PRODUCING", "operator": "SURGEON ENERGY",
-                                  "basin": "MIDLAND", "formation": "WOLFCAMP"}}}
-
-    def fake_read_stage(self, run_id, *, stage):
-        return {"economics": economics, "wells": wells}.get(stage)
-    written = {}
-    monkeypatch.setattr(
-        "server.valuation.orchestrator.ValuationRunStore.read_stage", fake_read_stage)
-    monkeypatch.setattr(
-        "server.valuation.orchestrator.ValuationRunStore.write_stage",
-        lambda self, run_id, *, stage, payload: written.update({stage: payload}))
-
-    spec = compose_briefing_for_run(run_id="r1", headline="PV: $27MM", tldr="t", commentary="c")
-    assert spec["kind"] == "briefing"
-    assert spec["layout"] == "deal_sheet"
-    widget = spec["sections"][0]["widgets"][0]
-    assert widget["type"] == "deal_sheet"
-    assert widget["facts"]["deal_type"] == "Working Interest"
-    assert written["briefing_spec"]["layout"] == "deal_sheet"
-    assert spec["commentary"] == "c"
-def test_compose_briefing_for_run_raises_without_economics(monkeypatch):
-    monkeypatch.setattr(
-        "server.valuation.orchestrator.ValuationRunStore.read_stage",
-        lambda self, run_id, *, stage: None)
-    with pytest.raises(ValueError, match="no economics stage"):
-        compose_briefing_for_run(run_id="r1", headline="h", tldr="t", commentary="c")
-
-
 def test_compose_artifact_payload_for_run_reads_stages(monkeypatch):
     """compose reads the wells + economics stages and returns the slim payload."""
     economics = {
@@ -480,58 +434,5 @@ def test_resolve_asset_list_empty_raises_clear_error():
         _resolve_asset_list({})
 
 
-# ── run_valuation_for_run: compose_briefing_for_run failure must not propagate ─
-
-def test_run_valuation_for_run_survives_compose_briefing_failure(monkeypatch):
-    """compose_briefing_for_run is the legacy widget-spec path — nothing in the
-    new artifact-payload flow reads its output. If it raises, run_valuation_for_run
-    must still return normally (briefing_spec_written: False), not blow up the
-    whole valuation call."""
-    from server.valuation.orchestrator import run_valuation_for_run
-    from server.valuation.types import WellMeta
-
-    monkeypatch.setattr(
-        "server.valuation.orchestrator.ValuationRunStore.read_stage",
-        lambda self, run_id, *, stage: {"forecasts": {"42-329-00001": {}}} if stage == "forecast" else None,
-    )
-    written = {}
-    monkeypatch.setattr(
-        "server.valuation.orchestrator.ValuationRunStore.write_stage",
-        lambda self, run_id, *, stage, payload: written.update({stage: payload}),
-    )
-    monkeypatch.setattr(
-        "server.valuation.orchestrator.bulk_load_wells",
-        lambda apis: [WellMeta(
-            api=api, status="PRODUCING", basin="MIDLAND", formation="WOLFCAMP",
-            county="MIDLAND", lateral_ft=9800.0, spud_date=None, completion_date=None,
-            first_prod_date=None, last_prod_date=None, n_history_months=12,
-            planned_first_prod_date=None, operator="OP",
-        ) for api in apis],
-    )
-    monkeypatch.setattr(
-        "server.valuation.orchestrator._load_forecast_stage",
-        lambda *, forecast, as_of, months_override: ({"42-329-00001": {}}, {"42-329-00001": "history"},
-                                                       {"42-329-00001": "PRODUCING"}),
-    )
-    monkeypatch.setattr(
-        "server.valuation.orchestrator._economics_from_forecasts",
-        lambda **kw: {"npv_at_centers": {"by_status": {"PDP": 20e6}, "total": 20e6}},
-    )
-
-    def _boom(**kw):
-        raise RuntimeError("legacy path exploded")
-    monkeypatch.setattr("server.valuation.orchestrator.compose_briefing_for_run", _boom)
-
-    params = {
-        "interest_type": "wi",
-        "interest": {"wi_pct": 0.25, "nri_pct": 0.1875},
-        "asset_list": {"well_apis": ["42-329-00001"]},
-    }
-    result = run_valuation_for_run(run_id="r1", params=params)
-
-    assert result == {"run_id": "r1", "npv_at_centers": {"by_status": {"PDP": 20e6}, "total": 20e6},
-                       "briefing_spec_written": False}
-    assert written["economics"]["npv_at_centers"]["total"] == 20e6
-    assert "wells" in written
 
 

@@ -38,7 +38,7 @@ def test_well_meta_payload_tolerates_missing_api():
     assert out["MISSING"] == {"status": None, "operator": None, "basin": None, "formation": None, "lateral_ft": None}
 
 
-from server.valuation.deal_sheet import roll_up_facts, _default_rates
+from server.valuation.deal_sheet import roll_up_facts, default_rates
 
 
 WI_ASSUMPTIONS = {"interest_type": "wi", "wi_pct": 0.25, "nri_pct": 0.1875}
@@ -58,7 +58,7 @@ def test_status_rows_band_center_and_default_to_center():
     facts, statuses = roll_up_facts(well_meta, interest, {"PDP": 0.15, "DUC": 0.20, "PUD": 0.22})
     pud = next(s for s in statuses if s["code"] == "PUD")
     assert pud["rates"] == ["19.5", "22", "24.5"]
-    assert _default_rates({"PDP": 0.15, "DUC": 0.20, "PUD": 0.22})["PUD"] == "22"
+    assert default_rates({"PDP": 0.15, "DUC": 0.20, "PUD": 0.22})["PUD"] == "22"
 
 
 def test_roll_up_facts_wi_grid():

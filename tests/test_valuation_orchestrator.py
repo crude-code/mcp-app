@@ -327,6 +327,8 @@ def test_compose_artifact_payload_for_run_reads_stages(monkeypatch):
             "net_cashflow": [1000.0] * 360}},
         "horizon_months": 360,
         "npv_at_centers": {"by_status": {"PDP": 20e6, "DUC": 4e6, "PUD": 3e6}, "total": 27e6},
+        "npv_by_status": {"Strip": {"PDP": {"17.5": 20e6}, "DUC": {"22.5": 4e6}, "PUD": {"27.5": 3e6}}},
+        "inputs": {"price_mode": "strip"},
     }
     wells = {"well_meta": {"A": {"status": "PRODUCING", "operator": "SURGEON ENERGY",
                                   "basin": "MIDLAND", "formation": "WOLFCAMP"}}}

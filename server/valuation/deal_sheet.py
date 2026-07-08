@@ -189,7 +189,7 @@ def build_production_series(
     }
 
 
-def _default_rates(rate_centers: dict) -> dict:
+def default_rates(rate_centers: dict) -> dict:
     """Default selection = each status's center rung. Derived from
     `config.rate_ladder(center)[1]` (the rounded middle rung) so the label is
     byte-identical to the matching `rates` entry and the cube key."""
@@ -209,7 +209,7 @@ def build_deal_sheet_spec(
     for narration — equal to the economics stage's npv_at_centers.total.
     """
     labels, deck = config.deck_labels(price_mode)
-    rates = _default_rates(rate_centers)
+    rates = default_rates(rate_centers)
     headline_npv = round(sum(cube[deck][code][rates[code]] for code in rates), 2)
 
     widget = {

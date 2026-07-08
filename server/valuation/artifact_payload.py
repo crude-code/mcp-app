@@ -4,18 +4,20 @@ Pure assembly, no DB/IO — mirrors `deal_sheet.py`'s pattern and reuses its
 `roll_up_facts`/`build_production_series` helpers. Returns only what an
 artifact-building Claude turn needs: exec facts, a net production/cashflow
 series (omitted when the deal has no active status), and the blended
-bottom-line economics. No PDP/DUC/PUD bucket detail, no deck x rate PV cube —
-`run_valuation` hands this to Claude to build a deal-sheet artifact from,
-instead of the MCP app rendering a fixed widget.
+bottom-line economics with the full deck x rate PV cube and scenario axes —
+the latter powers the template's deck/rate selectors and risk-bucket detail.
 """
 from server.valuation import config
 from server.valuation import deal_sheet as ds
 
 
 def build_artifact_payload(*, economics: dict, wells: dict) -> dict:
-    """`economics`/`wells` are the run record's stage payloads — the same
-    shape `compose_briefing_for_run` reads. Returns
-    `{"facts", "production", "economics": {"npv_at_centers"}}`.
+    """`economics`/`wells` are the run record's stage payloads. Returns
+    `{"facts", "production", "economics"}` where economics carries the full
+    scenario cube plus the axes the deal-sheet template's selectors index:
+    `{npv_at_centers, cube, decks, default_deck, default_rates, statuses}`.
+    Statuses are data-only (code/label/tag/counts/rate ladder) — colors and
+    layout belong to the template, not the payload.
     """
     rate_centers = economics.get("rate_centers") or config.resolve_rate_centers(None)
     well_meta = wells.get("well_meta", {})
@@ -33,8 +35,21 @@ def build_artifact_payload(*, economics: dict, wells: dict) -> dict:
         pt["oil"] or pt["gas"] or pt["cashflow"] for pt in production["series"]
     )
 
+    price_mode = (economics.get("inputs") or {}).get("price_mode", "strip")
+    decks, default_deck = config.deck_labels(price_mode)
+
     return {
         "facts": facts,
         "production": production["series"] if has_activity else None,
-        "economics": {"npv_at_centers": economics["npv_at_centers"]},
+        "economics": {
+            "npv_at_centers": economics["npv_at_centers"],
+            "cube": economics["npv_by_status"],
+            "decks": decks,
+            "default_deck": default_deck,
+            "default_rates": ds.default_rates(rate_centers),
+            "statuses": [
+                {k: s[k] for k in ("code", "label", "tag", "gross_wells", "net_wells", "rates")}
+                for s in statuses
+            ],
+        },
     }

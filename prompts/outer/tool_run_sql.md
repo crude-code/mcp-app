@@ -6,8 +6,8 @@ operator_aliases), `shapes` (townships, sections, landtrac_units,
 landtrac_unit_wells). Read-only, single statement, no DDL/DML.
 
 This is your primary exploration tool. Use it liberally to ground
-questions, sanity-check numbers, and frame a thesis before you publish a
-briefing or value a deal. Fully-qualify across schemas, or pass `schema=`
+questions, sanity-check numbers, and frame a thesis before you build a
+deliverable or value a deal. Fully-qualify across schemas, or pass `schema=`
 to switch the default.
 
 The well identifier column is **`well_api`** (text) on both `public.wells`

@@ -110,17 +110,21 @@ A working-interest deal instead looks like:
 - `data.facts` — exec summary: `deal_type`, `interest`, `operator`, `area`.
 - `data.production` — net monthly oil/gas/cashflow series over the deal's active
   window, or `null` when the deal has no active status yet to show.
-- `data.economics.npv_at_centers` — the blended bottom line. `.total` is the
-  headline PV; `.by_status` breaks it out by PDP/DUC/PUD. Narrate the result in
-  chat from these numbers.
+- `data.economics` — the numbers and the scenario grid:
+  - `npv_at_centers` — the blended bottom line. `.total` is the headline PV;
+    `.by_status` breaks it out by PDP/DUC/PUD. Narrate the result in chat from
+    these numbers.
+  - `cube` — pre-computed NPV for every `deck → status → rate` combination.
+    This is what the deal sheet's selectors index; never recompute it.
+  - `decks`, `default_deck`, `default_rates`, `statuses` — the selector axes and
+    per-status display rows (label, tag, gross/net wells, rate ladder).
 
-**Build a claude.ai artifact from `data`** — a single React component using only
-`react`, `recharts`, and `lucide-react` (no other dependencies; this runs in the
-claude.ai artifact sandbox, not your own app). Show the facts, the
-production/forecast chart when `data.production` isn't `null`, and the
-economics. Use only what's in `data` — don't omit a field you were given, and
-don't invent numbers that aren't there. There's no fixed layout to follow;
-use your judgment on how to present it well.
+**Build the deal-sheet artifact from `data`:** call `get_skill("deal-sheet")` and
+follow it. It bundles the frozen React template (`DealSheet.jsx`) — you paste
+`data` in and write the title/tldr; you do NOT redesign the layout or rebuild
+the component. Only `react` and `recharts` are used; this runs in the claude.ai
+artifact sandbox, not the MCP app. Use only what's in `data` — don't omit a
+field you were given, and don't invent numbers that aren't there.
 
 On a malformed `params` the tool returns `{"error": "..."}` naming the exact field
 that's wrong (e.g. `interest_type must be 'wi' or 'minerals'`, `asset_list must be an
@@ -136,8 +140,8 @@ engine by `tests/test_valuation_defaults_drift.py`.)
 <!-- ei:econ_defaults:start -->
 | Field | Label (show this) | House default | Raw |
 |-------|-------------------|---------------|-----|
-| oil_price | Oil price | $70.00 / bbl | 70.0 |
-| gas_price | Gas price | $3.50 / MMBtu | 3.5 |
+| oil_price | Oil price (flat-deck fallback — default deck is the NYMEX strip) | $70.00 / bbl | 70.0 |
+| gas_price | Gas price (flat-deck fallback — default deck is the NYMEX strip) | $3.50 / MMBtu | 3.5 |
 | oil_diff | Oil differential (off the deck) | $0.00 / bbl | 0.0 |
 | gas_diff | Gas differential (off the deck) | $0.00 / MMBtu | 0.0 |
 | tax_pct | Severance / production tax | 7.5% | 0.075 |

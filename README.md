@@ -7,8 +7,10 @@ draws results directly inside the host chat app (Claude Desktop / claude.ai).
 The design principle: **the model does the thinking; the server does the
 deterministic work.** There are no inner agents. The host model explores a
 Postgres database with a guarded, read-only SQL tool, then publishes finished
-deliverables — data briefings, well valuations, and maps — by handing the server
-a spec it validates, hydrates, and renders.
+deliverables as claude.ai artifacts it builds itself — from raw `run_sql`
+data, or from `run_valuation`'s payload plus a frozen deal-sheet template.
+Maps are the one surface the server still renders: it hands the renderer a
+spec it validates, hydrates, and serves once.
 
 ## What's in here
 
@@ -17,7 +19,7 @@ a spec it validates, hydrates, and renders.
 | `server/` | FastMCP server (`mcp_server.py`), the valuation engine (`valuation/`), and maps (`maps/`) |
 | `renderer/` | Inline React + TypeScript app (Vite, Tailwind) built to a single `dist/app.html` |
 | `prompts/` | Model-facing prompts and the shared DB-schema reference |
-| `utils/` | SQL guard, spec validation/hydration, handle stores, identity, logging |
+| `utils/` | SQL guard, map handle store, identity, logging |
 | `tests/` | Pytest suite covering the tools, engine, maps, and guards |
 
 See [`CLAUDE.md`](./CLAUDE.md) for the full architecture reference.
@@ -25,10 +27,9 @@ See [`CLAUDE.md`](./CLAUDE.md) for the full architecture reference.
 ## The tools
 
 - **`run_sql`** — guarded, SELECT-only, capped exploration query
-- **`run_data_analysis`** — validates + hydrates a model-authored briefing spec and renders it inline
-- **`forecast_wells`** / **`run_valuation`** — well-decline forecasting and economics, producing an interactive deal sheet
-- **`export_valuation_xlsx`** — a live, editable Excel model of a valuation run
+- **`forecast_wells`** / **`run_valuation`** — well-decline forecasting and economics, returning the data behind a claude.ai deal-sheet artifact
 - **`map`** — a MapLibre GL well/unit/PLSS map
+- **`get_skill`** — fetches a packaged, occasional-use procedure (e.g. the deal-sheet artifact template, dataroom extraction)
 
 ## Requirements
 
@@ -70,7 +71,8 @@ For frontend iteration without the host app:
 cd renderer && npm run dev   # http://localhost:5173/preview.html
 ```
 
-This renders the real components against committed fixtures with hot reload.
+This renders the real `AgentChrome` component in its three states
+(working/done/error) with dummy content and hot reload.
 
 ## License
 

@@ -54,7 +54,7 @@
   --change-up: #059669;
   --change-down: #dc2626;
 
-  /* Chart series + faint divider — were inline fallbacks in widgets.tsx */
+  /* Chart series + faint divider — general-purpose data-viz tokens */
   --accent-blue: #6aa7ff;
   --accent-purple: #b28aff;
   --border-faint: rgba(255,255,255,0.05);

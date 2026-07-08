@@ -1,9 +1,10 @@
-"""Per-token in-memory store for hydrated briefing specs.
+"""Per-token in-memory store for hydrated specs.
 
-`run_data_analysis` validates + hydrates the spec server-side, mints a token,
-and stashes the full hydrated spec here. The renderer reads `briefing_token`
-out of the tool result and calls `get_briefing_full(token)` once on mount to
-fetch the spec.
+`map` validates + hydrates the map spec server-side, mints a token, and
+stashes the full hydrated spec here. The renderer reads `map_token` out of
+the tool result and calls `get_map_full(token)` once on mount to fetch the
+spec. (Name kept for history — it also backed briefings before that
+vertical was removed.)
 
 Frozen-snapshot semantics: each render owns its own token; tokens never get
 overwritten by later calls. TTL bounds memory growth — typical session lasts

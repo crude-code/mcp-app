@@ -1,23 +1,13 @@
 import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { AgentChrome } from "./AgentContainer";
-import type { Agent, AgentState } from "@/types";
 
 interface MapViewProps {
   mapToken?: string;
   app?: any;
   errorMessage?: string | null;
 }
-
-// The map is not an agent, but it renders in the same console chrome as the
-// agent tools (code badge + name + DONE/WORKING/ERROR pill), minus the live
-// event log — there is nothing to stream.
-const GIS_TOOL: Agent = {
-  code: "GIS",
-  name: "GIS Tool",
-  description: "draws wells, units & PLSS sections on an interactive map",
-};
 
 // Two-stop ramps for numeric color_by; categorical uses style.colors directly.
 const SCHEMES: Record<string, [string, string]> = {
@@ -300,15 +290,36 @@ export function MapView({ mapToken, app, errorMessage }: MapViewProps) {
   }, [hidden, spec]);
 
   const err = errorMessage ?? fetchError;
-  // working: still fetching the spec · done: map ready · error: surfaced by chrome.
-  const state: AgentState = err ? "error" : spec ? "done" : "working";
 
   const allLayers = spec ? [...(spec.static_layers || []), ...(spec.layers || [])] : [];
 
-  // Body is only built once the spec lands; while working, AgentChrome shows its
-  // own spinner, and the map container mounts (triggering init) on the done render.
-  const body = spec ? (
-    <div>
+  const card: CSSProperties = {
+    background: "var(--bg-surface)",
+    border: "1px solid var(--border-default)",
+    borderRadius: 8,
+    overflow: "hidden",
+  };
+
+  if (err) {
+    return (
+      <div style={{ ...card, padding: "14px 16px", fontSize: 13, color: "var(--change-down)" }}>
+        {err}
+      </div>
+    );
+  }
+
+  // The map container mounts (triggering MapLibre init) only once the spec lands.
+  if (!spec) {
+    return (
+      <div style={{ ...card, display: "flex", alignItems: "center", gap: 10, padding: "14px 16px" }}>
+        <div style={{ width: 14, height: 14, borderRadius: "50%", border: "2px solid var(--border-default)", borderTopColor: "var(--content-accent)", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
+        <span style={{ fontSize: 13, color: "var(--text-muted)" }}>Loading map…</span>
+      </div>
+    );
+  }
+
+  return (
+    <div style={card}>
       {spec.title && (
         <div style={{
           padding: "10px 14px", fontSize: 13, fontWeight: 600,
@@ -343,12 +354,6 @@ export function MapView({ mapToken, app, errorMessage }: MapViewProps) {
         <Legend layers={spec.layers || []} />
       </div>
     </div>
-  ) : null;
-
-  return (
-    <AgentChrome agent={GIS_TOOL} state={state} errorMessage={err}>
-      {body}
-    </AgentChrome>
   );
 }
 

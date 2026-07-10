@@ -87,39 +87,29 @@ Inline React app rendered inside Claude Desktop. Single-pass build:
 
 **Render flow:** `EIApp` parses `ontoolresult` payloads and looks at the
 invoking tool name; only `map` triggers a render — it mounts `MapView` (a
-MapLibre GL well/unit/PLSS map) inside `AgentChrome`, fetching the full
-hydrated map spec **once** via `get_map_full(map_token)`. `run_valuation`
+MapLibre GL well/unit/PLSS map), which fetches the full hydrated map spec
+**once** via `get_map_full(map_token)` and shows a plain loading spinner
+until it resolves (error text on a bad/expired token). `run_valuation`
 (and every other tool) has no `app=` config and never triggers an
 `ontoolresult` render — Claude builds the deal-sheet as a claude.ai artifact
 directly from the tool's `data` payload and the frozen template (`viewer`)
-that rides in the same response. There is no streaming/event-log path —
-`MapView`'s "working" state is just the moment before the single
-`get_map_full` fetch resolves.
+that rides in the same response. There is no streaming/event-log path.
 
 **Component tree:**
-- `src/EIApp.tsx` — app shell; on `map` tool results, mounts `MapView` inside
-  `AgentChrome`.
-- `src/components/AgentContainer.tsx` — agent chrome ("signal instrument":
-  graphite faceplate, level meter, light content screen). Exports `AgentChrome`
-  + `AgentWorkingBody`. All identity in `index.css` (`--ac-*`, `--font-chrome*`).
-- `src/components/MapView.tsx` — MapLibre GL map surface.
-- `src/types.ts` — cross-cutting types (`Agent`, `AgentState`).
+- `src/EIApp.tsx` — app shell; on `map` tool results, mounts `MapView`.
+- `src/components/MapView.tsx` — MapLibre GL map surface, including its own
+  loading/error states.
 - `src/ErrorBoundary.tsx` — top-level error boundary.
-- `src/preview.tsx` + `preview.html` — **dev-only** harness (not bundled into
-  `dist/`): renders `AgentChrome` in its three states (working/done/error)
-  with dummy content, hot-reloaded. See Testing → Frontend iteration.
 
-**Filename convention:** `PascalCase.tsx` = one React component; `lowercase.tsx`/
-`.ts` = module/barrel (`types.ts`); `kebab-case.tsx` = entry bootstrap
-(`app-entry.tsx`).
+**Filename convention:** `PascalCase.tsx` = one React component;
+`kebab-case.tsx` = entry bootstrap (`app-entry.tsx`).
 
 **Styling convention:** Color, typography, and design tokens use inline
 `style={{}}` with semantic CSS vars (`var(--bg-surface)`, `var(--text-primary)`,
 `var(--content-accent)`, etc., in `src/index.css`). Layout (flex, grid, padding,
 gap, sizing) uses Tailwind classes. Never use shadcn-style tokens like `bg-card`
-or `text-foreground`. `index.css` is the single source of truth for all
-chrome/content color, type, and surface identity. (Pure black/white depth
-shadows stay inline by design; `MapView`'s cartographic ramps are data-viz
+or `text-foreground`. `index.css` is the single source of truth for color,
+type, and surface identity. (`MapView`'s cartographic ramps are data-viz
 palettes, not design tokens.)
 
 ### Valuation engine (`server/valuation/`)
@@ -284,10 +274,3 @@ Run: `.venv/bin/pytest -q`.
   (`forecast_wells`, `run_valuation`), the valuation engine (forecast/econ/
   artifact-payload/strip/routing), maps, `sql_guard`,
   `briefing_handle_store` (map tokens), and schema drift.
-
-### Frontend iteration (no Claude Desktop)
-`cd renderer && npm run dev` → `http://localhost:5173/preview.html` mounts
-`src/preview.tsx`, rendering `AgentChrome` in its three states (working/done/
-error) with dummy content and hot reload — no MCP server, no Claude Desktop,
-no fixtures. `app.html` stays the shipped build; `preview.html` is dev-only
-and never bundled into `dist/`.

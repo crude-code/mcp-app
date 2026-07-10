@@ -4,6 +4,25 @@
 **Author:** CTO planning session, July 2026.
 **Repo state referenced:** the current `mcp_server.py` / `server/valuation/` / `server/maps/` / `renderer/` layout as packed in `repomix-functionality-review.xml`.
 
+> **Status (2026-07-10):** partially executed / superseded in places — read this
+> before following any step verbatim.
+> - **Done on `dev`:** the §4 kill list (briefings, widgets, TOOL_AGENTS) and
+>   migration steps 1, 6, and 7. The renderer is already EIApp + MapView +
+>   ErrorBoundary; AgentChrome and the preview harness are deleted (not kept,
+>   as §3's "map preview fixture" suggests).
+> - **Decision change — xlsx:** `export_xlsx.py` and the
+>   `export_valuation_xlsx` tool are **deleted entirely** (not kept as a
+>   renderer-only tool as §3/§5 show). Re-add later behind the module
+>   architecture if wanted.
+> - **Decision change — viewer delivery (§6): already shipped.** The frozen
+>   template lives at `server/valuation/viewer/DealSheet.jsx` and rides as
+>   `viewer` in every `run_valuation` response; the fill rules are in
+>   `prompts/outer/tool_run_valuation.md`. §6's remaining value is the
+>   manifest `viewer:` key formalizing this.
+> - **Remaining work:** steps 2–5 and 8–10 (core/ carve-out, identity
+>   interface, manifest + loader, module migration, prompt split, CLAUDE.md
+>   rewrite, CI/import-linter).
+
 ---
 
 ## 1. The thesis (why this refactor exists)

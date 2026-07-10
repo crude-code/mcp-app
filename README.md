@@ -29,7 +29,7 @@ See [`CLAUDE.md`](./CLAUDE.md) for the full architecture reference.
 - **`run_sql`** — guarded, SELECT-only, capped exploration query
 - **`forecast_wells`** / **`run_valuation`** — well-decline forecasting and economics, returning the data behind a claude.ai deal-sheet artifact
 - **`map`** — a MapLibre GL well/unit/PLSS map
-- **`get_skill`** — fetches a packaged, occasional-use procedure (e.g. the deal-sheet artifact template, dataroom extraction)
+- **`get_skill`** — fetches a packaged, occasional-use procedure (e.g. dataroom extraction)
 
 ## Requirements
 
@@ -64,15 +64,6 @@ cd renderer && npm install && npm run build   # -> dist/app.html
 
 Tests that need a database, the Anthropic API, or network access auto-skip when
 the corresponding environment variable is unset.
-
-For frontend iteration without the host app:
-
-```bash
-cd renderer && npm run dev   # http://localhost:5173/preview.html
-```
-
-This renders the real `AgentChrome` component in its three states
-(working/done/error) with dummy content and hot reload.
 
 ## License
 

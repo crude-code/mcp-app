@@ -19,7 +19,7 @@ def load_viewer() -> str:
     """Source of the frozen DealSheet.jsx artifact template. `run_valuation`
     ships it alongside `data`; Claude pastes the payload in verbatim and never
     rebuilds the component."""
-    return _VIEWER_PATH.read_text()
+    return _VIEWER_PATH.read_text(encoding="utf-8")
 
 
 def build_artifact_payload(*, economics: dict, wells: dict) -> dict:

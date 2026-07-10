@@ -302,7 +302,7 @@ export function MapView({ mapToken, app, errorMessage }: MapViewProps) {
 
   if (err) {
     return (
-      <div style={{ ...card, padding: "14px 16px", fontSize: 13, color: "var(--change-down)" }}>
+      <div style={{ ...card, padding: "14px 16px", fontSize: 13, color: "var(--error)" }}>
         {err}
       </div>
     );

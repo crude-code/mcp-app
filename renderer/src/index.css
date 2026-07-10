@@ -22,30 +22,18 @@
   --foreground: #0a0a0a;
   --border: #ececea;
   --ring: #d97706;
-  --accent-foreground: #ffffff;
 
-  /* Spec semantic tokens — used by new components. */
+  /* Semantic tokens — components style from these via inline style={{}}. */
   --bg-page: #fafaf8;
   --bg-surface: #ffffff;
-  --bg-panel-mute: #f6f7f4;
-
   --border-default: #ececea;
-  --border-subtle: #f0f0ee;
 
   --text-primary: #0a0a0a;
-  --text-body: #374151;
   --text-muted: #4b5563;
   --text-dim: #6b7280;
 
-  /* Content accent — deep teal. */
-  --content-accent: #0e7490;
-  --change-up: #059669;
-  --change-down: #dc2626;
-
-  /* Chart series + faint divider — general-purpose data-viz tokens */
-  --accent-blue: #6aa7ff;
-  --accent-purple: #b28aff;
-  --border-faint: rgba(255,255,255,0.05);
+  --content-accent: #0e7490;  /* deep teal */
+  --error: #dc2626;
 }
 
 @layer base {

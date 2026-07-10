@@ -26,7 +26,7 @@ export class ErrorBoundary extends Component<Props, State> {
           className="w-full flex items-center justify-center min-h-[200px]"
           style={{ background: "var(--bg-page)" }}
         >
-          <div style={{ color: "var(--change-down)", fontSize: 14 }}>
+          <div style={{ color: "var(--error)", fontSize: 14 }}>
             Something went wrong rendering this view.
           </div>
         </div>

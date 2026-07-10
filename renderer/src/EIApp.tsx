@@ -82,7 +82,7 @@ export function EIApp() {
         className="w-full flex items-center justify-center min-h-[200px]"
         style={{ background: "var(--bg-page)" }}
       >
-        <div style={{ color: "var(--change-down)", fontSize: 14 }}>
+        <div style={{ color: "var(--error)", fontSize: 14 }}>
           Connection error: {connError.message}
         </div>
       </div>

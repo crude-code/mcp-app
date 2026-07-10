@@ -81,7 +81,6 @@ Inline React app rendered inside Claude Desktop. Single-pass build:
 
 - Vite + React + TypeScript + Tailwind v4 + `vite-plugin-singlefile`
 - Entry: `app.html` → `src/app-entry.tsx` → `EIApp`
-- `@` path alias → `renderer/src/` in vite.config.ts
 - Build: `cd renderer && npm run build` → `dist/app.html` (gated on `tsc -b` —
   vite alone does not type-check)
 

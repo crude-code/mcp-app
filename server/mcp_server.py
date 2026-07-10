@@ -30,6 +30,12 @@ from server.valuation.orchestrator import (
     compose_artifact_payload_for_run, forecast_wells_for_run,
     run_valuation_for_run, AnalogsRequired,
 )
+from server.valuation.artifact_payload import load_viewer
+
+# Frozen deal-sheet artifact template, shipped in every run_valuation response
+# so the template Claude fills always matches the payload contract that
+# produced `data`.
+_DEAL_SHEET_VIEWER = load_viewer()
 from server.maps.spec import parse_map_spec, MapSpecError
 from server.maps.hydrate import hydrate_map, MapHydrateError
 from server.skills import list_skills, load_skill, SkillNotFound
@@ -251,6 +257,7 @@ def run_valuation(run_id: str, params: dict) -> str:
                 "surface": "deal_sheet_artifact",
                 "run_id": run_id,
                 "data": data,
+                "viewer": _DEAL_SHEET_VIEWER,
             }, default=str)
         except Exception as e:  # noqa: BLE001
             return _json.dumps({"error": str(e)})

@@ -53,5 +53,17 @@ def test_run_valuation_tool_returns_artifact_payload(monkeypatch):
     assert out["run_id"] == "run-9"
     assert out["data"]["facts"]["deal_type"] == "Minerals / Royalty"
     assert out["data"]["economics"]["npv_at_centers"]["total"] == 1234.0
+    # The frozen artifact template ships with every response.
+    assert "export default function App" in out["viewer"]
+
+
+def test_deal_sheet_viewer_is_artifact_safe():
+    """The template must run in the claude.ai artifact sandbox: react/recharts
+    only, no host APIs, no renderer CSS vars."""
+    from server.valuation.artifact_payload import load_viewer
+    jsx = load_viewer()
+    assert "export default function App" in jsx
+    assert "callServerTool" not in jsx     # no host-API leakage
+    assert "var(--" not in jsx             # no CSS-var leakage
 
 

@@ -36,6 +36,6 @@ When the user wants a deliverable (a chart, a report, a document to keep):
 explore until you have a thesis, pull the final series with focused,
 pre-aggregated SELECTs, and build a claude.ai artifact from those rows.
 For a deal valuation, call `forecast_wells(groups)` to classify and forecast
-the wells, then `run_valuation(run_id, params)` — and build its deal sheet
-via `get_skill("deal-sheet")`. You do the analysis; there is no analyst
-agent to delegate to.
+the wells, then `run_valuation(run_id, params)` — its response carries both
+the deal `data` and the frozen deal-sheet template to build the artifact
+from. You do the analysis; there is no analyst agent to delegate to.

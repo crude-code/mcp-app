@@ -105,7 +105,8 @@ A working-interest deal instead looks like:
 
 ### Returns
 
-`{"surface": "deal_sheet_artifact", "run_id", "data": {"facts", "production", "economics"}}`.
+`{"surface": "deal_sheet_artifact", "run_id", "data": {"facts", "production",
+"economics"}, "viewer": "<DealSheet.jsx source>"}`.
 
 - `data.facts` — exec summary: `deal_type`, `interest`, `operator`, `area`.
 - `data.production` — net monthly oil/gas/cashflow series over the deal's active
@@ -119,12 +120,29 @@ A working-interest deal instead looks like:
   - `decks`, `default_deck`, `default_rates`, `statuses` — the selector axes and
     per-status display rows (label, tag, gross/net wells, rate ladder).
 
-**Build the deal-sheet artifact from `data`:** call `get_skill("deal-sheet")` and
-follow it. It bundles the frozen React template (`DealSheet.jsx`) — you paste
-`data` in and write the title/tldr; you do NOT redesign the layout or rebuild
-the component. Only `react` and `recharts` are used; this runs in the claude.ai
-artifact sandbox, not the MCP app. Use only what's in `data` — don't omit a
-field you were given, and don't invent numbers that aren't there.
+**Build the deal-sheet artifact from `data` and `viewer`:** `viewer` is the
+frozen React template (`DealSheet.jsx`) — finished code, every number
+pre-computed by the server. Create a react artifact whose full content is
+`viewer`, verbatim, then fill the three placeholders at the bottom:
+
+- `DATA` — the `data` object, pasted **verbatim and complete**. Do not drop
+  `economics.cube` (it powers the deck/rate selectors), do not round or
+  reformat numbers, do not invent fields.
+- `TITLE` — a short deal title; `DATA.facts.area` is usually right.
+- `TLDR` — 1–2 sentences in your own words: what the deal is and what drives
+  the value. This is the only prose you author inside the artifact.
+
+Then narrate the result in chat from `data.economics.npv_at_centers` (total
+and by-status) — the artifact shows the numbers, you provide the judgment.
+
+Rules: **never** rebuild, restructure, or restyle the component (if the user
+asks for a different look, edit only the `C` palette object at the top).
+Dependencies are `react` and `recharts` only — no lucide-react, no Tailwind,
+no CSS variables, no MCP-app/host APIs (this runs in the claude.ai artifact
+sandbox, not the MCP app). If `data.production` is `null` the template hides
+the forecast chart on its own — don't remove the section or fabricate a
+series. Re-running the valuation (new assumptions) means a fresh `data` →
+update the artifact's `DATA` and nothing else.
 
 On a malformed `params` the tool returns `{"error": "..."}` naming the exact field
 that's wrong (e.g. `interest_type must be 'wi' or 'minerals'`, `asset_list must be an

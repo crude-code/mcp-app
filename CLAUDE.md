@@ -17,8 +17,8 @@ everything through a handful of MCP tools:
   artifact** straight from `run_sql` data — there is no server-side spec
   authoring or render step for this path anymore.
 - For deals it calls `forecast_wells` → `run_valuation` → gets a slim payload
-  and builds the deal-sheet artifact from the frozen template fetched via
-  `get_skill("deal-sheet")`.
+  plus the frozen `DealSheet.jsx` template in the same response, and builds
+  the deal-sheet artifact from them directly.
 - For geography it calls `map`.
 - For a one-off packaged procedure (e.g. extracting a dataroom upload) it
   calls `get_skill(name)` to fetch the instructions and follows them directly.
@@ -59,11 +59,12 @@ Tools (all return JSON strings):
   series when the deal has an active status, and `economics` carrying
   `npv_at_centers`, the full deck×status×rate `cube`, `decks`,
   `default_deck`, `default_rates`, and `statuses`), and returns
-  `{surface: "deal_sheet_artifact", run_id, data}`. Claude builds the
-  deal-sheet artifact itself by fetching the frozen `DealSheet.jsx` template
-  via `get_skill("deal-sheet")` and filling `data` into it, per the guardrail
-  in `prompts/outer/tool_run_valuation.md` — no MCP-app render. See
-  `server/valuation/`.
+  `{surface: "deal_sheet_artifact", run_id, data, viewer}` — `viewer` is the
+  frozen `DealSheet.jsx` template (`server/valuation/viewer/`), shipped in
+  every response so the template always matches the payload contract. Claude
+  builds the deal-sheet artifact itself by filling `data` into `viewer`, per
+  the guardrail in `prompts/outer/tool_run_valuation.md` — no MCP-app render.
+  See `server/valuation/`.
 - **map** — Takes a map `spec`, validates + mints a map handle, returns
   `{surface: "map", map_token}`. See `server/maps/`.
 - **get_skill** — Takes an optional skill `name`. With no/unknown name,
@@ -90,8 +91,8 @@ MapLibre GL well/unit/PLSS map) inside `AgentChrome`, fetching the full
 hydrated map spec **once** via `get_map_full(map_token)`. `run_valuation`
 (and every other tool) has no `app=` config and never triggers an
 `ontoolresult` render — Claude builds the deal-sheet as a claude.ai artifact
-directly from the tool's `data` payload instead, using the frozen template
-fetched via `get_skill("deal-sheet")`. There is no streaming/event-log path —
+directly from the tool's `data` payload and the frozen template (`viewer`)
+that rides in the same response. There is no streaming/event-log path —
 `MapView`'s "working" state is just the moment before the single
 `get_map_full` fetch resolves.
 
@@ -142,7 +143,13 @@ authors this code). Pure, unit-tested modules:
   payload `run_valuation` returns (`facts`, `production`, and `economics` —
   `npv_at_centers`, the full deck×status×rate `cube`, `decks`,
   `default_deck`, `default_rates`, `statuses`) from a run's `wells` +
-  `economics` stages, reusing `deal_sheet.py`'s helpers.
+  `economics` stages, reusing `deal_sheet.py`'s helpers. Also `load_viewer`:
+  reads the frozen artifact template.
+- **`viewer/DealSheet.jsx`** — the frozen deal-sheet artifact template
+  (react + recharts only; no host APIs, no CSS vars — it runs in the
+  claude.ai artifact sandbox). Shipped verbatim as `viewer` in every
+  `run_valuation` response; Claude fills `DATA`/`TITLE`/`TLDR` and nothing
+  else.
 - **`wells.py`** — `bulk_load_wells` / `bulk_load_production`: one query each.
 - **`routing.py`** — per-well classification + analog blend (four states).
   Analog selection is Claude's job (`cohort.py` was removed).
@@ -182,11 +189,8 @@ subfolder with a `SKILL.md` in to add a skill; nothing else registers it.
   `extraction.json` plus a bundled, frozen React viewer artifact
   (`DataroomViewer.jsx`) Claude pastes the extraction into. Feeds
   `forecast_wells` / `run_valuation` when the room is headed for a deal.
-- **`deal-sheet/`** — the frozen `DealSheet.jsx` artifact template plus
-  instructions for turning `run_valuation`'s payload into the standard
-  deal-sheet artifact: paste `data` in verbatim, fill a title and a short
-  TL;DR, then narrate from `data.economics.npv_at_centers`. Fetched via
-  `get_skill("deal-sheet")` — see `prompts/outer/tool_run_valuation.md`.
+  (The deal-sheet template is NOT a skill — it rides in `run_valuation`'s
+  response; see `server/valuation/viewer/`.)
 
 ### Prompts (`prompts/`)
 

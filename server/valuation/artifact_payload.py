@@ -7,8 +7,19 @@ series (omitted when the deal has no active status), and the blended
 bottom-line economics with the full deck x rate PV cube and scenario axes —
 the latter powers the template's deck/rate selectors and risk-bucket detail.
 """
+from pathlib import Path
+
 from server.valuation import config
 from server.valuation import deal_sheet as ds
+
+_VIEWER_PATH = Path(__file__).resolve().parent / "viewer" / "DealSheet.jsx"
+
+
+def load_viewer() -> str:
+    """Source of the frozen DealSheet.jsx artifact template. `run_valuation`
+    ships it alongside `data`; Claude pastes the payload in verbatim and never
+    rebuilds the component."""
+    return _VIEWER_PATH.read_text()
 
 
 def build_artifact_payload(*, economics: dict, wells: dict) -> dict:

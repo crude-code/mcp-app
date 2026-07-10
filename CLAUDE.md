@@ -143,17 +143,6 @@ authors this code). Pure, unit-tested modules:
   `npv_at_centers`, the full deck×status×rate `cube`, `decks`,
   `default_deck`, `default_rates`, `statuses`) from a run's `wells` +
   `economics` stages, reusing `deal_sheet.py`'s helpers.
-- **`export_xlsx.py`** — deterministic Excel export. Regroups the persisted
-  per-well schedule into static driver columns, **aggregates across statuses**,
-  and writes a live **two-sheet** workbook: a **Summary** (deal facts +
-  undiscounted totals roll-up) and a single editable **Cashflow** statement —
-  scalar assumptions in an amber-highlighted input band on top, commodity
-  prices inline as editable per-month columns, cashflow as Excel formulas, a
-  cumulative-NCF column. **No discounting / no PV** — that's left to the user.
-  Volumes frozen; price/cost/interest are editable named ranges. A reconcile
-  oracle (`build_status_drivers` / `status_net_cashflow` / `npv_monthly` /
-  `reconcile_total_pv`) validates the engine in tests (independent of the
-  workbook).
 - **`wells.py`** — `bulk_load_wells` / `bulk_load_production`: one query each.
 - **`routing.py`** — per-well classification + analog blend (four states).
   Analog selection is Claude's job (`cohort.py` was removed).
@@ -253,7 +242,7 @@ matches `utils/schemas.py` and `prompts/inner/shared_schema.md`.
 ## Running Locally
 
 One-time setup (after cloning): `.venv/bin/pip install -r requirements.txt`
-(installs numpy/scipy/pandas/openpyxl and the rest). Then:
+(installs numpy/scipy/pandas and the rest). Then:
 ```bash
 .venv/bin/python server/mcp_server.py &   # MCP on 9000
 ```
@@ -289,8 +278,8 @@ Run: `.venv/bin/pytest -q`.
   `valuation_runs` rows at session end.
 - Coverage spans the live surface: `run_sql` + the valuation tools
   (`forecast_wells`, `run_valuation`), the valuation engine (forecast/econ/
-  artifact-payload/export/strip/routing), maps, `sql_guard`,
-  `briefing_handle_store` (map tokens), schema drift, and the export workbook.
+  artifact-payload/strip/routing), maps, `sql_guard`,
+  `briefing_handle_store` (map tokens), and schema drift.
 
 ### Frontend iteration (no Claude Desktop)
 `cd renderer && npm run dev` → `http://localhost:5173/preview.html` mounts

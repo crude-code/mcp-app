@@ -1,18 +1,13 @@
-Queries the Crude Code oil & gas warehouse via SELECT. Covers `public`
-(wells, production), `market` (spot_prices, benchmark_prices, futures,
-weekly_supply, news_feed, steo_forecasts), `financials` (operators,
-income, balance_sheet, cash_flow, reserves, operator_production, facts,
-operator_aliases), `shapes` (townships, sections, landtrac_units,
-landtrac_unit_wells). Read-only, single statement, no DDL/DML.
+Queries the Crude Code oil & gas warehouse via SELECT. Read-only, single
+statement, no DDL/DML. **The complete schema reference — every table,
+column, join key, and unit caveat — is in the Database Schema section at
+the end of this description.** It is the only schema documentation you
+receive; do not guess column semantics that are defined there.
 
 This is your primary exploration tool. Use it liberally to ground
 questions, sanity-check numbers, and frame a thesis before you build a
 deliverable or value a deal. Fully-qualify across schemas, or pass `schema=`
 to switch the default.
-
-The well identifier column is **`well_api`** (text) on both `public.wells`
-and `public.production` — never `api`, `uwi`, or `api_uwi` (`api_uwi` exists
-only on `shapes.landtrac_unit_wells`). Join production to wells on `well_api`.
 
 Caps: 200 rows / 100 KB / 5s. The cap exists because rows land in chat context — pre-aggregate (monthly, top-N) rather than paging through raw data. Use `LIMIT` plus aggregation; don't
 SELECT * a table and skim. For ranking, ORDER BY + LIMIT 10. For

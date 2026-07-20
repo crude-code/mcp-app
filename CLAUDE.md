@@ -189,13 +189,14 @@ LLM-facing text, loaded via `utils/prompts.py` (`load("outer/...")`).
   (`tool_run_sql.md`, `tool_forecast_wells.md`, `tool_run_valuation.md`,
   `tool_map.md`, `tool_get_skill.md`). `compose_outer_system_prompt()`
   assembles `system_prompt.md` + a live skills catalog (built from
-  `server/skills.list_skills()`) + the shared DB schema, so Claude can
-  discover packaged skills and write `run_sql` SELECTs without a separate
-  tool call.
-- **`inner/shared_schema.md`** — the DB schema reference. Despite the legacy
-  `inner/` path, it is appended to the **outer** system prompt today and is
-  kept in sync with `utils/schemas.py` by `tests/test_schema_drift.py`. (It's
-  the only surviving `inner/` file — the inner-agent role prompts are gone.)
+  `server/skills.list_skills()`) into the MCP server `instructions`.
+- **`outer/shared_schema.md`** — the DB schema reference, kept in sync with
+  `utils/schemas.py` by `tests/test_schema_drift.py`. It is appended to the
+  **`run_sql` tool description** (`compose_run_sql_doc()`), NOT to the server
+  instructions: clients truncate MCP instructions (observed ~2.3 KB on
+  claude.ai), while tool descriptions arrive intact. All SQL guidance —
+  tables, columns, join keys, unit caveats — lives in that one docstring;
+  other tool docs point to it rather than repeating any of it.
 
 ### Shared Utilities (`utils/`)
 - **schemas.py** — Single source of truth for queryable DB schemas.
@@ -214,8 +215,10 @@ LLM-facing text, loaded via `utils/prompts.py` (`load("outer/...")`).
   mint time. Today it serves only map specs, backing `map` / `get_map_full`
   (name kept for history, from when it also backed briefings).
 - **prompts.py** — Loads `prompts/` files. `compose_outer_system_prompt()`
-  assembles `outer/system_prompt.md` + a live skills catalog +
-  `inner/shared_schema.md`.
+  assembles `outer/system_prompt.md` + a live skills catalog (no schema —
+  instructions get truncated by clients). `compose_run_sql_doc()` assembles
+  `outer/tool_run_sql.md` + `outer/shared_schema.md` for the `run_sql`
+  tool description.
 - **platform.py** — user identity via Supabase (`users`): `resolve_identity`
   maps the `X-User-Slug` header to a user + org context. `_query` for Supabase
   tables (`workspace.*`, `platform.*`).
@@ -230,7 +233,7 @@ The platform reads commodity prices from `market.spot_prices` (daily close,
 WTI / Brent / Henry Hub) and related `market.*` / `public.*` / `shapes.*` /
 `financials.*` tables. Populating those tables (primary-source ingestion) is out
 of scope for this repo — point `EI_DB_URL` at a Postgres database whose schema
-matches `utils/schemas.py` and `prompts/inner/shared_schema.md`.
+matches `utils/schemas.py` and `prompts/outer/shared_schema.md`.
 
 ## Running Locally
 

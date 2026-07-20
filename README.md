@@ -36,7 +36,7 @@ See [`CLAUDE.md`](./CLAUDE.md) for the full architecture reference.
 - Python 3.11+ and a virtualenv (`.venv`)
 - Node 20+ (for the renderer build)
 - A Postgres database whose schema matches `utils/schemas.py` and
-  `prompts/inner/shared_schema.md`. **Populating that database (primary-source
+  `prompts/outer/shared_schema.md`. **Populating that database (primary-source
   ingestion) is out of scope for this repo** — point `EI_DB_URL` at your own.
 
 ## Quick start

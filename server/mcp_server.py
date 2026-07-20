@@ -19,7 +19,11 @@ from fastmcp.server.dependencies import get_http_request
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from utils.log import setup as _log_setup, trace
 from utils.platform import resolve_identity
-from utils.prompts import compose_outer_system_prompt, load as _load_prompt
+from utils.prompts import (
+    compose_outer_system_prompt,
+    compose_run_sql_doc,
+    load as _load_prompt,
+)
 from utils.briefing_handle_store import BriefingHandleStore
 from utils.schemas import EXPLORATION_SCHEMAS
 from utils.sql_guard import GuardError, run_guarded
@@ -110,7 +114,7 @@ _run_sql_log = _logging.getLogger("ei.run_sql")
 _map_log = _logging.getLogger("ei.map")
 
 
-@mcp.tool(description=_load_prompt("outer/tool_run_sql.md"))
+@mcp.tool(description=compose_run_sql_doc())
 def run_sql(sql: str, schema: str = "public") -> str:
     """SELECT-only data tool under the shared SQL guard; tighter caps because
     results land in the chat thread."""

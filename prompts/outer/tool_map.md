@@ -3,8 +3,9 @@ more layers; the server runs each layer's query into geometry and draws it.
 Synchronous — no agent, no waiting.
 
 **Author and verify every layer query with `run_sql` first.** All SQL and schema
-guidance lives in `run_sql` (and the schema reference) — this tool repeats none of
-it on purpose, so there is one place for column names, not several that can drift.
+guidance lives in `run_sql`'s description (the full schema reference is appended
+to it) — this tool repeats none of it on purpose, so there is one place for
+column names, not several that can drift.
 Build each layer's SELECT in `run_sql`, confirm it returns rows with the columns
 you want, then pass that exact verified query here. Never hand `map` a query you
 haven't run.

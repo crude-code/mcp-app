@@ -47,7 +47,7 @@ Monthly production volumes. Join to wells on well_api.
 ```
 well_api: text PK
 prod_date: date PK         -- First of month
-prod_month: integer        -- Months since first production
+prod_month: integer        -- Per-well counter: 1 = the well's first producing month. NOT a calendar index — filter calendar time with prod_date
 oil_bbl: integer           -- Oil (barrels)
 gas_mcf: integer           -- Gas (mcf)
 boe: integer               -- Barrels of oil equivalent

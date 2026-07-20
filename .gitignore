@@ -25,3 +25,4 @@ repomix-*
 
 # --- Personal planning/spec notes, never part of the shipped repo ---
 docs/
+refactor.md

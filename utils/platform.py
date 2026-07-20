@@ -60,7 +60,7 @@ def get_user_by_slug(slug: str) -> dict | None:
 def resolve_identity(slug: str) -> dict | None:
     """Resolve a URL slug to user + org context.
 
-    The slug is per-user (e.g. 'bill-givens'). The user maps to an org
+    The slug is per-user (e.g. 'jane-doe'). The user maps to an org
     via the org_id foreign key.
     Returns None if the slug doesn't match any user.
     """

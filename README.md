@@ -65,6 +65,13 @@ cd renderer && npm install && npm run build   # -> dist/app.html
 Tests that need a database, the Anthropic API, or network access auto-skip when
 the corresponding environment variable is unset.
 
+## Maintenance & contributions
+
+This is a working platform maintained by one person alongside a full-time job.
+It's open-sourced for transparency and as a reference for building real systems
+on MCP + skills. Issues and PRs are welcome, but responses are best-effort —
+please set expectations accordingly.
+
 ## License
 
 [Apache 2.0](./LICENSE).

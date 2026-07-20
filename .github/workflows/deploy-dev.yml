@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       AWS_REGION: us-east-1
-      INSTANCE_ID: i-02079850579ca9ebb
+      INSTANCE_ID: ${{ vars.INSTANCE_ID }}
     steps:
       - name: Configure AWS credentials (OIDC, no stored keys)
         uses: aws-actions/configure-aws-credentials@v4

@@ -56,7 +56,7 @@ def trace(tool_name: str, **context):
     """Context manager that assigns a request_id and logs tool entry/exit with timing.
 
     Usage:
-        with trace("build_dashboard", user="bill-givens"):
+        with trace("run_sql", user="jane-doe"):
             ...
     """
     rid = uuid.uuid4().hex[:8]

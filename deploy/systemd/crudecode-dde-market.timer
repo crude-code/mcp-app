@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Crude Code DDE market ingest
+Requires=crudecode-dde-market.service
+
+[Timer]
+OnCalendar=*-*-* 09:00:00 UTC
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

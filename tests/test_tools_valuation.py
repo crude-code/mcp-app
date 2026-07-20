@@ -1,0 +1,69 @@
+import json
+import pytest
+import server.mcp_server as srv
+
+
+# ---------------------------------------------------------------------------
+# Identity-guard rejection tests — all three tools must return the canonical
+# "Could not identify user" error when get_current_identity() returns None.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("call", [
+    lambda: srv.forecast_wells(groups=[{"area": "A", "wells": ["x"], "analogs": []}]),
+    lambda: srv.run_valuation(run_id="r", params={}),
+])
+def test_tool_rejects_none_identity(monkeypatch, call):
+    monkeypatch.setattr(srv, "get_current_identity", lambda: None)
+    out = json.loads(call())
+    assert out == {"error": "Could not identify user"}
+
+
+def test_forecast_wells_tool_returns_groups(monkeypatch):
+    monkeypatch.setattr(srv, "get_current_identity", lambda: {"user_slug": "acme", "user_id": 7})
+    monkeypatch.setattr(srv, "forecast_wells_for_run",
+                        lambda **kw: {"run_id": "run-9", "groups": [{"area": "A"}]})
+    out = json.loads(srv.forecast_wells(groups=[{"area": "A", "wells": ["x"], "analogs": []}]))
+    assert out["run_id"] == "run-9"
+
+
+def test_forecast_wells_tool_surfaces_bounce(monkeypatch):
+    monkeypatch.setattr(srv, "get_current_identity", lambda: {"user_slug": "acme", "user_id": 7})
+    def _boom(**kw):
+        raise srv.AnalogsRequired([{"area": "A", "wells": ["x"]}])
+    monkeypatch.setattr(srv, "forecast_wells_for_run", _boom)
+    out = json.loads(srv.forecast_wells(groups=[{"area": "A", "wells": ["x"], "analogs": []}]))
+    assert out["error"] == "analogs_required"
+    assert out["needs_analogs"] == [{"area": "A", "wells": ["x"]}]
+
+
+def test_run_valuation_tool_returns_artifact_payload(monkeypatch):
+    monkeypatch.setattr(srv, "get_current_identity",
+                        lambda: {"user_slug": "acme", "user_id": 7})
+    monkeypatch.setattr(srv, "run_valuation_for_run",
+                        lambda **kw: {"run_id": "run-9",
+                                      "npv_at_centers": {"total": 1234.0, "by_status": {}}})
+    monkeypatch.setattr(srv, "compose_artifact_payload_for_run",
+                        lambda run_id: {"facts": {"deal_type": "Minerals / Royalty"},
+                                        "production": None,
+                                        "economics": {"npv_at_centers": {"total": 1234.0, "by_status": {}}}})
+    out = json.loads(srv.run_valuation(run_id="run-9", params={
+        "interest_type": "minerals", "interest": {"decimal": 0.05},
+        "asset_list": {"well_apis": ["42-000-1"]}, "economics_overrides": {}}))
+    assert out["surface"] == "deal_sheet_artifact"
+    assert out["run_id"] == "run-9"
+    assert out["data"]["facts"]["deal_type"] == "Minerals / Royalty"
+    assert out["data"]["economics"]["npv_at_centers"]["total"] == 1234.0
+    # The frozen artifact template ships with every response.
+    assert "export default function App" in out["viewer"]
+
+
+def test_deal_sheet_viewer_is_artifact_safe():
+    """The template must run in the claude.ai artifact sandbox: react/recharts
+    only, no host APIs, no renderer CSS vars."""
+    from server.valuation.artifact_payload import load_viewer
+    jsx = load_viewer()
+    assert "export default function App" in jsx
+    assert "callServerTool" not in jsx     # no host-API leakage
+    assert "var(--" not in jsx             # no CSS-var leakage
+
+

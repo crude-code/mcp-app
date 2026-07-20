@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Crude Code news ingest
+Requires=crudecode-news.service
+
+[Timer]
+OnCalendar=*-*-* 10:00:00 UTC
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

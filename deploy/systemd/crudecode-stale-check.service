@@ -1,0 +1,13 @@
+[Unit]
+Description=Crude Code stale-run alerting
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/crudecode
+ExecStart=/home/ubuntu/crudecode/.venv/bin/python -m ingest stale_check
+StandardOutput=journal
+StandardError=journal
+EnvironmentFile=/home/ubuntu/crudecode/.env

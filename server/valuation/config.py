@@ -28,6 +28,13 @@ class EconConfig:
     oil_diff: float = 0.0            # $/bbl
     gas_diff: float = 0.0            # $/MMBtu
 
+    # Gas heat content, MMBtu per mcf. Production volumes are mcf; benchmark
+    # prices (NYMEX Henry Hub / flat gas deck) are $/MMBtu — revenue must
+    # convert: gas_mcf × btu × ($/MMBtu). 1.05 is a typical dry-gas heat
+    # content; wet-gas areas run 1.1–1.3 (override per deal). NGL uplift and
+    # shrink are out of scope — they partially offset at typical yields.
+    gas_btu_factor: float = 1.05
+
     # Taxes / deductions (WI branch).
     tax_pct: float = 0.075           # severance/production
     gpt_pct: float = 0.05            # gathering, processing, transport
@@ -171,7 +178,8 @@ def resolve_price_inputs(econ_overrides: dict | None) -> dict:
     trusted — the case file is shape-validated at the MCP boundary.
 
     Returns the kwargs the schedule builder consumes:
-    ``{horizon_months, oil_price, gas_price, oil_diff, gas_diff, tax_pct, gpt_pct}``.
+    ``{horizon_months, oil_price, gas_price, oil_diff, gas_diff, gas_btu_factor,
+    tax_pct, gpt_pct}``.
     (Costs and discount rates are resolved separately, also from the case file.)
     """
     o = econ_overrides or {}
@@ -182,6 +190,7 @@ def resolve_price_inputs(econ_overrides: dict | None) -> dict:
         "gas_price": float(deck.get("gas_usd_mmbtu", ECON.gas_price)),
         "oil_diff": float(o.get("oil_diff", ECON.oil_diff)),
         "gas_diff": float(o.get("gas_diff", ECON.gas_diff)),
+        "gas_btu_factor": float(o.get("gas_btu_factor", ECON.gas_btu_factor)),
         "tax_pct": float(o.get("tax_pct", ECON.tax_pct)),
         "gpt_pct": float(o.get("gpt_pct", ECON.gpt_pct)),
     }

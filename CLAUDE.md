@@ -116,7 +116,9 @@ palettes, not design tokens.)
 Server-side forecast + economics, invoked by the valuation tools (Claude never
 authors this code). Pure, unit-tested modules:
 - **`types.py`** — `DeclineCurve`, `Forecast`, `WellMeta`, `ForecastProvenance`.
-- **`forecast.py`** — `fit_curve` (Arps, b fixed), `curve_rate`,
+- **`forecast.py`** — `fit_curve` (Arps, b fixed), `fit_curve_best_b`
+  (min-SSE over a bounded b grid — "free b" that can't bound-ride),
+  `override_b` (re-source a curve's b, switch month recomputed), `curve_rate`,
   `percentile_curves` (cohort median), `project` / `aggregate` (calendar-aware).
 - **`casefile.py`** — `parse_case_file` / `CaseFile`: validate + type the JSON
   contract `run_valuation` sends (interest_type, blanket `interest` + optional
@@ -141,7 +143,17 @@ authors this code). Pure, unit-tested modules:
   else.
 - **`wells.py`** — `bulk_load_wells` / `bulk_load_production`: one query each.
 - **`routing.py`** — per-well classification + analog blend (four states).
-  Analog selection is Claude's job (`cohort.py` was removed).
+  Analog selection is Claude's job (`cohort.py` was removed). b-sourcing is
+  hindcast-backed (2026-07): HISTORY wells with ≥30 post-peak months fit their
+  own b (`history_own_b`, grid 0.3–1.3); younger HISTORY wells borrow the
+  cohort b, which `orchestrator._build_type_curve_with_stats` gates to
+  analogs with ≥24 post-peak months (clamped 0.3–1.3, 0.8 fallback —
+  reported in `analogs_used.cohort_b`).
+- **`backtest.py`** — hindcast harness: truncate real wells at T months,
+  forecast through the real engine path, score vs held-out actuals
+  (`python -m server.valuation.backtest`). Variants: `production` /
+  `legacy` (pre-gating comparator) / `late_window` (shelved). Change forecast
+  methodology only with a backtest run showing the change wins.
 - **`config.py`** — `EconConfig` (`ECON` singleton): the single source for every
   economic parameter (flat oil/gas deck, diffs, tax/GPT, opex/capex, 360-month
   horizon, DUC=+18mo / PERMITTED=+36mo timing, per-status discount ladders, the
@@ -274,5 +286,5 @@ Run: `.venv/bin/pytest -q`.
   `valuation_runs` rows at session end.
 - Coverage spans the live surface: `run_sql` + the valuation tools
   (`forecast_wells`, `run_valuation`), the valuation engine (forecast/econ/
-  artifact-payload/strip/routing), maps, `sql_guard`,
+  artifact-payload/strip/routing/backtest), maps, `sql_guard`,
   `briefing_handle_store` (map tokens), and schema drift.

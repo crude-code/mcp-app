@@ -119,6 +119,16 @@ def test_price_deck_flat_passes():
     assert cf.economics_overrides["price_deck"]["oil_usd_bbl"] == 80
 
 
+def test_gas_btu_factor_accepted_in_band_rejected_outside():
+    body = _minimal_wi()
+    body["economics_overrides"] = {"gas_btu_factor": 1.15}
+    assert parse_case_file(body).economics_overrides["gas_btu_factor"] == 1.15
+    for bad in (0.4, 2.5, True, "1.1"):
+        body["economics_overrides"] = {"gas_btu_factor": bad}
+        with pytest.raises(CaseFileError, match="gas_btu_factor"):
+            parse_case_file(body)
+
+
 def test_price_deck_strip_rejects_flat_keys():
     body = _minimal_wi()
     body["economics_overrides"] = {"price_deck": {"type": "strip", "oil_usd_bbl": 80}}

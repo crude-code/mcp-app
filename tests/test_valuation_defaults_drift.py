@@ -32,6 +32,7 @@ def _expected() -> dict[str, object]:
         "gas_price": e.gas_price,
         "oil_diff": e.oil_diff,
         "gas_diff": e.gas_diff,
+        "gas_btu_factor": e.gas_btu_factor,
         "tax_pct": e.tax_pct,
         "gpt_pct": e.gpt_pct,
         "opex_per_bbl_usd": e.opex_per_bbl_usd,

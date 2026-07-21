@@ -38,8 +38,9 @@ _TIMING_STATUSES = {"DUC", "PUD"}        # only non-producing wells have a sched
 # here (the agent supplies none), so the schema is locked: an unknown key is a
 # typo or a fabricated field, and we reject it rather than silently ignore it.
 _ALLOWED_ECON_OVERRIDES = {
-    "effective_date", "price_deck", "oil_diff", "gas_diff", "forecast_horizon",
-    "tax_pct", "gpt_pct", "discount_rates", "months_to_first_prod",
+    "effective_date", "price_deck", "oil_diff", "gas_diff", "gas_btu_factor",
+    "forecast_horizon", "tax_pct", "gpt_pct", "discount_rates",
+    "months_to_first_prod",
     "opex_per_bbl_usd", "opex_per_well_per_month_usd", "capex_per_well_usd",
 }
 
@@ -227,6 +228,16 @@ def _validate_deal_terms(body: dict) -> dict:
         v = economics_overrides.get(k)
         if v is not None:
             _check_money(v, f"economics_overrides.{k}", allow_negative=True)
+
+    # Gas heat content — MMBtu per mcf, converting mcf volumes to the $/MMBtu
+    # benchmark. Physically plausible band only (dry ~1.0, rich wet gas <2.0).
+    btu = economics_overrides.get("gas_btu_factor")
+    if btu is not None and (isinstance(btu, bool) or not isinstance(btu, (int, float))
+                            or not (0.5 <= btu <= 2.0)):
+        raise CaseFileError(
+            f"economics_overrides.gas_btu_factor must be a number in [0.5, 2.0] "
+            f"(MMBtu per mcf), got {btu!r}"
+        )
 
     # Forecast horizon — months of cashflow projected.
     fh = economics_overrides.get("forecast_horizon")

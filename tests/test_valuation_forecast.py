@@ -239,3 +239,55 @@ def test_project_raises_on_start_before_peak():
     )
     with pytest.raises(ValueError, match="pre-peak"):
         project(f, horizon_months=12)
+
+
+# ── fit_curve_best_b / override_b (added with the 2026-07 b-sourcing change) ──
+
+def _hyp_q(b, n, qi=900.0, di=0.08):
+    t = np.arange(n, dtype=float)
+    return qi / np.power(1.0 + b * di * t, 1.0 / b)
+
+
+def test_fit_curve_best_b_recovers_true_b_from_grid():
+    from server.valuation.forecast import fit_curve_best_b
+    grid = tuple(round(0.30 + 0.05 * i, 2) for i in range(21))
+    q = _hyp_q(0.85, 40)
+    curve = fit_curve_best_b(np.arange(40, dtype=float), q, stream="oil", b_grid=grid)
+    assert abs(curve.b - 0.85) <= 0.051
+    assert curve.qi_peak == pytest.approx(900.0, rel=0.05)
+
+
+def test_fit_curve_best_b_rejects_empty_grid_and_thin_history():
+    from server.valuation.forecast import fit_curve_best_b
+    q = _hyp_q(0.8, 40)
+    with pytest.raises(ValueError, match="b_grid"):
+        fit_curve_best_b(np.arange(40, dtype=float), q, stream="oil", b_grid=())
+    with pytest.raises(ValueError, match="thin history"):
+        fit_curve_best_b(np.arange(4, dtype=float), _hyp_q(0.8, 4), stream="oil",
+                         b_grid=(0.8,), min_post_peak_months=9)
+
+
+def test_override_b_recomputes_switch_and_appends_note():
+    from server.valuation.forecast import override_b
+    curve = DeclineCurve(
+        qi_peak=1000.0, di=0.06, b=0.9, terminal_di_monthly=0.05 / 12,
+        switch_month_from_peak=100.0, stream="oil",
+        provenance=ForecastProvenance(source="percentile", notes=("x",)),
+    )
+    out = override_b(curve, 0.5, note="b:test")
+    assert out.b == 0.5
+    expected = (curve.di / curve.terminal_di_monthly - 1.0) / (0.5 * curve.di)
+    assert out.switch_month_from_peak == pytest.approx(expected)
+    assert out.qi_peak == curve.qi_peak and out.di == curve.di
+    assert out.provenance.notes == ("x", "b:test")
+    assert out.provenance.source == "percentile"
+
+
+def test_override_b_infinite_switch_when_di_below_terminal():
+    from server.valuation.forecast import override_b
+    curve = DeclineCurve(
+        qi_peak=1000.0, di=0.001, b=0.9, terminal_di_monthly=0.05 / 12,
+        switch_month_from_peak=float("inf"), stream="oil",
+        provenance=ForecastProvenance(source="fit"),
+    )
+    assert override_b(curve, 0.5, note="n").switch_month_from_peak == float("inf")

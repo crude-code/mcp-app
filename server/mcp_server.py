@@ -34,6 +34,7 @@ from server.valuation.orchestrator import (
     compose_artifact_payload_for_run, forecast_wells_for_run,
     run_valuation_for_run, AnalogsRequired,
 )
+from server.valuation.routing import AnalogRequired
 from server.valuation.artifact_payload import load_viewer
 
 # Frozen deal-sheet artifact template, shipped in every run_valuation response
@@ -238,7 +239,17 @@ def forecast_wells(groups: list[dict], run_id: str | None = None) -> str:
                 "needs_analogs": e.needs_analogs,
                 "message": ("These wells can't be forecast from their own history. "
                             "Find analogs (same formation, comparable lateral, nearby, "
-                            "real producers with enough history) with run_sql and call "
+                            "real producers with enough history — include several ≥2 "
+                            "years past peak) with run_sql and call forecast_wells "
+                            "again."),
+            })
+        except AnalogRequired as e:
+            # Belt-and-braces: the orchestrator converts these to AnalogsRequired
+            # bounces; if one ever escapes, still return an actionable message.
+            return _json.dumps({
+                "error": "analogs_required",
+                "message": (f"A well's {e.stream} stream needs an analog type curve "
+                            "it wasn't given. Supply analogs for its group and call "
                             "forecast_wells again."),
             })
         except Exception as e:  # noqa: BLE001

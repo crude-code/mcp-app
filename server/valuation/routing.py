@@ -3,7 +3,10 @@ shape and returns a DeclineCurve blending its own data with a Claude-supplied
 analog type curve. No dates, no calendar placement (run_valuation owns that).
 
 WellState ladder:
-    HISTORY       — peaked AND >=9 post-peak months -> own fit, analog lends b
+    HISTORY       — peaked AND >=9 post-peak months -> own fit, analog lends b;
+                    at >=30 post-peak months the well earns its OWN b via a
+                    bounded grid fit (strategy "history_own_b") — backtested
+                    2026-07: halves holdout MAE vs borrowed b on long histories
     THIN_PEAKED   — peaked AND <9 post-peak months  -> own peak, analog di+b
     CLIMBING      — has production but argmax == last -> max(analog, own_max), analog di+b
     NO_HISTORY    — no production -> analog curve outright
@@ -14,16 +17,23 @@ flat-zero curve (fit_curve would raise; the analog would fabricate volumes).
 from enum import Enum
 import numpy as np
 
-from server.valuation.forecast import fit_curve
+from server.valuation.forecast import fit_curve, fit_curve_best_b
 from server.valuation.types import DeclineCurve, ForecastProvenance
 
 
 _MIN_POST_PEAK_HISTORY = 9
 _SERVER_DEFAULT_B = 0.8
+_OWN_B_MIN_POST_PEAK = 30                    # earn your own b above this
+B_GRID = tuple(round(0.30 + 0.05 * i, 2) for i in range(21))   # 0.30 … 1.30
 
 
 class AnalogRequired(Exception):
-    """Raised by build_curve when the well's state needs an analog but none given."""
+    """Raised by build_curve when the well's state needs an analog but none given.
+    Carries the stream so the orchestrator can bounce with a useful message."""
+
+    def __init__(self, stream: str):
+        self.stream = stream
+        super().__init__(f"analog required for {stream} stream")
 
 
 class WellState(str, Enum):
@@ -79,6 +89,11 @@ def build_curve(months: list[str], q: np.ndarray, *,
         return _zero_curve(stream), state, "zero_stream"
 
     if state == WellState.HISTORY:
+        if (len(q) - 1 - peak_idx) >= _OWN_B_MIN_POST_PEAK:
+            curve = fit_curve_best_b(np.arange(len(q), dtype=float), q, stream=stream,
+                                     b_grid=B_GRID,
+                                     min_post_peak_months=_MIN_POST_PEAK_HISTORY)
+            return curve, state, "history_own_b"
         b = analog.b if analog is not None else _SERVER_DEFAULT_B
         curve = fit_curve(np.arange(len(q), dtype=float), q, stream=stream,
                           b_fixed=b, min_post_peak_months=_MIN_POST_PEAK_HISTORY)

@@ -90,6 +90,76 @@ def test_producing_well_continues_decline_not_restart_at_peak(monkeypatch):
     assert rates[0] < 600, f"forecast restarted near peak: rates[0]={rates[0]:.1f} (expected < 600)"
 
 
+def test_per_stream_analog_need_bounces_cleanly(monkeypatch):
+    """An oil-HISTORY well whose GAS stream is CLIMBING (rising GOR — gas max in
+    the last month) must produce the clean analogs_required bounce when the
+    group has no analogs, not a raw AnalogRequired escaping as {"error":"gas"}."""
+    months = [f"2020-{i:02d}" for i in range(1, 13)]
+    oil = [5, 80, 70, 60, 50, 44, 40, 36, 33, 30, 28, 26]        # HISTORY
+    gas = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]    # CLIMBING
+    metas = {"H1": _meta("H1", "PRODUCING")}
+    _patch(monkeypatch, metas, prod={"H1": {"months": months, "oil_bbl": oil, "gas_mcf": gas}})
+    with pytest.raises(AnalogsRequired) as ei:
+        forecast_wells_for_run(run_id=None, groups=[{"area": "A", "wells": ["H1"], "analogs": []}])
+    assert ei.value.needs_analogs == [{"area": "A", "wells": ["H1"]}]
+
+
+def test_per_stream_need_satisfied_by_analogs(monkeypatch):
+    """Same rising-GOR well forecasts fine once the group carries analogs."""
+    months = [f"2020-{i:02d}" for i in range(1, 13)]
+    oil = [5, 80, 70, 60, 50, 44, 40, 36, 33, 30, 28, 26]
+    gas = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]
+    am = [f"2019-{i:02d}" for i in range(1, 13)]
+    aq = [5, 90, 80, 70, 60, 52, 46, 41, 37, 34, 31, 28]
+    metas = {"H1": _meta("H1", "PRODUCING"), "AN1": _meta("AN1", "PRODUCING")}
+    _patch(monkeypatch, metas, prod={
+        "H1": {"months": months, "oil_bbl": oil, "gas_mcf": gas},
+        "AN1": {"months": am, "oil_bbl": aq, "gas_mcf": aq},
+    })
+    out = forecast_wells_for_run(run_id=None,
+        groups=[{"area": "A", "wells": ["H1"], "analogs": ["AN1"]}])
+    grp = out["groups"][0]
+    assert grp["by_status"]["PDP"][0]["api"] == "H1"
+    assert "cohort_b" in grp["analogs_used"]
+
+
+# ── gated cohort b (_build_type_curve_with_stats) ────────────────────────────
+
+def _hyp_series(b, n, qi=900.0, di=0.08):
+    t = np.arange(n, dtype=float)
+    q = qi / np.power(1.0 + b * di * t, 1.0 / b)
+    return {"months": [f"m{i}" for i in range(n)],
+            "oil_bbl": list(q), "gas_mcf": list(q)}
+
+
+def test_type_curve_b_gated_to_mature_analogs():
+    from server.valuation.orchestrator import _build_type_curve_with_stats
+    prod = {"M1": _hyp_series(0.9, 40), "M2": _hyp_series(0.9, 40),
+            "Y1": _hyp_series(1.8, 10), "Y2": _hyp_series(1.8, 10)}
+    curve, n_fit, n_skipped, b_meta = _build_type_curve_with_stats(prod, "oil")
+    assert n_fit == 4 and n_skipped == 0
+    assert b_meta["n_mature"] == 2
+    assert b_meta["source"] == "gated_median(n=2)"
+    assert abs(curve.b - 0.9) <= 0.05          # young 1.8s excluded from b
+
+
+def test_type_curve_b_falls_back_when_cohort_all_young():
+    from server.valuation.orchestrator import _build_type_curve_with_stats
+    prod = {"Y1": _hyp_series(1.8, 10), "Y2": _hyp_series(1.6, 10)}
+    curve, n_fit, _, b_meta = _build_type_curve_with_stats(prod, "oil")
+    assert n_fit == 2
+    assert b_meta["source"] == "default_no_mature_analogs"
+    assert curve.b == 0.8
+
+
+def test_type_curve_b_clamped():
+    from server.valuation.orchestrator import _build_type_curve_with_stats
+    prod = {"M1": _hyp_series(1.8, 40), "M2": _hyp_series(1.8, 40)}
+    curve, _, _, b_meta = _build_type_curve_with_stats(prod, "oil")
+    assert curve.b == 1.3                      # gated median ~1.8 → clamp ceiling
+    assert b_meta["b"] == 1.3
+
+
 @pytest.mark.db  # run_valuation_for_run loads the strip curve from the DB
 def test_forecast_then_run_valuation_round_trip(monkeypatch):
     months = [f"2020-{i:02d}" for i in range(1, 13)]

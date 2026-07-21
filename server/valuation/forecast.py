@@ -125,6 +125,67 @@ def percentile_curves(curves: list[DeclineCurve], *, pct: float = 0.5) -> Declin
     )
 
 
+def fit_curve_best_b(
+    months: np.ndarray,
+    q: np.ndarray,
+    *,
+    stream: str,
+    b_grid: tuple[float, ...],
+    terminal_di_annual: float = 0.05,
+    min_post_peak_months: int = 6,
+) -> DeclineCurve:
+    """Fixed-b fits across ``b_grid``; returns the minimum-SSE curve.
+
+    A bounded "free b" that cannot bound-ride: every candidate is a stable
+    2-parameter :func:`fit_curve` at a fixed b, compared on post-peak SSE.
+    Backtested 2026-07: for ≥30-post-peak-month wells this halves holdout MAE
+    vs borrowing a cohort b (results/backtest_baseline_v1.json).
+
+    Raises:
+        ValueError if ``b_grid`` is empty, or wherever fit_curve raises (thin
+        history, all-zero post-peak) — data validity is b-independent.
+    """
+    if not b_grid:
+        raise ValueError("fit_curve_best_b requires a non-empty b_grid")
+    q = np.asarray(q, dtype=float)
+    peak_idx = int(np.argmax(q))
+    q_fit = q[peak_idx:]
+    t_rel = np.arange(len(q_fit), dtype=float)
+
+    best: DeclineCurve | None = None
+    best_sse = float("inf")
+    for b in b_grid:
+        curve = fit_curve(months, q, stream=stream, b_fixed=float(b),
+                          terminal_di_annual=terminal_di_annual,
+                          min_post_peak_months=min_post_peak_months)
+        sse = float(np.sum((np.asarray(curve_rate(curve, t_rel)) - q_fit) ** 2))
+        if sse < best_sse:
+            best, best_sse = curve, sse
+    return best
+
+
+def override_b(curve: DeclineCurve, b: float, *, note: str) -> DeclineCurve:
+    """The same curve with a re-sourced ``b``. The terminal switch month depends
+    on (di, b), so it is recomputed; everything else is preserved. ``note`` lands
+    in provenance.notes so the run record says where the b came from."""
+    if curve.di > curve.terminal_di_monthly and b > 1e-6:
+        switch = max(0.0, (curve.di / curve.terminal_di_monthly - 1.0) / (b * curve.di))
+    else:
+        switch = float("inf")
+    return DeclineCurve(
+        qi_peak=curve.qi_peak, di=curve.di, b=float(b),
+        terminal_di_monthly=curve.terminal_di_monthly,
+        switch_month_from_peak=switch,
+        stream=curve.stream,
+        provenance=ForecastProvenance(
+            source=curve.provenance.source,
+            fit_n_input_months=curve.provenance.fit_n_input_months,
+            component_curves=curve.provenance.component_curves,
+            notes=(*curve.provenance.notes, note),
+        ),
+    )
+
+
 def curve_rate(curve: DeclineCurve, t_months: float | np.ndarray) -> float | np.ndarray:
     """Evaluate the curve at t months past peak.
 

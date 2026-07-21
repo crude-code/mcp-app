@@ -1,5 +1,12 @@
-"""Revenue → cashflow → NPV. Two branches: WI (pays capex+opex, gets WI revenue
-share net of taxes/GPT) vs minerals (no capex/opex/GPT, decimal × revenue × (1 − tax))."""
+"""Revenue → cashflow → NPV. Two branches: WI (revenue at NRI, severance on that
+NRI share, GPT deducts + capex + opex on the WI share) vs minerals (no
+capex/opex/GPT, decimal × revenue × (1 − tax)).
+
+Tax incidence: severance is borne pro-rata to REVENUE interest — the WI owner
+pays tax on the NRI share it receives, minerals on its decimal — so summed
+across a well's cap table the engine collects exactly tax × gross, once. GPT is
+the cost-free-royalty convention: royalty/minerals bear no deducts, so the
+working interest absorbs the full deduct burden pro-rata to WI."""
 from typing import Literal
 import numpy as np
 
@@ -40,9 +47,15 @@ def compute_gross_revenue(
     gas_price: float,
     oil_diff: float = config.ECON.oil_diff,
     gas_diff: float = config.ECON.gas_diff,
+    gas_btu_factor: float = config.ECON.gas_btu_factor,
 ) -> np.ndarray:
-    """Gross monthly revenue at the wellhead."""
-    return oil_bbl * (oil_price - oil_diff) + gas_mcf * (gas_price - gas_diff)
+    """Gross monthly revenue at the wellhead.
+
+    Oil: bbl × ($/bbl − diff). Gas: mcf × BTU factor × ($/MMBtu − diff) — the
+    benchmark (Henry Hub / flat deck) and the differential are per MMBtu, so
+    volumes convert via ``gas_btu_factor`` (MMBtu per mcf)."""
+    return (oil_bbl * (oil_price - oil_diff)
+            + gas_mcf * gas_btu_factor * (gas_price - gas_diff))
 
 
 def cashflow_components(
@@ -64,9 +77,10 @@ def cashflow_components(
     Returns ``{gross_rev, net_rev, sev_tax, gpt, capex, opex, net_cashflow}`` —
     each a per-month vector — where
     ``net_cashflow = net_rev − sev_tax − gpt − capex − opex``. WI takes revenue
-    at NRI and bears taxes/GPT/capex/opex on its working-interest share;
-    minerals takes ``decimal`` of revenue net of severance tax only (no
-    GPT/capex/opex)."""
+    at NRI, pays severance on that NRI share (tax follows revenue interest),
+    and bears GPT/capex/opex on its working-interest share (GPT: cost-free
+    royalty — the WI absorbs the deduct burden); minerals takes ``decimal`` of
+    revenue net of severance tax only (no GPT/capex/opex)."""
     n = len(gross_rev)
     capex = capex_per_month if capex_per_month is not None else np.zeros(n)
     opex = opex_per_month if opex_per_month is not None else np.zeros(n)
@@ -75,7 +89,11 @@ def cashflow_components(
         if wi_pct is None or nri_pct is None:
             raise ValueError("wi_pct and nri_pct required for interest_type='wi'")
         net_rev = gross_rev * nri_pct
-        sev_tax = tax_pct * gross_rev * wi_pct
+        # Severance follows the revenue interest: tax on the NRI share the WI
+        # owner actually receives (matching the minerals branch, so cap-table
+        # severance sums to exactly tax × gross). GPT stays on the WI share —
+        # cost-free-royalty convention.
+        sev_tax = tax_pct * gross_rev * nri_pct
         gpt = gpt_pct * gross_rev * wi_pct
     elif interest_type == "minerals":
         if decimal is None:

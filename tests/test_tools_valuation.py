@@ -36,6 +36,19 @@ def test_forecast_wells_tool_surfaces_bounce(monkeypatch):
     assert out["needs_analogs"] == [{"area": "A", "wells": ["x"]}]
 
 
+def test_forecast_wells_tool_catches_stray_stream_level_analog_required(monkeypatch):
+    """Defensive path: if a routing-level AnalogRequired ever escapes the
+    orchestrator's conversion, the tool must still return an actionable
+    analogs_required error — never a bare {"error": "gas"}."""
+    monkeypatch.setattr(srv, "get_current_identity", lambda: {"user_slug": "acme", "user_id": 7})
+    def _boom(**kw):
+        raise srv.AnalogRequired("gas")
+    monkeypatch.setattr(srv, "forecast_wells_for_run", _boom)
+    out = json.loads(srv.forecast_wells(groups=[{"area": "A", "wells": ["x"], "analogs": []}]))
+    assert out["error"] == "analogs_required"
+    assert "gas" in out["message"]
+
+
 def test_run_valuation_tool_returns_artifact_payload(monkeypatch):
     monkeypatch.setattr(srv, "get_current_identity",
                         lambda: {"user_slug": "acme", "user_id": 7})

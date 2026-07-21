@@ -7,9 +7,24 @@ from server.valuation.econ import compute_gross_revenue, compute_net_cashflow, n
 def test_compute_gross_revenue_flat_deck():
     oil_bbl = np.array([100.0, 100.0, 100.0])
     gas_mcf = np.array([200.0, 200.0, 200.0])
-    rev = compute_gross_revenue(oil_bbl, gas_mcf, oil_price=75.0, gas_price=3.0)
-    # 100*75 + 200*3 = 7500 + 600 = 8100 per month
+    rev = compute_gross_revenue(oil_bbl, gas_mcf, oil_price=75.0, gas_price=3.0,
+                                gas_btu_factor=1.0)
+    # 100*75 + 200*1.0*3 = 7500 + 600 = 8100 per month
     assert np.allclose(rev, [8100.0, 8100.0, 8100.0])
+
+
+def test_compute_gross_revenue_converts_mcf_to_mmbtu():
+    """Gas volumes are mcf; the benchmark is $/MMBtu — revenue must carry the
+    BTU factor (house default 1.05), applied after the diff comes off the deck."""
+    from server.valuation import config
+    oil_bbl = np.zeros(2)
+    gas_mcf = np.array([1000.0, 1000.0])
+    rev = compute_gross_revenue(oil_bbl, gas_mcf, oil_price=75.0, gas_price=4.0,
+                                gas_diff=0.5, gas_btu_factor=1.2)
+    assert np.allclose(rev, 1000.0 * 1.2 * 3.5)
+    # Default comes from config.ECON, not a hardcoded 1.0.
+    rev_default = compute_gross_revenue(oil_bbl, gas_mcf, oil_price=75.0, gas_price=4.0)
+    assert np.allclose(rev_default, 1000.0 * config.ECON.gas_btu_factor * 4.0)
 
 
 def test_compute_net_cashflow_wi():
@@ -22,10 +37,10 @@ def test_compute_net_cashflow_wi():
         opex_per_month=np.array([0.0, 0.0]),
         tax_pct=0.075, gpt_pct=0.05,
     )
-    # Month 0: rev × NRI − capex − tax × rev × WI
+    # Month 0: rev × NRI − capex − sev × rev × NRI − gpt × rev × WI
     # net_rev = 10000 * 0.40 = 4000
-    # taxes = (0.075 + 0.05) * 10000 * 0.50 = 625
-    # cf[0] = 4000 - 8_000_000 - 625 = -7_996_625
+    # sev = 0.075 * 10000 * 0.40 = 300; gpt = 0.05 * 10000 * 0.50 = 250
+    # cf[0] = 4000 - 8_000_000 - 300 - 250 = -7_996_550
     assert cf[0] < -7_900_000
     assert cf[1] > 0
 
@@ -76,10 +91,24 @@ def test_cashflow_components_wi_breaks_out_line_items():
         tax_pct=0.075, gpt_pct=0.05,
     )
     assert np.allclose(comp["net_rev"], gross * 0.4)
-    assert np.allclose(comp["sev_tax"], 0.075 * gross * 0.5)
+    # Severance follows revenue interest (NRI); GPT stays on the WI share
+    # (cost-free-royalty convention).
+    assert np.allclose(comp["sev_tax"], 0.075 * gross * 0.4)
     assert np.allclose(comp["gpt"], 0.05 * gross * 0.5)
-    expected_net = gross * 0.4 - 0.075 * gross * 0.5 - 0.05 * gross * 0.5 - np.array([8_000_000.0, 0.0])
+    expected_net = gross * 0.4 - 0.075 * gross * 0.4 - 0.05 * gross * 0.5 - np.array([8_000_000.0, 0.0])
     assert np.allclose(comp["net_cashflow"], expected_net)
+
+
+def test_severance_sums_to_exactly_one_tax_across_cap_table():
+    """A 100% WI / 75% NRI well with a 25% royalty: the WI's severance plus the
+    royalty's severance must equal tax × gross exactly — no double taxation."""
+    from server.valuation.econ import cashflow_components
+    gross = np.array([10_000.0])
+    wi = cashflow_components(gross_rev=gross, interest_type="wi",
+                             wi_pct=1.0, nri_pct=0.75, tax_pct=0.075, gpt_pct=0.0)
+    roy = cashflow_components(gross_rev=gross, interest_type="minerals",
+                              decimal=0.25, tax_pct=0.075, gpt_pct=0.0)
+    assert np.allclose(wi["sev_tax"] + roy["sev_tax"], 0.075 * gross)
 
 
 def test_cashflow_components_minerals_no_gpt_capex_opex():

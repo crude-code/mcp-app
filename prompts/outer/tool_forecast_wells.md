@@ -8,6 +8,9 @@ Pass `groups`: a list of `{area, wells, analogs}`.
 - `analogs` — wells you pick that represent the area. Supply them whenever a
   group has wells that are undrilled, early, or otherwise can't stand on their own
   production. Omit only when every well in the group is a long-term producer.
+  Include several MATURE analogs (≥2 years past peak): the cohort's decline
+  shape (b) is sourced only from those — a cohort of young wells falls back to
+  a house default and the response's `analogs_used.cohort_b` will say so.
 
 The server classifies each well by its own production (long-history producers fit
 their own decline; thin/early producers keep their real peak but borrow the

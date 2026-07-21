@@ -1,5 +1,6 @@
-"""Engine types. NO lateral_norm_ft, NO lateral_scale — the cohort filter's
-±20% lateral clause is the only place lateral enters the model."""
+"""Engine types. NO lateral_norm_ft, NO lateral_scale — analog selection
+(Claude's judgment: comparable laterals in the cohort) is the only place
+lateral enters the model; the server never rescales."""
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -10,7 +11,8 @@ class ForecastProvenance:
     fit_n_input_months: int = 0
     component_curves: tuple["ForecastProvenance", ...] = field(default_factory=tuple)
     notes: tuple[str, ...] = field(default_factory=tuple)
-    strategy: str | None = None                 # "pdp" | "thin_blend" | "climbing" | "pure_analog"
+    strategy: str | None = None                 # "history" | "history_own_b" | "thin_blend" |
+                                                # "climbing" | "pure_analog" | "zero_stream"
 
 
 @dataclass(frozen=True)

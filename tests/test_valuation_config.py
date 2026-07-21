@@ -20,6 +20,7 @@ def test_resolve_price_inputs_defaults_when_empty():
         "horizon_months": ECON.horizon_months,
         "oil_price": ECON.oil_price, "gas_price": ECON.gas_price,
         "oil_diff": ECON.oil_diff, "gas_diff": ECON.gas_diff,
+        "gas_btu_factor": ECON.gas_btu_factor,
         "tax_pct": ECON.tax_pct, "gpt_pct": ECON.gpt_pct,
     }
 
@@ -34,6 +35,11 @@ def test_resolve_price_inputs_reads_price_deck_and_diffs():
     assert out["oil_diff"] == 4.0 and out["gas_diff"] == -0.25
     assert out["horizon_months"] == 240
     assert out["tax_pct"] == 0.05 and out["gpt_pct"] == 0.04
+    assert out["gas_btu_factor"] == ECON.gas_btu_factor   # untouched by other overrides
+
+
+def test_resolve_price_inputs_reads_gas_btu_factor():
+    assert resolve_price_inputs({"gas_btu_factor": 1.2})["gas_btu_factor"] == 1.2
 
 
 def test_resolve_price_inputs_handles_none():

@@ -412,6 +412,45 @@ def test_validate_by_api_membership_accepts_known_and_empty():
     _validate_by_api_membership(None, known)                     # no raise
 
 
+# ── gas revenue through the full economics path (BTU plumbing) ─────────────
+
+def test_economics_from_forecasts_applies_gas_btu_factor():
+    """Integration seam the unit tests can't see: _economics_from_forecasts must
+    thread economics_overrides.gas_btu_factor into the schedule it builds. A
+    gas-only well at BTU 2.0 must show exactly 2× the gross revenue and NPV of
+    the same deal at BTU 1.0 — and the factor must land in the persisted inputs.
+    (Also the only schedule-level test with nonzero GAS volumes — every other
+    schedule test runs oil-only wells.)"""
+    from server.valuation.orchestrator import _economics_from_forecasts
+
+    gas_well = {"oil": _fcdict(0.0, "2026-06-01"), "gas": _fcdict(1000.0, "2026-06-01", "gas")}
+
+    def _run(btu: float) -> dict:
+        return _economics_from_forecasts(
+            forecasts={"W1": gas_well},
+            classifications={"W1": "history"},
+            statuses={"W1": "PRODUCING"},
+            econ_overrides={
+                "interest_type": "wi",
+                "interest": {"wi_pct": 1.0, "nri_pct": 0.8},
+                "price_deck": {"type": "flat", "oil_usd_bbl": 70.0, "gas_usd_mmbtu": 4.0},
+                "forecast_horizon": 24,
+                "effective_date": "2026-06-15",
+                "gas_btu_factor": btu,
+            },
+        )
+
+    lo, hi = _run(1.0), _run(2.0)
+    assert lo["inputs"]["gas_btu_factor"] == 1.0
+    assert hi["inputs"]["gas_btu_factor"] == 2.0
+    lo_gross = sum(lo["schedule"]["totals"]["gross_rev"])
+    hi_gross = sum(hi["schedule"]["totals"]["gross_rev"])
+    assert lo_gross > 0                                   # gas actually flowed
+    assert hi_gross == pytest.approx(2.0 * lo_gross, rel=1e-6)
+    assert hi["npv_at_centers"]["total"] == pytest.approx(
+        2.0 * lo["npv_at_centers"]["total"], rel=1e-9)
+
+
 # ── _resolve_asset_list: cap + dedupe enforcement ──────────────────────────
 
 def test_resolve_asset_list_caps_well_apis():

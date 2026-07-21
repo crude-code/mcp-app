@@ -71,3 +71,43 @@ def test_build_curve_history_fits_own_with_analog_b():
     assert state == WellState.HISTORY and strat == "history"
     assert curve.b == 1.1                 # b borrowed from analog
     assert curve.qi_peak > 0
+
+
+def _synthetic_decline(b: float, n: int, qi=900.0, di=0.08) -> np.ndarray:
+    """Noise-free hyperbolic monthly volumes, peak at t=0."""
+    t = np.arange(n, dtype=float)
+    return qi / np.power(1.0 + b * di * t, 1.0 / b)
+
+
+def test_build_curve_long_history_earns_own_b():
+    """≥30 post-peak months: the well fits its own b (grid-bounded) and the
+    analog's b is ignored — the 2026-07 backtest showed this halves holdout MAE."""
+    q = _synthetic_decline(b=0.8, n=40)
+    months = [f"m{i}" for i in range(40)]
+    curve, state, strat = build_curve(months, q, analog=_analog(), stream="oil")
+    assert state == WellState.HISTORY and strat == "history_own_b"
+    assert abs(curve.b - 0.8) <= 0.051    # recovered, not the analog's 1.1
+    assert 0.3 <= curve.b <= 1.3          # grid-bounded
+
+
+def test_build_curve_long_history_own_b_without_analog():
+    q = _synthetic_decline(b=1.1, n=45)
+    curve, _state, strat = build_curve([f"m{i}" for i in range(45)], q,
+                                       analog=None, stream="oil")
+    assert strat == "history_own_b"
+    assert abs(curve.b - 1.1) <= 0.051
+
+
+def test_build_curve_29_post_peak_still_borrows():
+    q = _synthetic_decline(b=0.5, n=30)   # 29 post-peak months — under the bar
+    curve, _state, strat = build_curve([f"m{i}" for i in range(30)], q,
+                                       analog=_analog(), stream="oil")
+    assert strat == "history"
+    assert curve.b == 1.1                 # still the analog's b
+
+
+def test_analog_required_carries_stream_and_message():
+    with pytest.raises(AnalogRequired) as ei:
+        build_curve([], np.array([], dtype=float), analog=None, stream="gas")
+    assert ei.value.stream == "gas"
+    assert "gas" in str(ei.value)

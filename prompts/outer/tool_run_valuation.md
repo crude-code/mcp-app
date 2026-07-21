@@ -162,6 +162,7 @@ engine by `tests/test_valuation_defaults_drift.py`.)
 | gas_price | Gas price (flat-deck fallback — default deck is the NYMEX strip) | $3.50 / MMBtu | 3.5 |
 | oil_diff | Oil differential (off the deck) | $0.00 / bbl | 0.0 |
 | gas_diff | Gas differential (off the deck) | $0.00 / MMBtu | 0.0 |
+| gas_btu_factor | Gas heat content (converts mcf to MMBtu) | 1.05 MMBtu/mcf | 1.05 |
 | tax_pct | Severance / production tax | 7.5% | 0.075 |
 | gpt_pct | Gathering, processing & transport | 5.0% | 0.05 |
 | opex_per_bbl_usd | Operating cost (per bbl) | $0.00 | 0.0 |

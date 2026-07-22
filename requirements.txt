@@ -1,5 +1,5 @@
 # Direct dependencies:
-#   anthropic         — Claude API client (used by ingest/news.py curation)
+#   anthropic         — Claude API client (the host's scheduled ingest jobs share this venv)
 #   fastapi           — Renderer API server
 #   fastmcp           — MCP server framework
 #   numpy             — Arps decline math (server/valuation)

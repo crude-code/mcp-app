@@ -30,7 +30,7 @@ function tryParse(raw: string): any | null {
   }
 }
 
-export function EIApp() {
+export function CCApp() {
   const [mapToken, setMapToken] = useState<string | undefined>();
   const [error, setError] = useState<string | null>(null);
   const [hostContext, setHostContext] = useState<McpUiHostContext | undefined>();
@@ -60,7 +60,7 @@ export function EIApp() {
   }, []);
 
   const { app, isConnected, error: connError } = useApp({
-    appInfo: { name: "Crude Code", version: "2.0.0" },
+    appInfo: { name: "Crude Code", version: "0.1.0" },
     capabilities: {},
     onAppCreated,
     autoResize: false,

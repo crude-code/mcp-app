@@ -4,8 +4,8 @@ The valuation tool prompt documents every house default so Claude can resolve th
 assumptions grid it shows the user *before* running. If those documented numbers
 drift from the engine's actual defaults (server/valuation/config.py), the grid lies
 — the user confirms one set of assumptions and the engine runs another. This test
-parses the machine-readable block between `<!-- ei:econ_defaults:start -->` and
-`<!-- ei:econ_defaults:end -->` (the `Field` and `Raw` columns) and asserts every
+parses the machine-readable block between `<!-- cc:econ_defaults:start -->` and
+`<!-- cc:econ_defaults:end -->` (the `Field` and `Raw` columns) and asserts every
 documented default equals the live value on `config.ECON`.
 
 If you change a default in config.py, update the table; if you add a field, add a
@@ -19,7 +19,7 @@ from server.valuation import config
 
 _PROMPT = Path(__file__).resolve().parent.parent / "prompts/outer/tool_run_valuation.md"
 _BLOCK_RE = re.compile(
-    r"<!-- ei:econ_defaults:start -->\s*(.*?)\s*<!-- ei:econ_defaults:end -->",
+    r"<!-- cc:econ_defaults:start -->\s*(.*?)\s*<!-- cc:econ_defaults:end -->",
     re.DOTALL,
 )
 
@@ -54,7 +54,7 @@ def _parse_block() -> dict[str, str]:
     text = _PROMPT.read_text()
     match = _BLOCK_RE.search(text)
     assert match, (
-        "missing <!-- ei:econ_defaults:start --> ... <!-- ei:econ_defaults:end --> "
+        "missing <!-- cc:econ_defaults:start --> ... <!-- cc:econ_defaults:end --> "
         "block in prompts/outer/tool_run_valuation.md"
     )
     rows: dict[str, str] = {}

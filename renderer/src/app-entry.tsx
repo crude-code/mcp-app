@@ -1,13 +1,13 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { EIApp } from "./EIApp";
+import { CCApp } from "./CCApp";
 import { ErrorBoundary } from "./ErrorBoundary";
 import "./index.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ErrorBoundary>
-      <EIApp />
+      <CCApp />
     </ErrorBoundary>
   </StrictMode>
 );

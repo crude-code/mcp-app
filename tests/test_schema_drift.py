@@ -4,7 +4,7 @@ If you add a schema to WIDGET_SCHEMAS or EXPLORATION_SCHEMAS and forget to
 update prompts/outer/shared_schema.md (or vice versa), this fails.
 
 The agent-facing schema reference lives between
-`<!-- ei:schemas:start -->` and `<!-- ei:schemas:end -->` in
+`<!-- cc:schemas:start -->` and `<!-- cc:schemas:end -->` in
 prompts/outer/shared_schema.md. Each schema is its own bullet of the form
 ``- `name` — description``. This test extracts the leading backticked
 identifier from each bullet and asserts the set matches EXPLORATION_SCHEMAS
@@ -18,7 +18,7 @@ from utils.schemas import EXPLORATION_SCHEMAS, WIDGET_SCHEMAS
 
 _SHARED_SCHEMA = Path(__file__).resolve().parent.parent / "prompts/outer/shared_schema.md"
 _BLOCK_RE = re.compile(
-    r"<!-- ei:schemas:start -->\s*(.*?)\s*<!-- ei:schemas:end -->",
+    r"<!-- cc:schemas:start -->\s*(.*?)\s*<!-- cc:schemas:end -->",
     re.DOTALL,
 )
 
@@ -33,7 +33,7 @@ def test_shared_schema_block_matches_code():
     text = _SHARED_SCHEMA.read_text()
     match = _BLOCK_RE.search(text)
     assert match, (
-        "missing <!-- ei:schemas:start --> ... <!-- ei:schemas:end --> block "
+        "missing <!-- cc:schemas:start --> ... <!-- cc:schemas:end --> block "
         "in prompts/outer/shared_schema.md"
     )
     listed = set(re.findall(r"^- `([a-z_]+)`", match.group(1), re.MULTILINE))

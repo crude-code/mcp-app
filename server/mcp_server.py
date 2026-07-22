@@ -1,8 +1,10 @@
-"""Energy Insights MCP Server.
+"""Crude Code MCP Server.
 
 Synchronous tool registry — run_sql, forecast_wells, run_valuation, map, get_skill,
 plus the renderer-only read tool (get_map_full). No inner agents.
 """
+
+__version__ = "0.1.0"
 
 import json as _json
 import logging as _logging
@@ -129,8 +131,8 @@ def map_view() -> str:
 
 # ── run_sql ────────────────────────────────────────────────────────────────
 
-_run_sql_log = _logging.getLogger("ei.run_sql")
-_map_log = _logging.getLogger("ei.map")
+_run_sql_log = _logging.getLogger("cc.run_sql")
+_map_log = _logging.getLogger("cc.map")
 
 
 @mcp.tool(description=compose_run_sql_doc())
@@ -169,7 +171,7 @@ def run_sql(sql: str, schema: str = "public") -> str:
 
 # ── get_skill ────────────────────────────────────────────────────────────────
 
-_get_skill_log = _logging.getLogger("ei.get_skill")
+_get_skill_log = _logging.getLogger("cc.get_skill")
 
 
 @mcp.tool(description=_load_prompt("outer/tool_get_skill.md"))
@@ -193,7 +195,7 @@ def get_skill(name: str = "") -> str:
 
 # ── save_dataroom_extraction ─────────────────────────────────────────────────
 
-_save_extraction_log = _logging.getLogger("ei.save_dataroom_extraction")
+_save_extraction_log = _logging.getLogger("cc.save_dataroom_extraction")
 
 # Generous vs. a typical extraction.json (tens of KB), but a hard stop before
 # someone stores a whole parsed dataroom as one row.
@@ -258,7 +260,7 @@ def save_dataroom_extraction(extraction: dict, label: str = "", extraction_id: s
 
 # ── message_team ─────────────────────────────────────────────────────────────
 
-_message_team_log = _logging.getLogger("ei.message_team")
+_message_team_log = _logging.getLogger("cc.message_team")
 
 # Per-user cap: enough for a rough session, a stop on a runaway loop.
 _MESSAGE_RATE_CAP = 10          # per window

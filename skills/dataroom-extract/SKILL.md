@@ -95,7 +95,7 @@ You are NOT writing a report or running a valuation. You are extracting **facts,
 
 **Provenance is required on every record.** `source_file` = the relative path inside the room. `source_locator` by convention: Excel `"sheet:Name;row:N"` (1-based, header = row 1), PDF `"page:N"`. Use `notes` only when you *inferred* a value rather than read it.
 
-**No database here.** Unlike the server pipeline, you have **no access to the Energy Insights well database** in this sandbox. Leave `Well.public_well_object` null. When the room gives only a well **name**, leave `api` null and say so in `notes` / `extraction_notes` — a later server step resolves APIs against public data. (MCP tools remain available — persisting via `save_dataroom_extraction` is expected; it's the well-database *lookup* you don't have.)
+**No database here.** Unlike the server pipeline, you have **no access to the Crude Code well database** in this sandbox. Leave `Well.public_well_object` null. When the room gives only a well **name**, leave `api` null and say so in `notes` / `extraction_notes` — a later server step resolves APIs against public data. (MCP tools remain available — persisting via `save_dataroom_extraction` is expected; it's the well-database *lookup* you don't have.)
 
 **API formatting.** When the room states an API, normalize to `SS-CCC-WWWWW` (10 digits, two dashes; strip a 14-digit API to its first 10). Never fabricate digits to reach that shape.
 

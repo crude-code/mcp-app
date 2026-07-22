@@ -1,7 +1,7 @@
-"""Centralized logging — writes to logs/ei.log with request tracing.
+"""Centralized logging — writes to logs/cc.log with request tracing.
 
 Every tool call gets a request_id that propagates through the full
-call chain: server → handler → agent → SQL. One ID per user request.
+call chain: server → tool → SQL. One ID per user request.
 """
 
 import logging
@@ -24,7 +24,7 @@ class _RequestFormatter(logging.Formatter):
 
 
 def setup():
-    """Configure file logging for all ei.* loggers. Safe to call multiple times."""
+    """Configure file logging for all cc.* loggers. Safe to call multiple times."""
     global _setup_done
     if _setup_done:
         return
@@ -33,10 +33,10 @@ def setup():
     log_dir = Path(__file__).resolve().parent.parent / "logs"
     log_dir.mkdir(exist_ok=True)
 
-    # 50 MB per file, keep 10 — so ei.log history stays under ~500 MB even
-    # if the beta tenant loops hot. Rollover is synchronous on write.
+    # 50 MB per file, keep 10 — so cc.log history stays under ~500 MB even
+    # if a tenant loops hot. Rollover is synchronous on write.
     handler = RotatingFileHandler(
-        log_dir / "ei.log",
+        log_dir / "cc.log",
         maxBytes=50_000_000,
         backupCount=10,
     )
@@ -46,7 +46,7 @@ def setup():
     )
     handler.setFormatter(formatter)
 
-    root = logging.getLogger("ei")
+    root = logging.getLogger("cc")
     root.setLevel(logging.INFO)
     root.addHandler(handler)
 
@@ -61,7 +61,7 @@ def trace(tool_name: str, **context):
     """
     rid = uuid.uuid4().hex[:8]
     token = request_id.set(rid)
-    log = logging.getLogger("ei.server")
+    log = logging.getLogger("cc.server")
 
     ctx = " ".join(f"{k}={v}" for k, v in context.items()) if context else ""
     log.info("→ %s %s", tool_name, ctx)

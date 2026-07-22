@@ -155,7 +155,7 @@ These are the values the engine uses when the user gives no number. Resolve the 
 from this table; show the **Label**, never the field name. (Kept in sync with the
 engine by `tests/test_valuation_defaults_drift.py`.)
 
-<!-- ei:econ_defaults:start -->
+<!-- cc:econ_defaults:start -->
 | Field | Label (show this) | House default | Raw |
 |-------|-------------------|---------------|-----|
 | oil_price | Oil price (flat-deck fallback — default deck is the NYMEX strip) | $70.00 / bbl | 70.0 |
@@ -176,4 +176,4 @@ engine by `tests/test_valuation_defaults_drift.py`.)
 | discount_rate_pud | Discount rate — permit (PUD) | 25% | 0.25 |
 | rate_spread | Discount-rate band (± around each center) | ±2.5% | 0.025 |
 | deck_oil_flat | Risked-cube flat oil decks (after Strip) | $70 / $75 / $80 | 70,75,80 |
-<!-- ei:econ_defaults:end -->
+<!-- cc:econ_defaults:end -->

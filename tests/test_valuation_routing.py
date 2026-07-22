@@ -107,7 +107,7 @@ def test_build_curve_29_post_peak_still_borrows():
 
 
 def test_analog_required_carries_stream_and_message():
-    with pytest.raises(AnalogRequired) as ei:
+    with pytest.raises(AnalogRequired) as exc_info:
         build_curve([], np.array([], dtype=float), analog=None, stream="gas")
-    assert ei.value.stream == "gas"
-    assert "gas" in str(ei.value)
+    assert exc_info.value.stream == "gas"
+    assert "gas" in str(exc_info.value)

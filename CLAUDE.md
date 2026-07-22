@@ -113,11 +113,11 @@ Inline React app rendered inside Claude Desktop. Single-pass build:
 `dist/app.html`.
 
 - Vite + React + TypeScript + Tailwind v4 + `vite-plugin-singlefile`
-- Entry: `app.html` → `src/app-entry.tsx` → `EIApp`
+- Entry: `app.html` → `src/app-entry.tsx` → `CCApp`
 - Build: `cd renderer && npm run build` → `dist/app.html` (gated on `tsc -b` —
   vite alone does not type-check)
 
-**Render flow:** `EIApp` parses `ontoolresult` payloads and looks at the
+**Render flow:** `CCApp` parses `ontoolresult` payloads and looks at the
 invoking tool name; only `map` triggers a render — it mounts `MapView` (a
 MapLibre GL well/unit/PLSS map), which fetches the full hydrated map spec
 **once** via `get_map_full(map_token)` and shows a plain loading spinner
@@ -128,7 +128,7 @@ directly from the tool's `data` payload and the frozen template (`viewer`)
 that rides in the same response. There is no streaming/event-log path.
 
 **Component tree:**
-- `src/EIApp.tsx` — app shell; on `map` tool results, mounts `MapView`.
+- `src/CCApp.tsx` — app shell; on `map` tool results, mounts `MapView`.
 - `src/components/MapView.tsx` — MapLibre GL map surface, including its own
   loading/error states.
 - `src/ErrorBoundary.tsx` — top-level error boundary.
@@ -216,7 +216,7 @@ rather than having permanently in its system prompt. Each skill is a subfolder
 with a `SKILL.md` (YAML-ish `name`/`description` frontmatter + instructions)
 plus whatever supporting files it references; `server/skills.py` scans the
 directory (`list_skills`) and loads a bundle (`load_skill`) — pure file I/O,
-no DB/network/identity, so it works with no `EI_DB_URL` set. Drop a new
+no DB/network/identity, so it works with no `CC_DB_URL` set. Drop a new
 subfolder with a `SKILL.md` in to add a skill; nothing else registers it.
 - **`dataroom-extract/`** — turns an uploaded oil & gas dataroom (LOS, check
   stubs, AFEs, production reports, title, division orders) into a structured
@@ -250,7 +250,7 @@ LLM-facing text, loaded via `utils/prompts.py` (`load("outer/...")`).
 - **schemas.py** — Single source of truth for queryable DB schemas.
   `WIDGET_SCHEMAS` (widgets, re-run on every render) and `EXPLORATION_SCHEMAS`
   (`run_sql`, adds `shapes`). Drift guard: `tests/test_schema_drift.py`.
-- **db.py** — Connection pool (EI Postgres / RDS). `query(sql, params?, schema?,
+- **db.py** — Connection pool (the Crude Code Postgres). `query(sql, params?, schema?,
   statement_timeout_ms?)` returns list of dicts, coerces Decimal → float.
 - **sql_guard.py** — Shared SELECT validator + `run_guarded` executor +
   `dry_run`. Validates structure (SELECT/WITH only, single statement, no
@@ -273,17 +273,17 @@ LLM-facing text, loaded via `utils/prompts.py` (`load("outer/...")`).
 - **ses.py** — AWS SES team notifications (`send_notification`), destination
   hardwired to `agent@crudecode.dev`. Trimmed port of the pre-rebuild module;
   creds from env with boto3 default-chain fallback.
-- **log.py** — centralized file logging with request-ID tracing → `logs/ei.log`.
+- **log.py** — centralized file logging with request-ID tracing → `logs/cc.log`.
 - **env.py** — shared `.env` loader.
 - **run_query.py** — CLI: `echo "SELECT ..." | .venv/bin/python utils/run_query.py`
-  (hits `EI_DB_URL`). For Supabase tables use `utils.platform._query`.
+  (hits `CC_DB_URL`). For Supabase tables use `utils.platform._query`.
 
 ### Market data
 
 The platform reads commodity prices from `market.spot_prices` (daily close,
 WTI / Brent / Henry Hub) and related `market.*` / `public.*` / `shapes.*` /
 `financials.*` tables. Populating those tables (primary-source ingestion) is out
-of scope for this repo — point `EI_DB_URL` at a Postgres database whose schema
+of scope for this repo — point `CC_DB_URL` at a Postgres database whose schema
 matches `utils/schemas.py` and `prompts/outer/shared_schema.md`.
 
 ## Running Locally
@@ -298,7 +298,8 @@ The renderer runs **inside** Claude Desktop, not a browser. To update it:
 
 Always use `.venv/bin/python`. Never bare `python` / `python3`.
 
-`.env` at repo root needs at least `EI_DB_URL` and `ANTHROPIC_API_KEY`.
+`.env` at repo root needs at least `CC_DB_URL` (legacy name `EI_DB_URL` still
+accepted) and `SUPABASE_DATABASE_URL`.
 
 ## Deploy
 
@@ -320,7 +321,7 @@ Always use `.venv/bin/python`. Never bare `python` / `python3`.
 ### Pytest suite (`tests/`)
 Run: `.venv/bin/pytest -q`.
 - `tests/conftest.py` — adds repo root to `sys.path`, exposes `fake_identity`,
-  auto-skips tests marked `db` (no `EI_DB_URL`), `anthropic` (no
+  auto-skips tests marked `db` (no `CC_DB_URL`), `anthropic` (no
   `ANTHROPIC_API_KEY`), and `network` (no `--run-network`); purges sentinel
   `valuation_runs` rows at session end.
 - Coverage spans the live surface: `run_sql` + the valuation tools

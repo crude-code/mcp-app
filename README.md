@@ -30,6 +30,8 @@ See [`CLAUDE.md`](./CLAUDE.md) for the full architecture reference.
 - **`forecast_wells`** / **`run_valuation`** — well-decline forecasting and economics, returning the data behind a claude.ai deal-sheet artifact
 - **`map`** — a MapLibre GL well/unit/PLSS map
 - **`get_skill`** — fetches a packaged, occasional-use procedure (e.g. dataroom extraction)
+- **`save_dataroom_extraction`** — persists a dataroom extraction so the deal record outlives the chat
+- **`message_team`** — files bugs, feedback, and data requests to the team (durable row + best-effort email)
 
 ## Requirements
 
@@ -37,7 +39,7 @@ See [`CLAUDE.md`](./CLAUDE.md) for the full architecture reference.
 - Node 20+ (for the renderer build)
 - A Postgres database whose schema matches `utils/schemas.py` and
   `prompts/outer/shared_schema.md`. **Populating that database (primary-source
-  ingestion) is out of scope for this repo** — point `EI_DB_URL` at your own.
+  ingestion) is out of scope for this repo** — point `CC_DB_URL` at your own.
 
 ## Quick start
 
@@ -47,7 +49,7 @@ python -m venv .venv
 .venv/bin/pip install -r requirements.txt
 
 # 2. Configure environment
-cp .env.example .env   # then fill in EI_DB_URL and SUPABASE_DATABASE_URL
+cp .env.example .env   # then fill in CC_DB_URL and SUPABASE_DATABASE_URL
 
 # 3. Run the MCP server (port 9000, /mcp endpoint)
 .venv/bin/python server/mcp_server.py

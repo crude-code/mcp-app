@@ -1,4 +1,4 @@
-"""Shared pytest fixtures for the EI Plugins test suite."""
+"""Shared pytest fixtures for the Crude Code test suite."""
 
 import os
 import sys
@@ -63,10 +63,10 @@ def _purge_valuation_test_rows():
 
 def pytest_collection_modifyitems(config, items):
     """Auto-skip db/anthropic/network tests if prerequisites are missing."""
-    skip_db = pytest.mark.skip(reason="EI_DB_URL not set")
+    skip_db = pytest.mark.skip(reason="CC_DB_URL not set")
     skip_anthropic = pytest.mark.skip(reason="ANTHROPIC_API_KEY not set")
     skip_network = pytest.mark.skip(reason="needs --run-network")
-    has_db = bool(os.environ.get("EI_DB_URL"))
+    has_db = bool(os.environ.get("CC_DB_URL") or os.environ.get("EI_DB_URL"))
     has_anthropic = bool(os.environ.get("ANTHROPIC_API_KEY"))
     run_network = config.getoption("--run-network")
     for item in items:

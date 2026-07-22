@@ -3,7 +3,7 @@
 A *skill* is a subfolder of the repo-root ``skills/`` directory containing a
 ``SKILL.md`` with YAML-ish frontmatter (``name`` / ``description``). This
 module is pure: it only reads static files, with no DB / network / identity,
-so it works even when ``EI_DB_URL`` is unset.
+so it works even when ``CC_DB_URL`` is unset.
 
 ``list_skills()`` returns the catalog; ``load_skill(name)`` returns the full
 bundle (the SKILL.md text plus every other file in the folder as text).

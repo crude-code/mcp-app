@@ -4,13 +4,13 @@ All tables live on the Crude Code Postgres database.
 
 ## Allowed Schemas
 
-<!-- ei:schemas:start -->
+<!-- cc:schemas:start -->
 - `public` — well data (wells, production, operators)
 - `market` — commodity prices, futures, news, weekly supply, STEO forecasts
 - `financials` — SEC-derived operator financials (income, balance_sheet, cash_flow, reserves, operator_production)
 - `features` — DJ development cohorts (cohorts, subcohorts, well_assignments, parent_wells). DJ basin only today.
 - `shapes` — PLSS geometry (townships, sections) and LandtracUnit polygons (landtrac_units, landtrac_unit_wells). **Exploration only** — `shapes.*` cannot appear in a `map` layer query, only in `run_sql`.
-<!-- ei:schemas:end -->
+<!-- cc:schemas:end -->
 
 Other schemas (`dataroom`, `platform`, etc.) are not accessible. Always qualify tables with the schema prefix (`market.spot_prices`, not `spot_prices`).
 

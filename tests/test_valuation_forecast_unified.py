@@ -33,9 +33,9 @@ def _patch(monkeypatch, metas, prod):
 def test_bounce_when_group_needs_analogs_and_has_none(monkeypatch):
     metas = {"P1": _meta("P1", "PERMITTED")}
     _patch(monkeypatch, metas, prod={})           # PUD, no production -> needs analogs
-    with pytest.raises(AnalogsRequired) as ei:
+    with pytest.raises(AnalogsRequired) as exc_info:
         forecast_wells_for_run(run_id=None, groups=[{"area": "A", "wells": ["P1"], "analogs": []}])
-    assert ei.value.needs_analogs == [{"area": "A", "wells": ["P1"]}]
+    assert exc_info.value.needs_analogs == [{"area": "A", "wells": ["P1"]}]
 
 
 def test_history_only_group_does_not_bounce(monkeypatch):
@@ -99,9 +99,9 @@ def test_per_stream_analog_need_bounces_cleanly(monkeypatch):
     gas = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]    # CLIMBING
     metas = {"H1": _meta("H1", "PRODUCING")}
     _patch(monkeypatch, metas, prod={"H1": {"months": months, "oil_bbl": oil, "gas_mcf": gas}})
-    with pytest.raises(AnalogsRequired) as ei:
+    with pytest.raises(AnalogsRequired) as exc_info:
         forecast_wells_for_run(run_id=None, groups=[{"area": "A", "wells": ["H1"], "analogs": []}])
-    assert ei.value.needs_analogs == [{"area": "A", "wells": ["H1"]}]
+    assert exc_info.value.needs_analogs == [{"area": "A", "wells": ["H1"]}]
 
 
 def test_per_stream_need_satisfied_by_analogs(monkeypatch):

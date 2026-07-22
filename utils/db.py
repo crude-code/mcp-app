@@ -1,7 +1,8 @@
-"""Shared database connection for all plugins.
+"""Shared database connection for the platform.
 
-Connects to the Energy Insights Postgres database. Reads EI_DB_URL
-from a .env file at the repo root if present, otherwise from environment.
+Connects to the Crude Code Postgres database. Reads CC_DB_URL (legacy
+name EI_DB_URL still accepted) from a .env file at the repo root if
+present, otherwise from environment.
 
 Uses a module-level connection pool (lazy-initialized) so connections
 are reused across calls instead of opening a new one per query.
@@ -25,8 +26,11 @@ def _get_pool() -> ConnectionPool:
     """Return the module-level pool, creating it on first use."""
     global _pool
     if _pool is None:
+        conninfo = os.environ.get("CC_DB_URL") or os.environ.get("EI_DB_URL")
+        if not conninfo:
+            raise RuntimeError("CC_DB_URL is not set")
         _pool = ConnectionPool(
-            conninfo=os.environ["EI_DB_URL"],
+            conninfo=conninfo,
             min_size=2,
             max_size=20,
             check=ConnectionPool.check_connection,

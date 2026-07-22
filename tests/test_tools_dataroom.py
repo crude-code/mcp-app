@@ -3,6 +3,7 @@ import json
 import pytest
 
 import server.mcp_server as srv
+from server.extraction_transport import ENTITY_LISTS, REVENUE_HEADER
 
 
 _IDENTITY = {"user_slug": "acme", "user_id": 7}
@@ -40,11 +41,10 @@ def test_happy_path_mints_and_reports(monkeypatch):
     monkeypatch.setattr(srv._extraction_store, "save", fake_save)
     out = json.loads(srv.save_dataroom_extraction(
         extraction=_SAMPLE, label="  Bison Whitetail  "))
-    assert out == {
-        "extraction_id": "11111111-2222-3333-4444-555555555555",
-        "label": "Bison Whitetail",
-        "saved": True,
-    }
+    assert out["extraction_id"] == "11111111-2222-3333-4444-555555555555"
+    assert out["label"] == "Bison Whitetail"
+    assert out["saved"] is True
+    assert out["stored"] == {key: 0 for key in ENTITY_LISTS}
     assert seen["user_id"] == 7
     assert seen["extraction"] == _SAMPLE
     assert seen["label"] == "Bison Whitetail"
@@ -64,6 +64,40 @@ def test_resave_passes_extraction_id_through(monkeypatch):
         extraction=_SAMPLE, extraction_id="abc-id"))
     assert out["extraction_id"] == "abc-id"
     assert seen["extraction_id"] == "abc-id"
+
+
+def test_csv_kit_expands_before_store(monkeypatch):
+    monkeypatch.setattr(srv, "get_current_identity", lambda: dict(_IDENTITY))
+    seen = {}
+
+    def fake_save(**kw):
+        seen.update(kw)
+        return "id-1"
+
+    monkeypatch.setattr(srv._extraction_store, "save", fake_save)
+    csv_text = (",".join(REVENUE_HEADER) + "\n"
+                + "05-1,,2025-10-01,2025-12-25,OIL,oil,3605,bbl,68.4,"
+                + "246582,11346,4190,231046,0.656,W,Falcon,1,1,\n")
+    out = json.loads(srv.save_dataroom_extraction(
+        extraction={"deal": {"title": "x"}, "revenue_observations": []},
+        revenue_csv=csv_text,
+        sources={"1": ["Check Stubs/x.pdf", "page:{n}"]},
+    ))
+    assert out["saved"] is True
+    assert out["stored"]["revenue_observations"] == 1
+    # the store received the EXPANDED canonical rows, not CSV
+    row = seen["extraction"]["revenue_observations"][0]
+    assert row["gross_revenue"] == 246582.0
+    assert row["provenance"] == {"source_file": "Check Stubs/x.pdf",
+                                 "source_locator": "page:1", "notes": None}
+
+
+def test_transport_error_surfaces_as_error(monkeypatch):
+    monkeypatch.setattr(srv, "get_current_identity", lambda: dict(_IDENTITY))
+    out = json.loads(srv.save_dataroom_extraction(
+        extraction={"deal": {"title": "x"}},
+        revenue_csv="bad,header\n1,2\n", sources={}))
+    assert "header line must be exactly" in out["error"]
 
 
 @pytest.mark.parametrize("exc", [LookupError("id not found for this user"),

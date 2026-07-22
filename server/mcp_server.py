@@ -45,6 +45,9 @@ from server.maps.spec import parse_map_spec, MapSpecError
 from server.maps.hydrate import hydrate_map, MapHydrateError
 from server.skills import list_skills, load_skill, SkillNotFound
 from server.extraction_store import ExtractionStore
+from server.extraction_transport import (
+    TransportError, entity_counts, unpack_extraction,
+)
 
 _extraction_store = ExtractionStore()
 
@@ -195,9 +198,13 @@ _MAX_EXTRACTION_BYTES = 2_000_000
 
 
 @mcp.tool(description=_load_prompt("outer/tool_save_dataroom_extraction.md"))
-def save_dataroom_extraction(extraction: dict, label: str = "", extraction_id: str = "") -> str:
-    """Persist a dataroom-extract ExtractionResult verbatim; insert on first
-    save, user-scoped overwrite when extraction_id is supplied."""
+def save_dataroom_extraction(extraction: dict, label: str = "", extraction_id: str = "",
+                             production_csv: str = "", revenue_csv: str = "",
+                             sources: dict | None = None) -> str:
+    """Persist a dataroom-extract ExtractionResult; the two tall tables may
+    arrive CSV-packed (persist_pack.py kit) and are expanded back to the
+    canonical shape before storage. Insert on first save, user-scoped
+    overwrite when extraction_id is supplied. Echoes stored entity counts."""
     identity = get_current_identity()
     if not identity:
         return _json.dumps({"error": "Could not identify user"})
@@ -205,7 +212,18 @@ def save_dataroom_extraction(extraction: dict, label: str = "", extraction_id: s
     with trace("save_dataroom_extraction", user=identity["user_slug"]):
         if not isinstance(extraction, dict) or not extraction:
             return _json.dumps({"error": "extraction must be the non-empty ExtractionResult object"})
-        size = len(_json.dumps(extraction).encode())
+
+        try:
+            full = unpack_extraction(
+                extraction,
+                production_csv=production_csv or "",
+                revenue_csv=revenue_csv or "",
+                sources=sources,
+            )
+        except TransportError as e:
+            return _json.dumps({"error": str(e)})
+
+        size = len(_json.dumps(full).encode())
         if size > _MAX_EXTRACTION_BYTES:
             return _json.dumps({"error": f"extraction too large ({size} bytes; cap {_MAX_EXTRACTION_BYTES})"})
 
@@ -213,7 +231,7 @@ def save_dataroom_extraction(extraction: dict, label: str = "", extraction_id: s
         try:
             eid = _extraction_store.save(
                 user_id=identity["user_id"],
-                extraction=extraction,
+                extraction=full,
                 label=clean_label,
                 extraction_id=extraction_id.strip() or None,
             )
@@ -223,7 +241,16 @@ def save_dataroom_extraction(extraction: dict, label: str = "", extraction_id: s
             _save_extraction_log.error("save_dataroom_extraction failed: %s", e)
             return _json.dumps({"error": str(e)})
 
-        return _json.dumps({"extraction_id": eid, "label": clean_label, "saved": True})
+        stored = entity_counts(full)
+        _save_extraction_log.info(
+            "stored %s label=%r bytes=%d", stored, clean_label, size
+        )
+        return _json.dumps({
+            "extraction_id": eid,
+            "label": clean_label,
+            "saved": True,
+            "stored": stored,
+        })
 
 
 # ── map ────────────────────────────────────────────────────────────────────

@@ -28,14 +28,33 @@ You are NOT writing a report or running a valuation. You are extracting **facts,
 3. **Scope.** Decide which entities this room actually supports. Extract what's there; skip what isn't. A room with no LOS has no `expenses`; a working-interest package usually has no `tracts`.
 4. **Extract** into the schema (see *What matters* and *Conventions*).
 5. **Write `extraction.json`** — one `ExtractionResult`.
-6. **Persist it** — call the `save_dataroom_extraction` MCP tool with the full
-   extraction and a short `label` (the deal/teaser title). Do this every run,
-   right after the file is written, even for a partial extraction — the stored
-   copy is what makes the deal traceable later. Keep the returned
-   `extraction_id`: if the extraction is corrected after user review, re-call
-   the tool with that same `extraction_id` so the stored copy is updated in
-   place, not duplicated. If the save returns an error, tell the user and keep
-   going — never block the extraction or the viewer on persistence.
+6. **Persist it** — every run, right after the file is written, even for a
+   partial extraction. The platform durably keeps the room's *private
+   economics* (interests, realized prices/taxes/deductions, LOS/AFE expenses,
+   deal, wells, tracts, division orders, documents); the sandbox copy dies
+   with this session. Run the bundled packer, then make ONE tool call from
+   its output:
+   ```bash
+   python3 persist_pack.py extraction.json
+   ```
+   Copy the printed fields verbatim into `save_dataroom_extraction`
+   (`extraction`, `revenue_csv`, `production_csv`, `sources`) plus a short
+   `label` (the deal/teaser title).
+   - **Production policy:** the packer omits `production_history` by default —
+     for API'd wells in states the platform ingests (CO/ND/NM/TX/UT/WY),
+     public data already covers it, and it notes the omission in
+     `extraction_notes`. Re-run with `--with-production` when wells are
+     name-only, in another state, or the sheet carries NGL detail worth
+     keeping.
+   - **Verify:** the response echoes `stored` counts — they must equal the
+     packer's `expected_stored`. Any shortfall means rows were lost in
+     transit: re-call with the same `extraction_id` until they match.
+   - Keep the returned `extraction_id`: corrections after user review are
+     re-saved under that same id (re-run the packer first), so the stored
+     copy is updated in place, not duplicated. If the save returns an error
+     (row-precise for CSV problems), fix and retry once; if it still fails,
+     tell the user and keep going — never block the extraction or the viewer
+     on persistence.
 7. **Produce the viewer** — paste the extraction into the bundled component (see
    *The viewer artifact*). Do this every run, even when a valuation follows.
 
@@ -126,6 +145,10 @@ extra to skip when the goal is downstream.
 ## Hard rules
 
 - **Never fabricate.** Missing → null. Unknown → null. Can't verify it → leave null and explain in `extraction_notes`.
+- **Never persist an abbreviated or "representative" copy.** Pack with
+  `persist_pack.py` and send exactly what it prints; verify the `stored`
+  echo against `expected_stored`. The persisted copy is the only durable
+  record — the sandbox file is gone when the session ends.
 - **Never guess an API.** Name-only well → `api: null`.
 - **No OCR.** Image-only PDFs are flagged by triage (`pdf_extractable: false`) — note them in `extraction_notes`; don't invent their contents.
 - **No `.accdb` (Aries) parsing** — note and move on.

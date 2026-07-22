@@ -76,12 +76,22 @@ Tools (all return JSON strings):
   network (fetches are still `trace`-logged, slug read straight from the
   routing header). See `server/skills.py` and `skills/`.
 - **save_dataroom_extraction** — Persists a dataroom-extract
-  `ExtractionResult` verbatim (jsonb blob, no normalization — the contract
-  lives with the skill and evolves there). Insert mints a server-side UUID
-  `extraction_id`; passing an existing `extraction_id` overwrites that row,
-  scoped to the calling user. Backed by `platform.dataroom_extractions` in
-  Supabase via `server/extraction_store.py` (`ExtractionStore`), the same
-  pattern as `run_record.py`. 2 MB payload cap.
+  `ExtractionResult` (jsonb blob, no normalization — the contract lives with
+  the skill and evolves there). The persisted contract is the room's
+  **private economics** (interests, check-stub revenue, LOS/AFE expenses,
+  deal/wells/tracts/DOs/documents); `production_history` is omitted by
+  default (publicly reconstructable by API). The two tall tables travel as
+  CSV strings + a `sources` provenance legend — authored mechanically by the
+  skill's `persist_pack.py`, expanded back to canonical rows by
+  `server/extraction_transport.py` (headers drift-tested against the packer)
+  — so CSV exists only on the wire, never at rest. Response echoes `stored`
+  per-entity counts, which the skill verifies against the packer's
+  `expected_stored` (shortfall → re-save, same id). Insert mints a
+  server-side UUID `extraction_id`; passing an existing `extraction_id`
+  overwrites that row, scoped to the calling user. Backed by
+  `platform.dataroom_extractions` in Supabase via
+  `server/extraction_store.py` (`ExtractionStore`), the same pattern as
+  `run_record.py`. 2 MB payload cap.
 - **get_map_full** — Renderer-only. Returns the full hydrated map spec.
 
 ### MCP App (`renderer/`)
@@ -198,8 +208,9 @@ subfolder with a `SKILL.md` in to add a skill; nothing else registers it.
 - **`dataroom-extract/`** — turns an uploaded oil & gas dataroom (LOS, check
   stubs, AFEs, production reports, title, division orders) into a structured
   `extraction.json` plus a bundled, frozen React viewer artifact
-  (`DataroomViewer.jsx`) Claude pastes the extraction into. The extraction is
-  persisted via `save_dataroom_extraction` (re-saved under the same
+  (`DataroomViewer.jsx`) Claude pastes the extraction into. The extraction's
+  private economics are persisted via `persist_pack.py` →
+  `save_dataroom_extraction` (count-verified; re-saved under the same
   `extraction_id` after corrections). Feeds `forecast_wells` /
   `run_valuation` when the room is headed for a deal.
   (The deal-sheet template is NOT a skill — it rides in `run_valuation`'s
@@ -299,5 +310,7 @@ Run: `.venv/bin/pytest -q`.
 - Coverage spans the live surface: `run_sql` + the valuation tools
   (`forecast_wells`, `run_valuation`), the valuation engine (forecast/econ/
   artifact-payload/strip/routing/backtest), maps, `sql_guard`,
-  `briefing_handle_store` (map tokens), the dataroom extraction store + tool
-  (`test_extraction_store.py`, `test_tools_dataroom.py`), and schema drift.
+  `briefing_handle_store` (map tokens), the dataroom persistence path —
+  store, tool, CSV transport, and the packer round-trip
+  (`test_extraction_store.py`, `test_tools_dataroom.py`,
+  `test_extraction_transport.py`, `test_persist_pack.py`) — and schema drift.

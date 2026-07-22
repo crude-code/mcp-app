@@ -53,6 +53,10 @@ def _purge_valuation_test_rows():
             "DELETE FROM platform.dataroom_extractions WHERE user_id = %s",
             params=[VALUATION_TEST_USER_ID],
         )
+        _query(
+            "DELETE FROM platform.team_messages WHERE user_id = %s",
+            params=[VALUATION_TEST_USER_ID],
+        )
     except Exception:
         pass  # no Supabase env (CI without creds) — nothing was minted either
 

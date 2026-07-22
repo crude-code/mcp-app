@@ -48,8 +48,11 @@ from server.extraction_store import ExtractionStore
 from server.extraction_transport import (
     TransportError, entity_counts, unpack_extraction,
 )
+from server.team_messages import CATEGORIES as MESSAGE_CATEGORIES, TeamMessageStore
+from utils.ses import send_notification
 
 _extraction_store = ExtractionStore()
+_team_messages = TeamMessageStore()
 
 
 _log_setup()
@@ -250,6 +253,81 @@ def save_dataroom_extraction(extraction: dict, label: str = "", extraction_id: s
             "label": clean_label,
             "saved": True,
             "stored": stored,
+        })
+
+
+# ── message_team ─────────────────────────────────────────────────────────────
+
+_message_team_log = _logging.getLogger("ei.message_team")
+
+# Per-user cap: enough for a rough session, a stop on a runaway loop.
+_MESSAGE_RATE_CAP = 10          # per window
+_MESSAGE_RATE_WINDOW_MIN = 60
+
+
+@mcp.tool(description=_load_prompt("outer/tool_message_team.md"))
+def message_team(subject: str, body: str, category: str = "other",
+                 context: dict | None = None) -> str:
+    """File a user message to the Crude Code team: durable row first
+    (platform.team_messages), then best-effort SES email to the team
+    mailbox. Destination is hardwired — never a general email capability."""
+    identity = get_current_identity()
+    if not identity:
+        return _json.dumps({"error": "Could not identify user"})
+
+    with trace("message_team", user=identity["user_slug"], category=category):
+        clean_subject = (subject or "").strip()
+        clean_body = (body or "").strip()
+        if not clean_subject or not clean_body:
+            return _json.dumps({"error": "subject and body are both required"})
+        if category not in MESSAGE_CATEGORIES:
+            return _json.dumps({"error": f"category must be one of {sorted(MESSAGE_CATEGORIES)}"})
+
+        try:
+            if _team_messages.count_recent(
+                identity["user_id"], minutes=_MESSAGE_RATE_WINDOW_MIN,
+            ) >= _MESSAGE_RATE_CAP:
+                return _json.dumps({"error": (
+                    f"rate limit: more than {_MESSAGE_RATE_CAP} messages in "
+                    f"{_MESSAGE_RATE_WINDOW_MIN} minutes — batch further items "
+                    "into one message or wait"
+                )})
+            message_id = _team_messages.save(
+                user_id=identity["user_id"],
+                category=category,
+                subject=clean_subject,
+                body=clean_body,
+                context=context or None,
+            )
+        except Exception as e:
+            _message_team_log.error("message_team store failed: %s", e)
+            return _json.dumps({"error": str(e)})
+
+        # Best-effort email — the row above is the record; a mail hiccup must
+        # never read as a failed filing.
+        user_email = identity.get("user_email") or "unknown"
+        tagged_subject = f"[{category}] [{user_email}] {clean_subject}"
+        tagged_body = (
+            f"From: {identity.get('user_name') or 'Unknown'} <{user_email}>\n"
+            f"Org: {identity.get('org_name') or 'Unknown'}\n"
+            f"Message-ID: {message_id}\n"
+            + (f"Context: {_json.dumps(context)}\n" if context else "")
+            + f"\n---\n\n{clean_body}"
+        )
+        email_sent = False
+        try:
+            send_notification(tagged_subject, tagged_body)
+            _team_messages.mark_emailed(message_id)
+            email_sent = True
+        except Exception as e:
+            _message_team_log.warning(
+                "message %s stored but email deferred: %s", message_id, e
+            )
+
+        return _json.dumps({
+            "success": True,
+            "message_id": message_id,
+            "email_sent": email_sent,
         })
 
 

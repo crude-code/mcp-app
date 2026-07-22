@@ -24,6 +24,9 @@ everything through a handful of MCP tools:
   calls `get_skill(name)` to fetch the instructions and follows them directly.
 - When the dataroom-extract skill produces an `extraction.json`, it persists
   it via `save_dataroom_extraction` so the deal record outlives the chat.
+- When the user hits friction or wants something (a bug, a dataset request,
+  a feature wish) it files `message_team` — durable row + best-effort email
+  to the team.
 
 Every tool is synchronous and server-side. The renderer today only ever
 renders maps: it fetches the finished, hydrated map spec **once** via
@@ -67,6 +70,16 @@ Tools (all return JSON strings):
   builds the deal-sheet artifact itself by filling `data` into `viewer`, per
   the guardrail in `prompts/outer/tool_run_valuation.md` — no MCP-app render.
   See `server/valuation/`.
+- **message_team** — Files a user message (bug / feedback / feature_request /
+  data_request / other) to the Crude Code team. Table-first: inserts into
+  `platform.team_messages` (`server/team_messages.py`, the durable record),
+  then best-effort SES email to `agent@crudecode.dev` (`utils/ses.py`) with
+  identity tagged server-side — a mail failure returns `email_sent: false`,
+  never a failed filing. Optional `context` jsonb joins the message to live
+  records (`run_id`, `extraction_id`, …). Rate-capped (10/user/hour, checked
+  pre-insert). Destination hardwired — not a general email capability. The
+  proactive-filing posture lives in `prompts/outer/tool_message_team.md` +
+  a system-prompt bullet.
 - **map** — Takes a map `spec`, validates + mints a map handle, returns
   `{surface: "map", map_token}`. See `server/maps/`.
 - **get_skill** — Takes an optional skill `name`. With no/unknown name,
@@ -257,6 +270,9 @@ LLM-facing text, loaded via `utils/prompts.py` (`load("outer/...")`).
 - **platform.py** — user identity via Supabase (`users`): `resolve_identity`
   maps the `X-User-Slug` header to a user + org context. `_query` for Supabase
   tables (`workspace.*`, `platform.*`).
+- **ses.py** — AWS SES team notifications (`send_notification`), destination
+  hardwired to `agent@crudecode.dev`. Trimmed port of the pre-rebuild module;
+  creds from env with boto3 default-chain fallback.
 - **log.py** — centralized file logging with request-ID tracing → `logs/ei.log`.
 - **env.py** — shared `.env` loader.
 - **run_query.py** — CLI: `echo "SELECT ..." | .venv/bin/python utils/run_query.py`
@@ -313,4 +329,6 @@ Run: `.venv/bin/pytest -q`.
   `briefing_handle_store` (map tokens), the dataroom persistence path —
   store, tool, CSV transport, and the packer round-trip
   (`test_extraction_store.py`, `test_tools_dataroom.py`,
-  `test_extraction_transport.py`, `test_persist_pack.py`) — and schema drift.
+  `test_extraction_transport.py`, `test_persist_pack.py`), team messages
+  (`test_team_messages_store.py`, `test_tools_message_team.py`), and schema
+  drift.

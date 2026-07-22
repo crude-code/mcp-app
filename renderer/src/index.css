@@ -1,0 +1,59 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+
+
+*:focus {
+  outline: none;
+}
+
+@theme inline {
+  --font-sans: 'Inter Variable', sans-serif;
+  /* Only the theme colors @layer base actually applies (border-border,
+     outline-ring, bg-background, text-foreground). Components use the
+     semantic --* tokens below via inline style, not Tailwind color classes. */
+  --color-ring: var(--ring);
+  --color-border: var(--border);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+}
+
+:root {
+  --background: #fafaf8;
+  --foreground: #0a0a0a;
+  --border: #ececea;
+  --ring: #d97706;
+
+  /* Semantic tokens — components style from these via inline style={{}}. */
+  --bg-page: #fafaf8;
+  --bg-surface: #ffffff;
+  --border-default: #ececea;
+
+  --text-primary: #0a0a0a;
+  --text-muted: #4b5563;
+  --text-dim: #6b7280;
+
+  --content-accent: #0e7490;  /* deep teal */
+  --error: #dc2626;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-variant-numeric: tabular-nums;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+/* Tabular nums on every monospace element by default. */
+.font-mono,
+[class*="font-mono"] {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes spin          { to { transform: rotate(360deg); } }
+

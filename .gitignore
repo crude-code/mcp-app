@@ -1,0 +1,29 @@
+# --- Secrets & local env ---
+.env
+
+# --- Python ---
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# --- Node / renderer ---
+node_modules/
+renderer/src/App.css
+renderer/src/assets/
+renderer/public/icons.svg
+
+# --- Runtime / scratch ---
+logs/
+results/
+sessions/
+test_output/
+.DS_Store
+repomix-*
+
+# --- Deploy runtime state (per-host, not source) ---
+.last-mcp-deployed-sha
+
+# --- Personal planning/spec notes, never part of the shipped repo ---
+docs/
+refactor.md

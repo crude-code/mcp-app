@@ -1,0 +1,16 @@
+[Unit]
+Description=Crude Code MCP dev server
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/crudecode-dev
+EnvironmentFile=/home/ubuntu/crudecode-dev/.env
+Environment=MCP_PORT=9001
+ExecStart=/home/ubuntu/crudecode-dev/.venv/bin/python server/mcp_server.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

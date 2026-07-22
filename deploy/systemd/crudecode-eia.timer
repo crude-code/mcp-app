@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Crude Code EIA ingest
+Requires=crudecode-eia.service
+
+[Timer]
+OnCalendar=*-*-* 11:00:00 UTC
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

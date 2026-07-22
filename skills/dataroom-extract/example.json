@@ -1,0 +1,108 @@
+{
+  "_comment": "Worked example — a small synthetic 2-well working-interest deal. Numbers are fake; the SHAPE is authoritative. Match it: every record carries provenance; lists are omitted/empty when the room doesn't support them. Note how revenue_observations sum taxes+deductions, expenses carry an opex rate and a capex AFE, and a name-only well leaves api=null.",
+  "deal": {
+    "provenance": { "source_file": "Overview/Project Falcon Teaser.pdf", "source_locator": "page:1", "notes": null },
+    "title": "Project Falcon — Howard County WI Package",
+    "process_type": "negotiated_sale",
+    "category": "WI",
+    "seller": "Falcon Operating LLC",
+    "operator": "Falcon Operating LLC",
+    "operators": null,
+    "broker": "Acme A&D Advisors",
+    "state": "TX",
+    "county": "HOWARD",
+    "basin": "Permian (Midland)",
+    "formation": "Wolfcamp A",
+    "field": null,
+    "location_text": "Howard County, TX — Wolfcamp A horizontal",
+    "asset_type": "PDP",
+    "well_count": 2,
+    "gross_acres": 640.0,
+    "net_acres": 480.0,
+    "effective_date": "2026-01-01",
+    "bid_due_date": "2026-03-15",
+    "closing_date": null,
+    "summary": "Two operated Wolfcamp A horizontals, ~85% average WI, ~64% NRI. PDP only.",
+    "pv10_mid_mm": 12.4,
+    "current_net_boed": 410.0
+  },
+  "wells": [
+    {
+      "provenance": { "source_file": "Engineering/Well List.xlsx", "source_locator": "sheet:Wells;row:2", "notes": null },
+      "api": "42-227-39114", "name": "Falcon 1H", "operator": "Falcon Operating LLC",
+      "county": "HOWARD", "state": "TX", "basin": "Permian (Midland)", "field": null,
+      "formation": "Wolfcamp A", "well_type": "PDP", "operator_status_raw": "PRODUCING",
+      "trajectory": "HORIZONTAL", "lateral_length_ft": 9850.0, "tvd_ft": 8200.0, "md_ft": 18250.0,
+      "first_prod_date": "2022-06-01", "public_well_object": null
+    },
+    {
+      "provenance": { "source_file": "Engineering/Well List.xlsx", "source_locator": "sheet:Wells;row:3", "notes": "API not printed in the room; resolve server-side." },
+      "api": null, "name": "Falcon 2H", "operator": "Falcon Operating LLC",
+      "county": "HOWARD", "state": "TX", "basin": "Permian (Midland)", "field": null,
+      "formation": "Wolfcamp A", "well_type": "PDP", "operator_status_raw": "PRODUCING",
+      "trajectory": "HORIZONTAL", "lateral_length_ft": 10100.0, "tvd_ft": 8210.0, "md_ft": 18510.0,
+      "first_prod_date": "2022-09-01", "public_well_object": null
+    }
+  ],
+  "interests": [
+    {
+      "provenance": { "source_file": "Title/Ownership Summary.xlsx", "source_locator": "sheet:Net;row:2", "notes": null },
+      "well_api": "42-227-39114", "tract_name": null, "interest_type": "WI",
+      "wi_decimal": 0.875, "nri_decimal": 0.656, "ri_decimal": null, "npri_decimal": null,
+      "orri_decimal": null, "lessor": null, "lessee": "Falcon Operating LLC", "owner": "Falcon Operating LLC"
+    },
+    {
+      "provenance": { "source_file": "Title/Ownership Summary.xlsx", "source_locator": "sheet:Net;row:3", "notes": null },
+      "well_api": null, "tract_name": null, "interest_type": "WI",
+      "wi_decimal": 0.820, "nri_decimal": 0.615, "ri_decimal": null, "npri_decimal": null,
+      "orri_decimal": null, "lessor": null, "lessee": "Falcon Operating LLC", "owner": "Falcon Operating LLC"
+    }
+  ],
+  "production_history": [
+    {
+      "provenance": { "source_file": "Production/Monthly Production.xlsx", "source_locator": "sheet:Falcon 1H;row:31", "notes": null },
+      "well_api": "42-227-39114", "month": "2025-12-01", "oil_bbl": 4120.0, "gas_mcf": 9100.0, "water_bbl": 6300.0, "ngl_bbl": null, "days_on": 31.0
+    }
+  ],
+  "revenue_observations": [
+    {
+      "provenance": { "source_file": "Check Stubs/2025_12_ckstb.pdf", "source_locator": "page:1", "notes": null },
+      "well_api": "42-227-39114", "well_identifier": "FALCON 1H", "prod_date": "2025-10-01", "check_date": "2025-12-25",
+      "product_raw": "OIL", "product": "oil", "volume": 3605.0, "volume_unit": "bbl", "price": 68.40,
+      "gross_revenue": 246582.0, "taxes": 11346.0, "deductions": 4190.0, "net_revenue": 231046.0,
+      "owner_decimal": 0.656, "interest_type": "W", "operator": "Falcon Operating LLC"
+    },
+    {
+      "provenance": { "source_file": "Check Stubs/2025_12_ckstb.pdf", "source_locator": "page:1", "notes": "gas; all gathering+processing line items summed into deductions" },
+      "well_api": "42-227-39114", "well_identifier": "FALCON 1H", "prod_date": "2025-10-01", "check_date": "2025-12-25",
+      "product_raw": "GAS", "product": "gas", "volume": 8450.0, "volume_unit": "mcf", "price": 2.05,
+      "gross_revenue": 17322.0, "taxes": 1255.0, "deductions": 5980.0, "net_revenue": 10087.0,
+      "owner_decimal": 0.656, "interest_type": "W", "operator": "Falcon Operating LLC"
+    }
+  ],
+  "expenses": [
+    {
+      "provenance": { "source_file": "Financial/Falcon LOS 2025.xlsx", "source_locator": "sheet:Summary;row:14", "notes": "fixed monthly LOE per the operating statement" },
+      "well_api": "42-227-39114", "scope": "well", "category": "opex", "label_raw": "Total Lease Operating Expense",
+      "period": "2025-12", "amount_usd": 27800.0, "opex_per_bbl_usd": 6.75, "opex_per_well_per_month_usd": 27800.0, "capex_per_well_usd": null, "notes": null
+    },
+    {
+      "provenance": { "source_file": "Financial/Falcon AFE Wolfcamp.pdf", "source_locator": "page:1", "notes": "drill+complete AFE, single-well" },
+      "well_api": null, "scope": "deal", "category": "capex", "label_raw": "AFE — Drill & Complete (D&C)",
+      "period": null, "amount_usd": 8200000.0, "opex_per_bbl_usd": null, "opex_per_well_per_month_usd": null, "capex_per_well_usd": 8200000.0, "notes": "applies to undrilled locations if any are added"
+    }
+  ],
+  "division_orders": [],
+  "tracts": [],
+  "documents": [
+    {
+      "provenance": { "source_file": "Overview/Project Falcon Teaser.pdf", "source_locator": null, "notes": null },
+      "path": "Overview/Project Falcon Teaser.pdf", "category": "marketing", "file_type": "pdf", "size_bytes": 1840221, "summary": "One-page teaser: operator, county, well count, PV10."
+    },
+    {
+      "provenance": { "source_file": "Engineering/Aries_Falcon.zip", "source_locator": null, "notes": null },
+      "path": "Engineering/Aries_Falcon.zip", "category": "engineering", "file_type": "zip", "size_bytes": 5120334, "summary": "Aries .accdb economics — not parsed (phase 2)."
+    }
+  ],
+  "extraction_notes": "Falcon 2H had no API printed anywhere in the room (left null for server-side resolution). Aries .accdb not parsed. No image-only PDFs encountered. 'Offset Wells' folder ignored per convention — not part of the deal."
+}

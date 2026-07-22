@@ -28,7 +28,15 @@ You are NOT writing a report or running a valuation. You are extracting **facts,
 3. **Scope.** Decide which entities this room actually supports. Extract what's there; skip what isn't. A room with no LOS has no `expenses`; a working-interest package usually has no `tracts`.
 4. **Extract** into the schema (see *What matters* and *Conventions*).
 5. **Write `extraction.json`** — one `ExtractionResult`.
-6. **Produce the viewer** — paste the extraction into the bundled component (see
+6. **Persist it** — call the `save_dataroom_extraction` MCP tool with the full
+   extraction and a short `label` (the deal/teaser title). Do this every run,
+   right after the file is written, even for a partial extraction — the stored
+   copy is what makes the deal traceable later. Keep the returned
+   `extraction_id`: if the extraction is corrected after user review, re-call
+   the tool with that same `extraction_id` so the stored copy is updated in
+   place, not duplicated. If the save returns an error, tell the user and keep
+   going — never block the extraction or the viewer on persistence.
+7. **Produce the viewer** — paste the extraction into the bundled component (see
    *The viewer artifact*). Do this every run, even when a valuation follows.
 
 ## What matters (for valuation)
@@ -68,7 +76,7 @@ You are NOT writing a report or running a valuation. You are extracting **facts,
 
 **Provenance is required on every record.** `source_file` = the relative path inside the room. `source_locator` by convention: Excel `"sheet:Name;row:N"` (1-based, header = row 1), PDF `"page:N"`. Use `notes` only when you *inferred* a value rather than read it.
 
-**No database here.** Unlike the server pipeline, you have **no access to the Energy Insights well database** in this sandbox. Leave `Well.public_well_object` null. When the room gives only a well **name**, leave `api` null and say so in `notes` / `extraction_notes` — a later server step resolves APIs against public data.
+**No database here.** Unlike the server pipeline, you have **no access to the Energy Insights well database** in this sandbox. Leave `Well.public_well_object` null. When the room gives only a well **name**, leave `api` null and say so in `notes` / `extraction_notes` — a later server step resolves APIs against public data. (MCP tools remain available — persisting via `save_dataroom_extraction` is expected; it's the well-database *lookup* you don't have.)
 
 **API formatting.** When the room states an API, normalize to `SS-CCC-WWWWW` (10 digits, two dashes; strip a 14-digit API to its first 10). Never fabricate digits to reach that shape.
 
@@ -104,7 +112,7 @@ Often the room isn't the end goal — the user wants to **value** the interest. 
 dataroom is the input that makes that possible: the `wells` and the `interests`
 decimal are exactly what `forecast_wells` / `run_valuation` need. In that case:
 
-1. Extract → write `extraction.json`.
+1. Extract → write `extraction.json` → persist (`save_dataroom_extraction`).
 2. **Show the viewer first** — it's the confirm-before-you-value step. The user
    eyeballs what came out of the room (which wells, what interest decimal, what the
    production looks like) and confirms it's right before any money number is built.

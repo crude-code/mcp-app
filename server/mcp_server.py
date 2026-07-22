@@ -44,6 +44,9 @@ _DEAL_SHEET_VIEWER = load_viewer()
 from server.maps.spec import parse_map_spec, MapSpecError
 from server.maps.hydrate import hydrate_map, MapHydrateError
 from server.skills import list_skills, load_skill, SkillNotFound
+from server.extraction_store import ExtractionStore
+
+_extraction_store = ExtractionStore()
 
 
 _log_setup()
@@ -77,6 +80,15 @@ def get_current_identity() -> dict | None:
         return identity
     except RuntimeError:
         return None
+
+
+def get_request_slug() -> str:
+    """User slug straight from the routing header — no DB round-trip, so
+    identity-free tools (get_skill) can still attribute their log lines."""
+    try:
+        return get_http_request().headers.get("x-user-slug", "") or "unknown"
+    except RuntimeError:
+        return "unknown"
 
 
 # ── MCP Server ───────────────────────────────────────────────────────────────
@@ -157,17 +169,61 @@ _get_skill_log = _logging.getLogger("ei.get_skill")
 @mcp.tool(description=_load_prompt("outer/tool_get_skill.md"))
 def get_skill(name: str = "") -> str:
     """Return a packaged skill bundle (instructions + files), or the catalog
-    when called with no/unknown name. Static repo files — no DB or identity."""
-    try:
-        if not name or not name.strip():
-            return _json.dumps({"available_skills": list_skills()})
+    when called with no/unknown name. Static repo files — no DB or identity
+    resolution; the trace user comes straight from the routing header."""
+    requested = (name or "").strip()
+    with trace("get_skill", user=get_request_slug(), skill=requested or "catalog"):
         try:
-            return _json.dumps(load_skill(name.strip()))
-        except SkillNotFound:
-            return _json.dumps({"available_skills": list_skills()})
-    except Exception as e:
-        _get_skill_log.error("get_skill failed: %s", e)
-        return _json.dumps({"error": str(e)})
+            if not requested:
+                return _json.dumps({"available_skills": list_skills()})
+            try:
+                return _json.dumps(load_skill(requested))
+            except SkillNotFound:
+                return _json.dumps({"available_skills": list_skills()})
+        except Exception as e:
+            _get_skill_log.error("get_skill failed: %s", e)
+            return _json.dumps({"error": str(e)})
+
+
+# ── save_dataroom_extraction ─────────────────────────────────────────────────
+
+_save_extraction_log = _logging.getLogger("ei.save_dataroom_extraction")
+
+# Generous vs. a typical extraction.json (tens of KB), but a hard stop before
+# someone stores a whole parsed dataroom as one row.
+_MAX_EXTRACTION_BYTES = 2_000_000
+
+
+@mcp.tool(description=_load_prompt("outer/tool_save_dataroom_extraction.md"))
+def save_dataroom_extraction(extraction: dict, label: str = "", extraction_id: str = "") -> str:
+    """Persist a dataroom-extract ExtractionResult verbatim; insert on first
+    save, user-scoped overwrite when extraction_id is supplied."""
+    identity = get_current_identity()
+    if not identity:
+        return _json.dumps({"error": "Could not identify user"})
+
+    with trace("save_dataroom_extraction", user=identity["user_slug"]):
+        if not isinstance(extraction, dict) or not extraction:
+            return _json.dumps({"error": "extraction must be the non-empty ExtractionResult object"})
+        size = len(_json.dumps(extraction).encode())
+        if size > _MAX_EXTRACTION_BYTES:
+            return _json.dumps({"error": f"extraction too large ({size} bytes; cap {_MAX_EXTRACTION_BYTES})"})
+
+        clean_label = (label or "").strip()
+        try:
+            eid = _extraction_store.save(
+                user_id=identity["user_id"],
+                extraction=extraction,
+                label=clean_label,
+                extraction_id=extraction_id.strip() or None,
+            )
+        except (ValueError, LookupError) as e:
+            return _json.dumps({"error": str(e)})
+        except Exception as e:
+            _save_extraction_log.error("save_dataroom_extraction failed: %s", e)
+            return _json.dumps({"error": str(e)})
+
+        return _json.dumps({"extraction_id": eid, "label": clean_label, "saved": True})
 
 
 # ── map ────────────────────────────────────────────────────────────────────

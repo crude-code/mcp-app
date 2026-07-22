@@ -38,14 +38,19 @@ def pytest_addoption(parser):
 
 @pytest.fixture(scope="session", autouse=True)
 def _purge_valuation_test_rows():
-    """Delete every platform.valuation_runs row minted by tests (sentinel user_id
-    9999). Runs at session teardown so the activity digest never sees phantom
-    valuations from a pytest run. yield-based so it fires even when tests fail."""
+    """Delete every platform.valuation_runs / platform.dataroom_extractions row
+    minted by tests (sentinel user_id 9999). Runs at session teardown so the
+    activity digest never sees phantom rows from a pytest run. yield-based so
+    it fires even when tests fail."""
     yield
     try:
         from utils.platform import _query
         _query(
             "DELETE FROM platform.valuation_runs WHERE user_id = %s",
+            params=[VALUATION_TEST_USER_ID],
+        )
+        _query(
+            "DELETE FROM platform.dataroom_extractions WHERE user_id = %s",
             params=[VALUATION_TEST_USER_ID],
         )
     except Exception:

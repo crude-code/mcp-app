@@ -284,7 +284,9 @@ The platform reads commodity prices from `market.spot_prices` (daily close,
 WTI / Brent / Henry Hub) and related `market.*` / `public.*` / `shapes.*` /
 `financials.*` tables. Populating those tables (primary-source ingestion) is out
 of scope for this repo — point `CC_DB_URL` at a Postgres database whose schema
-matches `utils/schemas.py` and `prompts/outer/shared_schema.md`.
+matches `utils/schemas.py` and `prompts/outer/shared_schema.md`. State well-data
+ingestion lives in the **private** sibling repo `data-pipeline` (in the
+crudecode-workbench); never copy its connector code into this public repo.
 
 ## Running Locally
 

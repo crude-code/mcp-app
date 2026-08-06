@@ -17,7 +17,7 @@ def _fcdict(qi, start_iso, stream="oil"):
     """A serialized-forecast dict (run-record shape) with peak == start."""
     return {
         "curve": {
-            "qi_peak": qi, "di": 0.05, "b": 0.8, "terminal_di_monthly": 0.05 / 12,
+            "qi": qi, "di": 0.05, "b": 0.8, "terminal_di_monthly": 0.05 / 12,
             "switch_month_from_peak": None, "stream": stream,
             "provenance": {"source": "fit", "strategy": "pdp"},
         },
@@ -29,9 +29,9 @@ def _well(qi_oil, start_iso):
     return {"oil": _fcdict(qi_oil, start_iso), "gas": _fcdict(0.0, start_iso, "gas")}
 
 
-def _wi_schedule(forecasts, classifications, *, horizon=36, **overrides):
+def _wi_schedule(forecasts, needs_capex, *, horizon=36, **overrides):
     kw = dict(
-        forecasts=forecasts, classifications=classifications, origin=date(2026, 6, 1),
+        forecasts=forecasts, needs_capex=needs_capex, origin=date(2026, 6, 1),
         horizon=horizon, oil_price=75.0, gas_price=3.0, oil_diff=0.0, gas_diff=0.0,
         interest_type="wi", wi_pct=0.5, nri_pct=0.4, decimal=None,
         tax_pct=0.075, gpt_pct=0.05,
@@ -44,7 +44,7 @@ def _wi_schedule(forecasts, classifications, *, horizon=36, **overrides):
 def test_build_schedule_totals_equal_sum_of_wells():
     """Totals are the elementwise sum of per-well lines (so NPV reconciles)."""
     forecasts = {"a": _well(1000.0, "2026-06-01"), "b": _well(2000.0, "2027-12-01")}
-    sched = _wi_schedule(forecasts, {"a": "history", "b": "no_history"},
+    sched = _wi_schedule(forecasts, {"a": False, "b": True},
                          capex_per_well=6_500_000.0)
     for col in _SCHEDULE_COLS:
         assert np.allclose(
@@ -55,7 +55,7 @@ def test_build_schedule_totals_equal_sum_of_wells():
 
 def test_build_schedule_capex_hits_non_producing_at_online_month():
     forecasts = {"pdp": _well(1000.0, "2026-06-01"), "duc": _well(1000.0, "2027-12-01")}
-    sched = _wi_schedule(forecasts, {"pdp": "history", "duc": "no_history"},
+    sched = _wi_schedule(forecasts, {"pdp": False, "duc": True},
                          capex_per_well=6_500_000.0)
     assert sched["by_well"]["duc"]["capex"][18] == 0.5 * 6_500_000.0  # WI share, online month
     assert sched["by_well"]["pdp"]["capex"].sum() == 0.0              # producing: none
@@ -63,7 +63,7 @@ def test_build_schedule_capex_hits_non_producing_at_online_month():
 
 def test_build_schedule_non_producing_well_offline_until_online():
     forecasts = {"duc": _well(1000.0, "2027-12-01")}
-    sched = _wi_schedule(forecasts, {"duc": "no_history"})
+    sched = _wi_schedule(forecasts, {"duc": True})
     oil = sched["by_well"]["duc"]["oil_bbl"]
     assert oil[17] == 0.0    # nothing until it comes online
     assert oil[18] > 0.0     # online at month 18
@@ -74,7 +74,7 @@ def test_build_schedule_non_producing_well_offline_until_online():
 def test_serialize_schedule_includes_by_well_when_under_cap():
     """≤200 wells: by_well is present and has one entry per well."""
     forecasts = {f"api_{i}": _well(1000.0, "2026-06-01") for i in range(5)}
-    sched = _wi_schedule(forecasts, {api: "history" for api in forecasts}, horizon=12)
+    sched = _wi_schedule(forecasts, {api: False for api in forecasts}, horizon=12)
     origin = date(2026, 6, 1)
     serialized = _serialize_schedule(sched, origin=origin, horizon=12, rate_centers={"PDP": 0.15})
     assert "by_well" in serialized
@@ -86,7 +86,7 @@ def test_serialize_schedule_omits_by_well_when_over_cap():
     """201+ wells: by_well is omitted and by_well_omitted note is present; totals always built."""
     n = 201
     forecasts = {f"api_{i}": _well(1000.0, "2026-06-01") for i in range(n)}
-    sched = _wi_schedule(forecasts, {api: "history" for api in forecasts}, horizon=12)
+    sched = _wi_schedule(forecasts, {api: False for api in forecasts}, horizon=12)
     origin = date(2026, 6, 1)
     serialized = _serialize_schedule(sched, origin=origin, horizon=12, rate_centers={"PDP": 0.15})
     assert "by_well" not in serialized
@@ -99,7 +99,7 @@ def test_serialize_schedule_totals_present_both_sides_of_cap():
     """Totals are built unconditionally — the deal-sheet math depends on them."""
     for n in (1, 200, 201):
         forecasts = {f"api_{i}": _well(1000.0, "2026-06-01") for i in range(n)}
-        sched = _wi_schedule(forecasts, {api: "history" for api in forecasts}, horizon=6)
+        sched = _wi_schedule(forecasts, {api: False for api in forecasts}, horizon=6)
         serialized = _serialize_schedule(sched, origin=date(2026, 6, 1), horizon=6, rate_centers={})
         assert "totals" in serialized, f"totals missing at n={n}"
         assert len(serialized["totals"]["net_cashflow"]) == 6
@@ -118,7 +118,7 @@ def test_partition_net_cashflow_buckets_by_status_and_covers_total():
         "x": _well(600.0, "2029-06-01"),
     }
     sched = _wi_schedule(
-        forecasts, {"p": "history", "d": "no_history", "x": "no_history"},
+        forecasts, {"p": False, "d": True, "x": True},
         capex_per_well=6_500_000.0,
     )
     statuses = {"p": "PRODUCING", "d": "DUC", "x": "PERMITTED"}
@@ -131,7 +131,7 @@ def test_partition_net_cashflow_buckets_by_status_and_covers_total():
 def test_partition_net_cashflow_groups_multiple_wells_in_one_bucket():
     from server.valuation.orchestrator import _partition_net_cashflow
     forecasts = {"p1": _well(1000.0, "2026-06-01"), "p2": _well(500.0, "2026-06-01")}
-    sched = _wi_schedule(forecasts, {"p1": "history", "p2": "history"})
+    sched = _wi_schedule(forecasts, {"p1": False, "p2": False})
     buckets = _partition_net_cashflow(sched["by_well"], {"p1": "PRODUCING", "p2": "PRODUCING"})
     assert np.allclose(
         buckets["PDP"],
@@ -144,7 +144,7 @@ def test_partition_net_cashflow_groups_multiple_wells_in_one_bucket():
 def test_status_pv_cube_shape_and_rate_labels():
     from server.valuation.orchestrator import _status_pv_cube
     forecasts = {"p": _well(1000.0, "2026-06-01"), "d": _well(800.0, "2027-12-01")}
-    cls = {"p": "history", "d": "no_history"}
+    cls = {"p": False, "d": True}
     statuses = {"p": "PRODUCING", "d": "DUC"}
     schedules = {
         label: _wi_schedule(forecasts, cls, oil_price=dk, capex_per_well=6_500_000.0)
@@ -163,7 +163,7 @@ def test_status_pv_cube_value_matches_partition_npv():
     from server.valuation.orchestrator import _status_pv_cube, _partition_net_cashflow
     from server.valuation.econ import npv
     forecasts = {"p": _well(1000.0, "2026-06-01"), "d": _well(800.0, "2027-12-01")}
-    cls = {"p": "history", "d": "no_history"}
+    cls = {"p": False, "d": True}
     statuses = {"p": "PRODUCING", "d": "DUC"}
     schedules = {
         label: _wi_schedule(forecasts, cls, oil_price=dk, capex_per_well=6_500_000.0)
@@ -189,7 +189,7 @@ def test_status_pv_cube_additive_at_uniform_rate():
         "x": _well(600.0, "2029-06-01"),
     }
     sched = _wi_schedule(
-        forecasts, {"p": "history", "d": "no_history", "x": "no_history"},
+        forecasts, {"p": False, "d": True, "x": True},
         capex_per_well=6_500_000.0,
     )
     statuses = {"p": "PRODUCING", "d": "DUC", "x": "PERMITTED"}
@@ -209,10 +209,10 @@ def test_compute_npv_by_status_loops_decks_and_holds_gas():
     import numpy as np
     from server.valuation.orchestrator import _compute_npv_by_status, _status_pv_cube
     forecasts = {"p": _well(1000.0, "2026-06-01"), "d": _well(800.0, "2027-12-01")}
-    cls = {"p": "history", "d": "no_history"}
+    cls = {"p": False, "d": True}
     statuses = {"p": "PRODUCING", "d": "DUC"}
     base_kwargs = dict(
-        forecasts=forecasts, classifications=cls, origin=date(2026, 6, 1),
+        forecasts=forecasts, needs_capex=cls, origin=date(2026, 6, 1),
         horizon=36, oil_diff=0.0, gas_diff=0.0,
         interest_type="wi", wi_pct=0.5, nri_pct=0.4, decimal=None,
         tax_pct=0.075, gpt_pct=0.05,
@@ -244,7 +244,7 @@ def _flatten_cube_deck(deck: dict) -> dict:
 def test_build_schedule_minerals_bear_no_costs():
     forecasts = {"duc": _well(1000.0, "2027-12-01")}
     sched = _build_schedule(
-        forecasts=forecasts, classifications={"duc": "no_history"}, origin=date(2026, 6, 1),
+        forecasts=forecasts, needs_capex={"duc": True}, origin=date(2026, 6, 1),
         horizon=36, oil_price=75.0, gas_price=3.0, oil_diff=0.0, gas_diff=0.0,
         interest_type="minerals", wi_pct=None, nri_pct=None, decimal=0.05,
         tax_pct=0.075, gpt_pct=0.05,
@@ -259,14 +259,14 @@ def test_curve_serde_roundtrip_preserves_fields_and_infinity():
     from server.valuation.orchestrator import _serialize_curve, _deserialize_curve
     from server.valuation.types import DeclineCurve, ForecastProvenance
     c = DeclineCurve(
-        qi_peak=900.0, di=0.15, b=1.05, terminal_di_monthly=0.004,
+        qi=900.0, di=0.15, b=1.05, terminal_di_monthly=0.004,
         switch_month_from_peak=float("inf"), stream="oil",
         provenance=ForecastProvenance(source="fit", strategy="own_fit"),
     )
     d = _serialize_curve(c)
     assert d["switch_month_from_peak"] is None          # infinity → None for JSON
     back = _deserialize_curve(d)
-    assert back.qi_peak == 900.0 and back.b == 1.05 and back.stream == "oil"
+    assert back.qi == 900.0 and back.b == 1.05 and back.stream == "oil"
     assert back.switch_month_from_peak == float("inf")  # None → infinity on the way back
     assert back.provenance.source == "fit"
 
@@ -312,7 +312,7 @@ def test_build_schedule_per_well_interest_override_scales_cashflow():
     # Identical wells; well b carries 2x the WI/NRI via by_api → 2x net cashflow.
     forecasts = {"a": _well(1000.0, "2026-06-01"), "b": _well(1000.0, "2026-06-01")}
     sched = _wi_schedule(
-        forecasts, {"a": "history", "b": "history"},
+        forecasts, {"a": False, "b": False},
         wi_pct=0.25, nri_pct=0.20,
         by_api={"b": {"wi_pct": 0.5, "nri_pct": 0.40}},
     )
@@ -323,12 +323,12 @@ def test_build_schedule_per_well_interest_override_scales_cashflow():
 def test_build_schedule_unlisted_well_uses_blanket_interest():
     forecasts = {"a": _well(1000.0, "2026-06-01"), "b": _well(1000.0, "2026-06-01")}
     sched = _wi_schedule(
-        forecasts, {"a": "history", "b": "history"},
+        forecasts, {"a": False, "b": False},
         wi_pct=0.25, nri_pct=0.20,
         by_api={"b": {"wi_pct": 0.5, "nri_pct": 0.40}},
     )
     # a is not in by_api → same as a pure-blanket schedule's well.
-    blanket = _wi_schedule({"a": _well(1000.0, "2026-06-01")}, {"a": "history"},
+    blanket = _wi_schedule({"a": _well(1000.0, "2026-06-01")}, {"a": False},
                            wi_pct=0.25, nri_pct=0.20)
     assert np.allclose(sched["by_well"]["a"]["net_cashflow"],
                        blanket["by_well"]["a"]["net_cashflow"])
@@ -337,7 +337,7 @@ def test_build_schedule_unlisted_well_uses_blanket_interest():
 def test_build_schedule_net_volume_columns_use_per_well_nri():
     forecasts = {"a": _well(1000.0, "2026-06-01"), "b": _well(1000.0, "2026-06-01")}
     sched = _wi_schedule(
-        forecasts, {"a": "history", "b": "history"},
+        forecasts, {"a": False, "b": False},
         wi_pct=0.25, nri_pct=0.20,
         by_api={"b": {"wi_pct": 0.5, "nri_pct": 0.40}},
     )
@@ -348,7 +348,7 @@ def test_build_schedule_net_volume_columns_use_per_well_nri():
 def test_build_schedule_minerals_net_volume_uses_decimal():
     forecasts = {"a": _well(1000.0, "2026-06-01")}
     sched = _wi_schedule(
-        forecasts, {"a": "history"},
+        forecasts, {"a": False},
         interest_type="minerals", wi_pct=None, nri_pct=None, decimal=0.05,
     )
     assert np.allclose(sched["by_well"]["a"]["net_oil"], sched["by_well"]["a"]["oil_bbl"] * 0.05)
@@ -356,7 +356,7 @@ def test_build_schedule_minerals_net_volume_uses_decimal():
 
 def test_build_schedule_totals_include_net_volumes():
     forecasts = {"a": _well(1000.0, "2026-06-01"), "b": _well(1000.0, "2026-06-01")}
-    sched = _wi_schedule(forecasts, {"a": "history", "b": "history"})
+    sched = _wi_schedule(forecasts, {"a": False, "b": False})
     assert "net_oil" in sched["totals"] and "net_gas" in sched["totals"]
     assert np.allclose(sched["totals"]["net_oil"],
                        sched["by_well"]["a"]["net_oil"] + sched["by_well"]["b"]["net_oil"])
@@ -428,7 +428,7 @@ def test_economics_from_forecasts_applies_gas_btu_factor():
     def _run(btu: float) -> dict:
         return _economics_from_forecasts(
             forecasts={"W1": gas_well},
-            classifications={"W1": "history"},
+            needs_capex={"W1": False},
             statuses={"W1": "PRODUCING"},
             econ_overrides={
                 "interest_type": "wi",

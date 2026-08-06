@@ -169,8 +169,9 @@ engine by `tests/test_valuation_defaults_drift.py`.)
 | opex_per_well_per_month_usd | Operating cost (per well / month) | $0.00 | 0.0 |
 | capex_per_well_usd | Drilling capex (gross, per new well) | $0.00 | 0.0 |
 | horizon_months | Forecast horizon | 360 months (30 yr) | 360 |
-| duc_months_to_first_prod | DUC online timing | +18 months | 18 |
-| permit_months_to_first_prod | Permit online timing | +36 months | 36 |
+| terminal_di_annual | Terminal decline (annual exponential tail — the calculator's, not assertable) | 5% / yr | 0.05 |
+| duc_months_to_first_prod | DUC online timing (fallback — only when a legacy forecast carries no asserted online month) | +18 months | 18 |
+| permit_months_to_first_prod | Permit online timing (fallback — only when a legacy forecast carries no asserted online month) | +36 months | 36 |
 | discount_rate_pdp | Discount rate — producing (PDP) | 15% | 0.15 |
 | discount_rate_duc | Discount rate — DUC | 20% | 0.20 |
 | discount_rate_pud | Discount rate — permit (PUD) | 25% | 0.25 |

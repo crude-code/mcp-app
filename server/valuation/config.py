@@ -1,9 +1,9 @@
 """Tunable domain constants for the valuation engine.
 
 Every economic parameter lives in the ``EconConfig`` dataclass (``ECON``
-singleton below). Other engine constants still live next to their use sites
-(post-peak threshold in ``routing.py``, server-default b in
-``orchestrator.py``); consolidate here only when a real need appears.
+singleton below). Decline parameters (qi / di / b) are asserted by Claude per
+well and are never configured here; the one forecast constant the server owns
+is the terminal decline — it belongs to the calculator, not to judgment.
 """
 from dataclasses import dataclass, field
 from datetime import date
@@ -13,10 +13,11 @@ from dateutil.relativedelta import relativedelta
 
 # ── The valuation config: every economic parameter, one object ───────────────
 #
-# Single source for the economic side of a valuation. Forecast mechanics
-# (server-default b, routing thresholds) deliberately live
-# at their use sites — this object is deal economics only. Read it as
-# `config.ECON.<field>`; never re-hardcode these values at a call site.
+# Single source for the economic side of a valuation. Decline parameters are
+# asserted per well through `forecast_wells` and never live here; the terminal
+# decline does, because the exponential tail is the calculator's own policy.
+# Read it as `config.ECON.<field>`; never re-hardcode these values at a call
+# site.
 
 @dataclass(frozen=True)
 class EconConfig:
@@ -47,9 +48,18 @@ class EconConfig:
     # Cashflow horizon.
     horizon_months: int = 360        # 30 yr
 
-    # Non-producing-well online timing (months from the first-of-next-month
-    # anchor): a DUC is drilled awaiting completion (closer); a permit is not
-    # yet spudded (further out).
+    # Terminal decline: once a curve's hyperbolic decline shallows to this
+    # annual rate, the calculator switches it onto an exponential tail at
+    # this rate. The calculator's, never Claude's — asserted parameters are
+    # {qi, di, b} only.
+    terminal_di_annual: float = 0.05
+
+    # Non-producing-well online timing FALLBACK (months from the
+    # first-of-next-month anchor): a DUC is drilled awaiting completion
+    # (closer); a permit is not yet spudded (further out). New forecast
+    # stages carry an asserted online month (`anchor_month`) and never touch
+    # these; they date only legacy stages committed before timing became an
+    # asserted parameter.
     duc_months_to_first_prod: int = 18
     permit_months_to_first_prod: int = 36
 

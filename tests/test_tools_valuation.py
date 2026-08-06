@@ -8,8 +8,12 @@ import server.mcp_server as srv
 # "Could not identify user" error when get_current_identity() returns None.
 # ---------------------------------------------------------------------------
 
+_ENTRY = {"wells": ["x"], "oil": {"qi": 100.0, "di": 0.05, "b": 0.9},
+          "anchor_month": "2026-05", "rationale": "test"}
+
+
 @pytest.mark.parametrize("call", [
-    lambda: srv.forecast_wells(groups=[{"area": "A", "wells": ["x"], "analogs": []}]),
+    lambda: srv.forecast_wells(forecasts=[_ENTRY]),
     lambda: srv.run_valuation(run_id="r", params={}),
 ])
 def test_tool_rejects_none_identity(monkeypatch, call):
@@ -18,35 +22,28 @@ def test_tool_rejects_none_identity(monkeypatch, call):
     assert out == {"error": "Could not identify user"}
 
 
-def test_forecast_wells_tool_returns_groups(monkeypatch):
+def test_forecast_wells_tool_returns_echo(monkeypatch):
     monkeypatch.setattr(srv, "get_current_identity", lambda: {"user_slug": "acme", "user_id": 7})
     monkeypatch.setattr(srv, "forecast_wells_for_run",
-                        lambda **kw: {"run_id": "run-9", "groups": [{"area": "A"}]})
-    out = json.loads(srv.forecast_wells(groups=[{"area": "A", "wells": ["x"], "analogs": []}]))
+                        lambda **kw: {"run_id": "run-9", "committed": [{"wells": ["x"]}],
+                                      "wells_committed": 1, "wells_in_run": 1,
+                                      "by_status": {"PDP": 1, "DUC": 0, "PUD": 0}})
+    out = json.loads(srv.forecast_wells(forecasts=[_ENTRY]))
     assert out["run_id"] == "run-9"
+    assert out["by_status"]["PDP"] == 1
 
 
-def test_forecast_wells_tool_surfaces_bounce(monkeypatch):
+def test_forecast_wells_tool_surfaces_validation_failure(monkeypatch):
+    """A bounce lists every violation and says nothing was saved."""
     monkeypatch.setattr(srv, "get_current_identity", lambda: {"user_slug": "acme", "user_id": 7})
     def _boom(**kw):
-        raise srv.AnalogsRequired([{"area": "A", "wells": ["x"]}])
+        raise srv.ForecastValidationError([{"entry": 0, "field": "oil.b",
+                                            "message": "b must be in [0.0, 2.0]; got 5.0"}])
     monkeypatch.setattr(srv, "forecast_wells_for_run", _boom)
-    out = json.loads(srv.forecast_wells(groups=[{"area": "A", "wells": ["x"], "analogs": []}]))
-    assert out["error"] == "analogs_required"
-    assert out["needs_analogs"] == [{"area": "A", "wells": ["x"]}]
-
-
-def test_forecast_wells_tool_catches_stray_stream_level_analog_required(monkeypatch):
-    """Defensive path: if a routing-level AnalogRequired ever escapes the
-    orchestrator's conversion, the tool must still return an actionable
-    analogs_required error — never a bare {"error": "gas"}."""
-    monkeypatch.setattr(srv, "get_current_identity", lambda: {"user_slug": "acme", "user_id": 7})
-    def _boom(**kw):
-        raise srv.AnalogRequired("gas")
-    monkeypatch.setattr(srv, "forecast_wells_for_run", _boom)
-    out = json.loads(srv.forecast_wells(groups=[{"area": "A", "wells": ["x"], "analogs": []}]))
-    assert out["error"] == "analogs_required"
-    assert "gas" in out["message"]
+    out = json.loads(srv.forecast_wells(forecasts=[_ENTRY]))
+    assert out["error"] == "validation_failed"
+    assert out["violations"][0]["field"] == "oil.b"
+    assert "Nothing was saved" in out["message"]
 
 
 def test_run_valuation_tool_returns_artifact_payload(monkeypatch):

@@ -1,27 +1,26 @@
-"""Engine types. NO lateral_norm_ft, NO lateral_scale — analog selection
-(Claude's judgment: comparable laterals in the cohort) is the only place
-lateral enters the model; the server never rescales."""
+"""Engine types. NO lateral_norm_ft, NO lateral_scale — offset selection
+(Claude's judgment: comparable laterals) is the only place lateral enters the
+model; the server never rescales."""
 from dataclasses import dataclass, field
 from datetime import date
 
 
 @dataclass(frozen=True)
 class ForecastProvenance:
-    source: str                                 # "fit" | "percentile" | "blend" | "cohort"
-    fit_n_input_months: int = 0
-    component_curves: tuple["ForecastProvenance", ...] = field(default_factory=tuple)
+    source: str                                 # "asserted" | legacy: "fit"/"percentile"/"blend"/"cohort"
     notes: tuple[str, ...] = field(default_factory=tuple)
-    strategy: str | None = None                 # "history" | "history_own_b" | "thin_blend" |
-                                                # "climbing" | "pure_analog" | "zero_stream"
+    strategy: str | None = None                 # "asserted" | "not_asserted" | legacy fit-era values
 
 
 @dataclass(frozen=True)
 class DeclineCurve:
-    qi_peak: float
-    di: float
+    qi: float                                   # rate at the anchor month (units/month) — never peak-anything
+    di: float                                   # nominal monthly decline at the anchor
     b: float
     terminal_di_monthly: float
-    switch_month_from_peak: float            # float("inf") when no terminal switch
+    switch_month_from_peak: float               # float("inf") when no terminal switch. Asserted
+                                                # curves anchor at t=0 (peak == anchor); the name
+                                                # survives from the fit era where t=0 was the peak.
     stream: str                                 # "oil" | "gas"
     provenance: ForecastProvenance
 

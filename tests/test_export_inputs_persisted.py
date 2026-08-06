@@ -3,7 +3,7 @@ from server.valuation.types import DeclineCurve, ForecastProvenance
 
 
 def _serial_curve(stream):
-    c = DeclineCurve(qi_peak=500.0, di=0.12, b=0.8, terminal_di_monthly=0.005,
+    c = DeclineCurve(qi=500.0, di=0.12, b=0.8, terminal_di_monthly=0.005,
                      switch_month_from_peak=float("inf"), stream=stream,
                      provenance=ForecastProvenance(source="self", strategy="pdp"))
     return orch._serialize_curve(c)
@@ -15,7 +15,7 @@ def test_economics_persists_price_path_and_cost_inputs():
           "gas": orch._place_curve(self_curve=_serial_curve("gas"),
                                    start_date="2026-01-01", strategy="pdp")}
     forecasts = {"42-000-00000": fc}
-    classifications = {"42-000-00000": "history"}
+    needs_capex = {"42-000-00000": False}
     statuses = {"42-000-00000": "PRODUCING"}
     econ_overrides = {
         "interest_type": "minerals", "interest": {"decimal": 0.05},
@@ -25,7 +25,7 @@ def test_economics_persists_price_path_and_cost_inputs():
         "capex_per_well_usd": 8_000_000.0,
     }
     econ = orch._economics_from_forecasts(
-        forecasts=forecasts, classifications=classifications,
+        forecasts=forecasts, needs_capex=needs_capex,
         statuses=statuses, econ_overrides=econ_overrides)
     horizon = econ["horizon_months"]
     assert set(econ["price_path"]) == {"oil", "gas"}

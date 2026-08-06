@@ -1,9 +1,15 @@
-"""Decline curve fitting and projection. Pure math — no DB, no lateral norm."""
+"""Hyperbolic evaluation and projection. Pure math — the calculator.
+
+There is no fitting and no parameter selection anywhere in this module (or this
+server): decline parameters are asserted upstream by Claude via
+``forecast_wells`` and arrive here as literals. The calculator owns exactly one
+number of its own — the terminal decline (``config.ECON.terminal_di_annual``),
+applied by ``make_curve`` as the exponential-tail switch.
+"""
 from datetime import date
 
 import numpy as np
 from dateutil.relativedelta import relativedelta
-from scipy.optimize import curve_fit
 
 from server.valuation.types import DeclineCurve, Forecast, ForecastProvenance
 
@@ -14,196 +20,75 @@ def _hyperbolic_q(t: np.ndarray, qi: float, di: float, b: float) -> np.ndarray:
     return qi / np.power(1.0 + b * di * t, 1.0 / b)
 
 
-def fit_curve(
-    months: np.ndarray,
-    q: np.ndarray,
+def make_curve(
+    qi: float,
+    di: float,
+    b: float,
     *,
     stream: str,
-    terminal_di_annual: float = 0.05,
-    min_post_peak_months: int = 6,
-    b_fixed: float | None = None,
+    terminal_di_annual: float,
+    provenance: ForecastProvenance | None = None,
 ) -> DeclineCurve:
-    """Fit hyperbolic decline to a well's production from peak forward.
+    """Build a curve from asserted parameters.
 
-    No ``lateral_norm_ft`` parameter — the cohort filter handles lateral matching.
-
-    When ``b_fixed`` is set, fits only ``(qi_peak, di)`` with ``b`` held at the
-    given value — Arps b is poorly identified on <~24 post-peak months and the
-    3-param fit was riding the bounds (b≈0 or b≈2) on ~37% of wells. Pass a
-    basin-typical b (0.7–1.0 for unconventional oil) for stable fits.
-
-    Raises:
-        ValueError if post-peak history is shorter than min_post_peak_months,
-        or if all post-peak production is zero.
+    The terminal switch is the calculator's tail policy: once the hyperbolic
+    decline shallows to ``terminal_di_annual``, the curve follows an
+    exponential at that rate. The switch month solves d(t) = terminal:
+    ``(di/di_term − 1) / (b·di)``. It is infinite when ``b ≈ 0`` (the curve is
+    already exponential) or ``di <= di_term`` (the asserted decline starts
+    shallower than terminal and never steepens to it — allowed; the tool echo
+    warns so Claude sees what it committed).
     """
-    months = np.asarray(months, dtype=float)
-    q = np.asarray(q, dtype=float)
-
-    peak_idx = int(np.argmax(q))
-    months_fit = months[peak_idx:]
-    q_fit = q[peak_idx:]
-    n_post_peak = len(q_fit) - 1
-    if n_post_peak < min_post_peak_months:
-        raise ValueError(
-            f"thin history: need at least {min_post_peak_months} post-peak months, "
-            f"got {n_post_peak} (peak at idx {peak_idx} of {len(q)})"
-        )
-    t_rel = months_fit - months_fit[0]
-    if q_fit[1:].sum() <= 0.0:
-        raise ValueError("fit_curve: no production data after peak")
-
-    if b_fixed is None:
-        p0 = [float(q_fit[0]), 0.05, 0.5]
-        bounds = ([0.0, 0.0, 0.001], [1e8, 1.0, 2.0])
-        popt, _ = curve_fit(_hyperbolic_q, t_rel, q_fit, p0=p0, bounds=bounds, maxfev=5000)
-        qi_peak, di, b = (float(x) for x in popt)
-    else:
-        b = float(b_fixed)
-
-        def _model_fixed_b(t, qi, di):
-            return _hyperbolic_q(t, qi, di, b)
-
-        p0 = [float(q_fit[0]), 0.05]
-        bounds = ([0.0, 0.0], [1e8, 1.0])
-        popt, _ = curve_fit(_model_fixed_b, t_rel, q_fit, p0=p0, bounds=bounds, maxfev=5000)
-        qi_peak, di = (float(x) for x in popt)
-
     terminal_di_monthly = terminal_di_annual / 12.0
     if di > terminal_di_monthly and b > 1e-6:
-        switch_month = max(0.0, (di / terminal_di_monthly - 1.0) / (b * di))
-    else:
-        switch_month = float("inf")
-
-    return DeclineCurve(
-        qi_peak=qi_peak,
-        di=di,
-        b=b,
-        terminal_di_monthly=terminal_di_monthly,
-        switch_month_from_peak=switch_month,
-        stream=stream,
-        provenance=ForecastProvenance(source="fit", fit_n_input_months=len(q_fit)),
-    )
-
-
-def percentile_curves(curves: list[DeclineCurve], *, pct: float = 0.5) -> DeclineCurve:
-    """Aggregate N curves into a cohort curve via percentile.
-
-    ``pct`` is in ``[0, 1]`` (0.5 = median, 0.1 = P10, 0.9 = P90). NO lateral
-    rescaling — the cohort filter already constrains the inputs to comparable
-    laterals.
-
-    Raises:
-        ValueError if ``curves`` is empty, if input curves mix streams, or if
-        ``pct`` is outside ``[0, 1]``.
-    """
-    if not curves:
-        raise ValueError("percentile_curves requires at least one input curve")
-    if not 0.0 <= pct <= 1.0:
-        raise ValueError(f"pct must be in [0, 1]; got {pct}")
-    streams = {c.stream for c in curves}
-    if len(streams) > 1:
-        raise ValueError(f"all curves must share the same stream; got {streams}")
-
-    qis = [c.qi_peak for c in curves]
-    qi_pct = float(np.percentile(qis, pct * 100.0))
-    di_pct = float(np.percentile([c.di for c in curves], pct * 100.0))
-    b_pct = float(np.percentile([c.b for c in curves], pct * 100.0))
-    terminal_di_pct = float(np.percentile([c.terminal_di_monthly for c in curves], pct * 100.0))
-    if di_pct > terminal_di_pct and b_pct > 1e-6:
-        switch_month = max(0.0, (di_pct / terminal_di_pct - 1.0) / (b_pct * di_pct))
-    else:
-        switch_month = float("inf")
-    return DeclineCurve(
-        qi_peak=qi_pct, di=di_pct, b=b_pct,
-        terminal_di_monthly=terminal_di_pct,
-        switch_month_from_peak=switch_month,
-        stream=curves[0].stream,
-        provenance=ForecastProvenance(
-            source="percentile",
-            component_curves=tuple(c.provenance for c in curves),
-        ),
-    )
-
-
-def fit_curve_best_b(
-    months: np.ndarray,
-    q: np.ndarray,
-    *,
-    stream: str,
-    b_grid: tuple[float, ...],
-    terminal_di_annual: float = 0.05,
-    min_post_peak_months: int = 6,
-) -> DeclineCurve:
-    """Fixed-b fits across ``b_grid``; returns the minimum-SSE curve.
-
-    A bounded "free b" that cannot bound-ride: every candidate is a stable
-    2-parameter :func:`fit_curve` at a fixed b, compared on post-peak SSE.
-    Backtested 2026-07: for ≥30-post-peak-month wells this halves holdout MAE
-    vs borrowing a cohort b (results/backtest_baseline_v1.json).
-
-    Raises:
-        ValueError if ``b_grid`` is empty, or wherever fit_curve raises (thin
-        history, all-zero post-peak) — data validity is b-independent.
-    """
-    if not b_grid:
-        raise ValueError("fit_curve_best_b requires a non-empty b_grid")
-    q = np.asarray(q, dtype=float)
-    peak_idx = int(np.argmax(q))
-    q_fit = q[peak_idx:]
-    t_rel = np.arange(len(q_fit), dtype=float)
-
-    best: DeclineCurve | None = None
-    best_sse = float("inf")
-    for b in b_grid:
-        curve = fit_curve(months, q, stream=stream, b_fixed=float(b),
-                          terminal_di_annual=terminal_di_annual,
-                          min_post_peak_months=min_post_peak_months)
-        sse = float(np.sum((np.asarray(curve_rate(curve, t_rel)) - q_fit) ** 2))
-        if sse < best_sse:
-            best, best_sse = curve, sse
-    return best
-
-
-def override_b(curve: DeclineCurve, b: float, *, note: str) -> DeclineCurve:
-    """The same curve with a re-sourced ``b``. The terminal switch month depends
-    on (di, b), so it is recomputed; everything else is preserved. ``note`` lands
-    in provenance.notes so the run record says where the b came from."""
-    if curve.di > curve.terminal_di_monthly and b > 1e-6:
-        switch = max(0.0, (curve.di / curve.terminal_di_monthly - 1.0) / (b * curve.di))
+        switch = max(0.0, (di / terminal_di_monthly - 1.0) / (b * di))
     else:
         switch = float("inf")
     return DeclineCurve(
-        qi_peak=curve.qi_peak, di=curve.di, b=float(b),
-        terminal_di_monthly=curve.terminal_di_monthly,
+        qi=float(qi),
+        di=float(di),
+        b=float(b),
+        terminal_di_monthly=terminal_di_monthly,
         switch_month_from_peak=switch,
-        stream=curve.stream,
-        provenance=ForecastProvenance(
-            source=curve.provenance.source,
-            fit_n_input_months=curve.provenance.fit_n_input_months,
-            component_curves=curve.provenance.component_curves,
-            notes=(*curve.provenance.notes, note),
-        ),
+        stream=stream,
+        provenance=provenance
+        or ForecastProvenance(source="asserted", strategy="asserted"),
+    )
+
+
+def make_zero_curve(stream: str) -> DeclineCurve:
+    """Flat-zero curve for a stream Claude did not assert (a well with no
+    meaningful gas, say). Keeps the schedule math uniform: every well always
+    carries both streams."""
+    return DeclineCurve(
+        qi=0.0,
+        di=0.0,
+        b=0.0,
+        terminal_di_monthly=0.0,
+        switch_month_from_peak=float("inf"),
+        stream=stream,
+        provenance=ForecastProvenance(source="asserted", strategy="not_asserted"),
     )
 
 
 def curve_rate(curve: DeclineCurve, t_months: float | np.ndarray) -> float | np.ndarray:
-    """Evaluate the curve at t months past peak.
+    """Evaluate the curve at t months past its anchor (t=0 is where q == qi).
 
     Accepts a scalar or an ``np.ndarray``; returns the same shape. Past
     ``switch_month_from_peak`` the curve follows an exponential at
     ``terminal_di_monthly``. Raises ValueError if any t is negative
-    (no pre-peak extrapolation).
+    (no pre-anchor extrapolation).
     """
     t = np.asarray(t_months, dtype=float)
     if np.any(t < 0):
-        raise ValueError("curve_rate: negative t (pre-peak extrapolation) not supported")
+        raise ValueError("curve_rate: negative t (pre-anchor extrapolation) not supported")
 
-    q_hyp = _hyperbolic_q(t, curve.qi_peak, curve.di, curve.b)
+    q_hyp = _hyperbolic_q(t, curve.qi, curve.di, curve.b)
     if not np.isfinite(curve.switch_month_from_peak):
         result = q_hyp
     else:
         switch = curve.switch_month_from_peak
-        q_at_switch = _hyperbolic_q(np.array([switch]), curve.qi_peak, curve.di, curve.b)[0]
+        q_at_switch = _hyperbolic_q(np.array([switch]), curve.qi, curve.di, curve.b)[0]
         post = t >= switch
         result = np.where(
             post,
@@ -221,9 +106,9 @@ def project(forecast: Forecast, *, horizon_months: int) -> tuple[list[date], np.
     Returns ``(months, rates)`` where ``months[i]`` is the calendar month and
     ``rates[i]`` is the curve evaluated at ``t = peak_offset + i``, with
     ``peak_offset`` being the months between ``peak_date`` and ``start_date``.
-    For wells where ``start_date == peak_date`` (PUDs, climbing wells)
-    ``peak_offset == 0``. For PDP wells with history, ``peak_offset`` is the
-    months elapsed between the historical peak and the forecast anchor.
+    Asserted curves anchor where they start (``peak_date == start_date`` ⇒
+    ``peak_offset == 0`` ⇒ ``rates[0] == qi``); a nonzero offset appears only
+    when replaying legacy fit-era stages whose qi was a peak rate.
     """
     if horizon_months <= 0:
         raise ValueError(f"horizon_months must be positive; got {horizon_months}")

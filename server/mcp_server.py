@@ -34,9 +34,8 @@ _briefing_handles = BriefingHandleStore(ttl_seconds=86_400.0)  # 24h
 
 from server.valuation.orchestrator import (
     compose_artifact_payload_for_run, forecast_wells_for_run,
-    run_valuation_for_run, AnalogsRequired,
+    run_valuation_for_run, ForecastValidationError,
 )
-from server.valuation.routing import AnalogRequired
 from server.valuation.artifact_payload import load_viewer
 
 # Frozen deal-sheet artifact template, shipped in every run_valuation response
@@ -387,33 +386,22 @@ def get_map_full(token: str) -> str:
 # ── valuation tools (synchronous) ────────────────────────────────────────────
 
 @mcp.tool(description=_load_prompt("outer/tool_forecast_wells.md"))
-def forecast_wells(groups: list[dict], run_id: str | None = None) -> str:
-    """Classify + forecast wells grouped by area. See prompts/outer/tool_forecast_wells.md."""
+def forecast_wells(forecasts: list[dict], run_id: str | None = None) -> str:
+    """Accept asserted decline parameters, echo consequences. See
+    prompts/outer/tool_forecast_wells.md."""
     identity = get_current_identity()
     if not identity:
         return _json.dumps({"error": "Could not identify user"})
     user_id = identity["user_id"]
     with trace("forecast_wells", user=identity["user_slug"]):
         try:
-            result = forecast_wells_for_run(run_id=run_id, groups=groups, user_id=user_id)
-        except AnalogsRequired as e:
+            result = forecast_wells_for_run(run_id=run_id, forecasts=forecasts, user_id=user_id)
+        except ForecastValidationError as e:
             return _json.dumps({
-                "error": "analogs_required",
-                "needs_analogs": e.needs_analogs,
-                "message": ("These wells can't be forecast from their own history. "
-                            "Find analogs (same formation, comparable lateral, nearby, "
-                            "real producers with enough history — include several ≥2 "
-                            "years past peak) with run_sql and call forecast_wells "
-                            "again."),
-            })
-        except AnalogRequired as e:
-            # Belt-and-braces: the orchestrator converts these to AnalogsRequired
-            # bounces; if one ever escapes, still return an actionable message.
-            return _json.dumps({
-                "error": "analogs_required",
-                "message": (f"A well's {e.stream} stream needs an analog type curve "
-                            "it wasn't given. Supply analogs for its group and call "
-                            "forecast_wells again."),
+                "error": "validation_failed",
+                "violations": e.violations,
+                "message": ("Nothing was saved. Fix every listed violation and re-send "
+                            "the full call."),
             })
         except Exception as e:  # noqa: BLE001
             return _json.dumps({"error": str(e)})

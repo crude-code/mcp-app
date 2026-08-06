@@ -3,7 +3,6 @@
 #   fastapi           — Renderer API server
 #   fastmcp           — MCP server framework
 #   numpy             — Arps decline math (server/valuation)
-#   scipy             — curve fitting (server/valuation)
 #   pandas            — tabular ops (server/valuation)
 #   psycopg[binary]   — PostgreSQL driver (psycopg 3)
 #   psycopg-pool      — Connection pooling
@@ -16,7 +15,6 @@
 #
 anthropic>=0.96.0
 numpy==2.4.4
-scipy==1.17.1
 pandas==3.0.3
 aiofile==3.9.0
 annotated-doc==0.0.4

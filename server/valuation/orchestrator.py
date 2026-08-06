@@ -1,77 +1,51 @@
-"""Valuation orchestrator. Runs forecast_wells → economics → deal-sheet assembly."""
+"""Valuation orchestrator. Runs forecast_wells → economics → deal-sheet assembly.
+
+The forecast side is accept-and-echo: Claude asserts decline parameters
+({qi, di, b} per stream, an anchor month, optional uptime factor) per well or
+cohort; the server bounds-validates, persists, and echoes the consequences
+(``server.valuation.consequences``). Nothing here ever chooses a parameter —
+the decision doctrine lives in the ``well-forecasting`` skill, and the
+benchmark evidence for this division of labor lives in the sibling
+``forecast-benchmark`` repo.
+"""
 import math
-from datetime import date
+from datetime import date, datetime, timezone
 
 import numpy as np
 from dateutil.relativedelta import relativedelta
 
 from server.valuation import config
+from server.valuation import consequences as cq
 from server.valuation import strip
 from server.valuation.casefile import MAX_ASSET_WELLS, parse_run_params
-from server.valuation.routing import (
-    classify_well, build_curve, AnalogRequired, WellState,
-)
 from server.valuation.econ import cashflow_components, compute_gross_revenue, npv, resolve_well_interest
-from server.valuation.forecast import fit_curve, override_b, percentile_curves, project
+from server.valuation.forecast import make_curve, make_zero_curve, project
 from server.valuation.run_record import ValuationRunStore
 from server.valuation.types import DeclineCurve, Forecast, ForecastProvenance, WellMeta
 from server.valuation.wells import bulk_load_production, bulk_load_wells
 
 
-class CohortError(Exception):
-    """Raised when no analog well can be fit into a type curve."""
+class ForecastValidationError(Exception):
+    """Bounce: the forecast_wells call had validation violations. Carries every
+    violation in the call (never fail-fast) as ``[{entry, well?, field, message}]``.
+    Nothing is persisted on a bounce."""
+    def __init__(self, violations: list[dict]):
+        self.violations = violations
+        super().__init__("validation_failed")
 
 
-class AnalogsRequired(Exception):
-    """Bounce: one or more groups have wells needing analogs but supplied none."""
-    def __init__(self, needs_analogs: list[dict]):
-        self.needs_analogs = needs_analogs
-        super().__init__("analogs_required")
+# Asserted-parameter sanity bounds. These are bounds, not judgment — anything
+# inside them is Claude's call; the echo is where a bad-but-legal number gets
+# caught. b's upper bound follows the old plan-validation precedent (2.0).
+_QI_MIN = 0.0                    # exclusive
+_DI_RANGE = (0.0, 1.0)           # exclusive both ends, nominal monthly
+_B_RANGE = (0.0, 2.0)            # inclusive both ends
+_UPTIME_RANGE = (0.5, 1.0)       # inclusive both ends
+_MAX_FUTURE_ANCHOR_MONTHS = 360  # loose cap on asserted online dates
 
-
-# Server-default b when no cohort exists (all-history deal). Basin-typical
-# unconventional oil. The plan picks 0.8.
-_SERVER_DEFAULT_B = 0.8
-
-# Cohort-b gating: b is only sourced from analogs mature enough to identify it
-# (fit_curve's own docstring: poorly identified under ~24 post-peak months), and
-# the sourced value is clamped to a sane unconventional band. Backtested
-# 2026-07 (results/backtest_baseline_v1.json): consistent bias reduction vs the
-# ungated median. qi/di stay full-cohort medians — young modern-completion
-# analogs are the right source for rate level, just not for tail curvature.
-_GATED_B_MIN_POST_PEAK = 24
-_B_CLAMP = (0.3, 1.3)
-
-_PLAN_FIELDS = {"cohort", "b"}
-
-
-def validate_plan(plan: dict | None) -> dict:
-    """Two-field plan: cohort (optional override) + b (optional override).
-
-    Reject unknown fields aggressively — every field this grows is justified
-    by a real deal that the current set couldn't express.
-
-    Passes ``None`` through as ``{}`` (server uses defaults).
-    """
-    if plan is None:
-        return {}
-    if not isinstance(plan, dict):
-        raise ValueError(f"plan must be an object, got {type(plan).__name__}")
-    unknown = set(plan.keys()) - _PLAN_FIELDS
-    if unknown:
-        raise ValueError(f"unknown plan field(s): {sorted(unknown)}")
-    if "b" in plan:
-        b = plan["b"]
-        if b == "cohort_median":
-            pass                                   # server resolves
-        elif isinstance(b, (int, float)) and not isinstance(b, bool):
-            if not (0.001 <= b <= 2.0):
-                raise ValueError(f"b must be in [0.001, 2.0] or 'cohort_median', got {b!r}")
-        else:
-            raise ValueError(f"b must be a number or 'cohort_median', got {b!r}")
-    if "cohort" in plan and not isinstance(plan["cohort"], dict):
-        raise ValueError("cohort must be an object")
-    return plan
+_STREAMS = ("oil", "gas")
+_PARAM_FIELDS = {"qi", "di", "b"}
+_PROD_COL = {"oil": "oil_bbl", "gas": "gas_mcf"}
 
 
 def _resolve_asset_list(asset_list: dict) -> list[str]:
@@ -133,7 +107,7 @@ def _serialize_curve(c: DeclineCurve) -> dict:
     Provenance: only source + strategy are persisted; other fields are dropped."""
     switch = c.switch_month_from_peak
     return {
-        "qi_peak": c.qi_peak, "di": c.di, "b": c.b,
+        "qi": c.qi, "di": c.di, "b": c.b,
         "terminal_di_monthly": c.terminal_di_monthly,
         "switch_month_from_peak": switch if math.isfinite(switch) else None,
         "stream": c.stream,
@@ -143,14 +117,17 @@ def _serialize_curve(c: DeclineCurve) -> dict:
 
 def _deserialize_curve(c: dict) -> DeclineCurve:
     """Inverse of _serialize_curve. None switch month → float('inf').
-    provenance is optional — curve dicts without it (e.g. raw dateless curves
-    stored by the new forecast_wells stages) get a synthetic provenance."""
+    Tolerant on two axes so durable pre-assertion runs still replay: the qi key
+    (fit-era stages persisted ``qi_peak``; that qi was a peak rate, which the
+    stage's per-stream ``peak_month`` re-anchors at load) and provenance
+    (synthesized when absent)."""
     switch = c["switch_month_from_peak"]
     if switch is None:
         switch = float("inf")
     prov = c.get("provenance") or {}
     return DeclineCurve(
-        qi_peak=c["qi_peak"], di=c["di"], b=c["b"],
+        qi=c["qi"] if "qi" in c else c["qi_peak"],
+        di=c["di"], b=c["b"],
         terminal_di_monthly=c["terminal_di_monthly"],
         switch_month_from_peak=switch,
         stream=c["stream"],
@@ -202,7 +179,7 @@ _SCHEDULE_COLS = (
 def _build_schedule(
     *,
     forecasts: dict,
-    classifications: dict,
+    needs_capex: dict,
     origin: date,
     horizon: int,
     oil_price: float,
@@ -264,7 +241,7 @@ def _build_schedule(
         if interest_type == "wi":
             online = (month_index >= offset).astype(float)
             opex = w_wi * (opex_per_well_month * online + opex_per_bbl * oil)
-            if classifications.get(api) == "no_history" and offset < horizon:
+            if needs_capex.get(api) and offset < horizon:
                 capex[offset] = w_wi * capex_per_well     # drilling AFE at the online month
 
         comp = cashflow_components(
@@ -418,11 +395,12 @@ def _interest_from_record(case_file: dict | None, assumptions: dict) -> dict:
     return out
 
 
-def _economics_from_forecasts(*, forecasts: dict, classifications: dict,
+def _economics_from_forecasts(*, forecasts: dict, needs_capex: dict,
                               statuses: dict, econ_overrides: dict) -> dict:
     """Pure economics: monthly schedule → risked-PV cube → NPV. Takes the
-    assembled (already calendar-placed) forecasts + classifications + statuses.
-    Every economic number is read from econ_overrides (the validated params)."""
+    assembled (already calendar-placed) forecasts + per-well capex flags +
+    statuses. Every economic number is read from econ_overrides (the
+    validated params)."""
     inputs = config.resolve_price_inputs(econ_overrides)
     horizon = inputs["horizon_months"]
     origin = config.first_of_next_month(
@@ -449,7 +427,7 @@ def _economics_from_forecasts(*, forecasts: dict, classifications: dict,
     _validate_by_api_membership(interest.get("by_api"), set(forecasts))
 
     base_schedule_kwargs = dict(
-        forecasts=forecasts, classifications=classifications, origin=origin,
+        forecasts=forecasts, needs_capex=needs_capex, origin=origin,
         horizon=horizon, oil_diff=inputs["oil_diff"], gas_diff=inputs["gas_diff"],
         gas_btu_factor=inputs["gas_btu_factor"],
         interest_type=interest_type, wi_pct=interest.get("wi_pct"),
@@ -520,212 +498,327 @@ def _well_meta_payload(apis: list[str], meta_by_api: dict) -> dict:
 
 
 
-def _build_type_curve_with_stats(prod: dict, stream: str):
-    """Median type curve from analog fits, plus fit stats and b provenance.
+def _norm_month_str(m) -> str | None:
+    """'YYYY-MM' or 'YYYY-MM[-DD]' → 'YYYY-MM-01'; None when unparseable."""
+    if not isinstance(m, str):
+        return None
+    s = m.strip()
+    if len(s) == 7:
+        s += "-01"
+    try:
+        return date.fromisoformat(s[:10]).replace(day=1).isoformat()
+    except ValueError:
+        return None
 
-    Returns ``(curve, n_fit, n_skipped, b_meta)``. qi/di/terminal are the
-    full-cohort parameter-wise medians of free fits (unchanged); the cohort b is
-    GATED — median only of analogs with ≥ ``_GATED_B_MIN_POST_PEAK`` post-peak
-    months, clamped to ``_B_CLAMP``, falling back to ``_SERVER_DEFAULT_B`` when
-    no analog is mature enough to identify b. ``b_meta`` records which path won
-    (``{"b": float, "source": str, "n_mature": int}``) and flows to
-    ``analogs_used`` so the agent can see when the cohort was too young.
 
-    ``prod`` is a preloaded bulk_load_production result (caller loads once and
-    passes to both oil and gas calls — avoids double DB round-trip)."""
-    q_col = "oil_bbl" if stream == "oil" else "gas_mcf"
-    curves = []
-    mature_bs: list[float] = []
-    for _api, d in prod.items():
-        q = np.asarray(d[q_col], dtype=float)
-        try:
-            c = fit_curve(np.arange(len(q), dtype=float), q, stream=stream, b_fixed=None)
-        except ValueError:
+def _is_num(v) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+
+
+def _validate_entry_structure(i: int, entry, violations: list[dict]) -> None:
+    """Structural (DB-free) validation of one forecast entry. Appends to
+    ``violations``; never raises. Bounds only — judgment is Claude's."""
+    def bad(field: str, message: str, well: str | None = None):
+        v = {"entry": i, "field": field, "message": message}
+        if well:
+            v["well"] = well
+        violations.append(v)
+
+    if not isinstance(entry, dict):
+        bad("entry", "each forecast entry must be an object")
+        return
+    wells = entry.get("wells")
+    if not isinstance(wells, list) or not wells or not all(isinstance(w, str) and w for w in wells):
+        bad("wells", "wells must be a non-empty list of well API strings")
+    if len(set(wells or [])) != len(wells or []):
+        bad("wells", "the same well appears more than once in this entry")
+
+    asserted_any = False
+    for s in _STREAMS:
+        p = entry.get(s)
+        if p is None:
             continue
-        curves.append(c)
-        if len(q) - 1 - int(np.argmax(q)) >= _GATED_B_MIN_POST_PEAK:
-            mature_bs.append(c.b)
-    n_fit, n_skipped = len(curves), len(prod) - len(curves)
-    if not curves:
-        raise CohortError(f"no analog fit for stream={stream} ({len(prod)} tried)")
-    cohort = percentile_curves(curves, pct=0.5)
-    if mature_bs:
-        b = min(max(float(np.median(mature_bs)), _B_CLAMP[0]), _B_CLAMP[1])
-        source = f"gated_median(n={len(mature_bs)})"
-    else:
-        b = _SERVER_DEFAULT_B
-        source = "default_no_mature_analogs"
-    b_meta = {"b": round(b, 4), "source": source, "n_mature": len(mature_bs)}
-    return override_b(cohort, b, note=f"b:{source}"), n_fit, n_skipped, b_meta
+        asserted_any = True
+        if not isinstance(p, dict) or set(p) != _PARAM_FIELDS:
+            bad(s, f"{s} must be exactly {{qi, di, b}}; got "
+                   f"{sorted(p) if isinstance(p, dict) else type(p).__name__}")
+            continue
+        if not _is_num(p["qi"]) or p["qi"] <= _QI_MIN:
+            bad(f"{s}.qi", f"qi must be a finite number > 0 (units/month at the anchor); got {p['qi']!r}")
+        if not _is_num(p["di"]) or not (_DI_RANGE[0] < p["di"] < _DI_RANGE[1]):
+            bad(f"{s}.di", f"di must be a nominal MONTHLY decline in ({_DI_RANGE[0]}, {_DI_RANGE[1]}); got {p['di']!r}")
+        if not _is_num(p["b"]) or not (_B_RANGE[0] <= p["b"] <= _B_RANGE[1]):
+            bad(f"{s}.b", f"b must be in [{_B_RANGE[0]}, {_B_RANGE[1]}]; got {p['b']!r}")
+    if not asserted_any:
+        bad("oil/gas", "assert at least one stream (oil and/or gas)")
+
+    uptime = entry.get("uptime_factor", 1.0)
+    if not _is_num(uptime) or not (_UPTIME_RANGE[0] <= uptime <= _UPTIME_RANGE[1]):
+        bad("uptime_factor", f"uptime_factor must be in [{_UPTIME_RANGE[0]}, {_UPTIME_RANGE[1]}]; got {uptime!r}")
+
+    if _norm_month_str(entry.get("anchor_month")) is None:
+        bad("anchor_month", "anchor_month is required: 'YYYY-MM' — the month qi applies "
+                            "(producers: last clean signal; undrilled: asserted first-production month)")
+
+    rationale = entry.get("rationale")
+    if not isinstance(rationale, str) or not rationale.strip():
+        bad("rationale", "rationale is required — record the judgments per the well-forecasting skill")
+
+    struck = entry.get("struck_months")
+    if struck is not None:
+        if not isinstance(struck, list) or any(_norm_month_str(m) is None for m in struck):
+            bad("struck_months", "struck_months must be a list of 'YYYY-MM' strings")
 
 
-def _classify_overall(d: dict) -> WellState:
-    """Gas-aware overall state for cohort-need + summary. Gas-only wells (zero oil,
-    real gas) classify off gas so they aren't mislabeled HISTORY on a zero stream."""
-    q_oil = np.asarray(d.get("oil_bbl", []), dtype=float)
-    q_gas = np.asarray(d.get("gas_mcf", []), dtype=float)
-    if q_oil.sum() <= 0 and len(q_gas) and q_gas.sum() > 0:
-        return classify_well(d.get("months", []), q_gas)
-    return classify_well(d.get("months", []), q_oil)
+def forecast_wells_for_run(*, run_id: str | None, forecasts: list[dict], user_id: int = 0) -> dict:
+    """Accept-and-echo. Bounds-validate Claude's asserted parameters, persist
+    them into the run's single ``forecast`` stage, and return the consequences
+    of what was committed (future volumes — never fit quality).
 
+    All-or-nothing per call: any violation bounces the whole call with every
+    violation listed and nothing persisted. A valid call MERGES into the
+    existing stage — re-asserting a well overwrites just that well; commits are
+    cheap and overwritable by design (the skill's revise loop depends on it).
 
-_NEEDS_ANALOG = {WellState.THIN_PEAKED, WellState.CLIMBING, WellState.NO_HISTORY}
-
-
-def forecast_wells_for_run(*, run_id: str | None, groups: list[dict], user_id: int = 0) -> dict:
-    """Classify every subject well, bounce (all-or-nothing) if a group needs
-    analogs and has none, fit each group's analogs into a median type curve, blend
-    per the routing table, and write ONE dateless `forecast` stage."""
-    if not groups:
-        raise ValueError("forecast_wells requires a non-empty groups list")
-
+    Cohort entries (len(wells) > 1) persist one scaled curve per member well:
+    pro-rata trailing-12 shares per stream. q(t) is linear in qi, so the
+    per-well curves sum exactly back to the asserted cohort stream."""
     store = ValuationRunStore()
 
-    # Load all subjects once.
-    all_subjects = [a for g in groups for a in (g.get("wells") or [])]
-    if not all_subjects:
-        raise ValueError("forecast_wells: every group must list at least one well")
-    metas = {m.api: m for m in bulk_load_wells(all_subjects)}
-    missing = [a for a in all_subjects if a not in metas]
-    if missing:
-        raise ValueError(f"{len(missing)} well API(s) not found in public.wells: {missing[:5]}")
-    subj_prod = bulk_load_production(all_subjects)
+    if not isinstance(forecasts, list) or not forecasts:
+        raise ForecastValidationError(
+            [{"field": "forecasts", "message": "forecasts must be a non-empty list of entries"}])
 
-    # First pass: classify + detect bounces. No writes until every group passes.
-    overall: dict[str, WellState] = {}
-    needs_analogs: list[dict] = []
-    for g in groups:
-        wells = g.get("wells") or []
-        analogs = g.get("analogs") or []
-        short = []
-        for api in wells:
-            st = _classify_overall(subj_prod.get(api, {"months": [], "oil_bbl": [], "gas_mcf": []}))
-            overall[api] = st
-            if st in _NEEDS_ANALOG and not analogs:
-                short.append(api)
-        if short:
-            needs_analogs.append({"area": g.get("area"), "wells": short})
-    if needs_analogs:
-        raise AnalogsRequired(needs_analogs)
+    # Run ownership before anything heavy: a write into a nonexistent run would
+    # silently UPDATE 0 rows; a write into someone else's run would be worse.
+    if run_id is not None:
+        rec = store.get(run_id)
+        if rec is None:
+            raise ForecastValidationError([{"field": "run_id", "message": f"unknown run_id: {run_id}"}])
+        owner = rec.get("user_id")
+        if owner is None or int(owner) != int(user_id):
+            raise ForecastValidationError([{"field": "run_id", "message": "run_id belongs to another user"}])
 
-    # Second pass: fit analogs per group, build per-well curves, accumulate.
-    # Nothing is minted or written until EVERY well in every group has a curve —
-    # a per-stream AnalogRequired here (e.g. an oil-HISTORY well whose gas
-    # stream is CLIMBING on rising GOR, in a group with no analogs) becomes a
-    # clean AnalogsRequired bounce, exactly like the first-pass check.
-    forecasts: dict[str, dict] = {}
-    group_meta: list[dict] = []
-    return_groups: list[dict] = []
-    stream_short: list[dict] = []
-    from collections import defaultdict
-    oil_by_month: dict[str, float] = defaultdict(float)
-    gas_by_month: dict[str, float] = defaultdict(float)
+    violations: list[dict] = []
+    for i, entry in enumerate(forecasts):
+        _validate_entry_structure(i, entry, violations)
 
-    for g in groups:
-        wells = g.get("wells") or []
-        analogs = g.get("analogs") or []
-        oil_tc = gas_tc = None
-        n_fit = n_skipped = 0
-        b_meta_oil = None
-        if analogs:
-            analog_prod = bulk_load_production(analogs)
-            oil_tc, n_fit, n_skipped, b_meta_oil = _build_type_curve_with_stats(analog_prod, "oil")
-            gas_tc, _, _, _ = _build_type_curve_with_stats(analog_prod, "gas")
+    # Cross-entry checks need well lists, which only exist when structure holds.
+    if not violations:
+        seen: dict[str, int] = {}
+        total = 0
+        for i, entry in enumerate(forecasts):
+            for api in entry["wells"]:
+                total += 1
+                if api in seen:
+                    violations.append({"entry": i, "well": api, "field": "wells",
+                                       "message": f"{api} already appears in entry {seen[api]}"})
+                else:
+                    seen[api] = i
+        if total > MAX_ASSET_WELLS:
+            violations.append({"field": "wells",
+                               "message": f"{total} wells across entries; at most {MAX_ASSET_WELLS} per call"})
+    if violations:
+        raise ForecastValidationError(violations)
 
-        by_status: dict[str, list] = {"PDP": [], "DUC": [], "PUD": []}
-        spectrum = {s.value: 0 for s in WellState}
-        short: list[str] = []
-        for api in wells:
-            d = subj_prod.get(api, {"months": [], "oil_bbl": [], "gas_mcf": []})
-            q_oil = np.asarray(d["oil_bbl"], dtype=float)
-            q_gas = np.asarray(d["gas_mcf"], dtype=float)
-            try:
-                oil_curve, _st, oil_strat = build_curve(d["months"], q_oil, analog=oil_tc, stream="oil")
-                gas_curve, _gst, _gstrat = build_curve(d["months"], q_gas, analog=gas_tc, stream="gas")
-            except AnalogRequired:
-                short.append(api)
+    all_wells = [api for entry in forecasts for api in entry["wells"]]
+    metas = {m.api: m for m in bulk_load_wells(all_wells)}
+    for i, entry in enumerate(forecasts):
+        for api in entry["wells"]:
+            if api not in metas:
+                violations.append({"entry": i, "well": api, "field": "wells",
+                                   "message": f"{api} not found in public.wells"})
+    if violations:
+        raise ForecastValidationError(violations)
+    prod = bulk_load_production(all_wells)
+
+    current_month = date.today().replace(day=1)
+    horizon = config.ECON.horizon_months
+    term = config.ECON.terminal_di_annual
+
+    # Semantic validation: anchors against history; cohort trailing production.
+    plans: list[dict] = []
+    for i, entry in enumerate(forecasts):
+        wells_list = entry["wells"]
+        anchor_str = _norm_month_str(entry["anchor_month"])
+        anchor_d = date.fromisoformat(anchor_str)
+        is_cohort = len(wells_list) > 1
+        has_history = {api: bool(prod.get(api, {}).get("months")) for api in wells_list}
+
+        for api in wells_list:
+            if has_history[api] and anchor_d > current_month:
+                violations.append({
+                    "entry": i, "well": api, "field": "anchor_month",
+                    "message": f"{api} has reported production; anchor_month is the month qi applies "
+                               f"and must not be in the future"})
+            elif not has_history[api]:
+                months_out = (anchor_d.year - current_month.year) * 12 + (anchor_d.month - current_month.month)
+                if months_out < 0:
+                    violations.append({
+                        "entry": i, "well": api, "field": "anchor_month",
+                        "message": f"{api} has no reported production; anchor_month is its asserted "
+                                   f"first-production month and must be {current_month.strftime('%Y-%m')} or later"})
+                elif months_out > _MAX_FUTURE_ANCHOR_MONTHS:
+                    violations.append({
+                        "entry": i, "well": api, "field": "anchor_month",
+                        "message": f"asserted first production for {api} is more than "
+                                   f"{_MAX_FUTURE_ANCHOR_MONTHS} months out"})
+
+        shares: dict[str, dict[str, float]] = {}
+        for s in _STREAMS:
+            if entry.get(s) is None:
                 continue
-            st = overall[api]
-            spectrum[st.value] += 1
-            status = metas[api].status
-            anchor = d["months"][-1] if d["months"] else None
-            entry = {
-                "oil": {"curve": _serialize_curve(oil_curve)},
-                "gas": {"curve": _serialize_curve(gas_curve)},
-                "classification": st.value,
-                "strategy": oil_strat,
-                "status": status,
+            if not is_cohort:
+                shares[s] = {wells_list[0]: 1.0}
+                continue
+            trailing = {api: cq.trailing_window_cum(prod[api]["months"], prod[api][_PROD_COL[s]],
+                                                    anchor=anchor_d)
+                        for api in wells_list}
+            dry = [api for api, v in trailing.items() if v <= 0.0]
+            if dry:
+                for api in dry:
+                    violations.append({
+                        "entry": i, "well": api, "field": s,
+                        "message": f"{api} has no trailing-12 {s} production at {anchor_str[:7]} — the "
+                                   f"cohort split is pro-rata trailing-12; forecast it individually"})
+                continue
+            shares[s] = cq.allocation_shares(trailing)
+        plans.append({"anchor_str": anchor_str, "anchor_d": anchor_d, "is_cohort": is_cohort,
+                      "has_history": has_history, "shares": shares})
+    if violations:
+        raise ForecastValidationError(violations)
+
+    # Build the per-well stage entries and the echo. Persist only after every
+    # entry has built cleanly.
+    committed_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    new_entries: dict[str, dict] = {}
+    echo_entries: list[dict] = []
+    for entry, plan in zip(forecasts, plans):
+        wells_list = entry["wells"]
+        anchor_str, anchor_d = plan["anchor_str"], plan["anchor_d"]
+        uptime = float(entry.get("uptime_factor", 1.0))
+        undrilled = not any(plan["has_history"].values())
+        warnings: list[str] = []
+
+        assertion = {
+            "asserted": {s: (dict(entry[s]) if entry.get(s) is not None else None) for s in _STREAMS},
+            "uptime_factor": uptime,
+            "struck_months": [_norm_month_str(m)[:7] for m in (entry.get("struck_months") or [])],
+            "rationale": entry["rationale"],
+            "cohort": ({"wells": list(wells_list),
+                        "shares": {s: {a: round(v, 6) for a, v in m.items()}
+                                   for s, m in plan["shares"].items()}}
+                       if plan["is_cohort"] else None),
+            "committed_at": committed_at,
+        }
+
+        for api in wells_list:
+            well_entry: dict = {
+                "anchor_month": anchor_str[:7],
+                "status": metas[api].status,
+                # The drilling AFE follows well status, not the anchor: an
+                # anchored DUC still gets its capex, placed at the asserted
+                # online month by the schedule.
+                "needs_capex": config.status_code(metas[api].status) in ("DUC", "PUD"),
+                "assertion": assertion,
             }
-            if anchor:
-                entry["anchor_month"] = anchor
-                # Per-stream historical peak month so _load_forecast_stage can
-                # place the curve at the right offset (project() expects
-                # peak_offset = months(peak → anchor)).
-                entry["oil"]["peak_month"] = d["months"][int(np.argmax(q_oil))]
-                entry["gas"]["peak_month"] = d["months"][int(np.argmax(q_gas))]
-            forecasts[api] = entry
-            bucket = config.status_code(status)   # "PDP" | "DUC" | "PUD"
-            by_status[bucket].append({
-                "api": api, "strategy": oil_strat, "status": status,
-                "months_producing": len(d["months"]),
-            })
-            for i, mo in enumerate(d["months"]):
-                oil_by_month[mo] += float(d["oil_bbl"][i])
-                gas_by_month[mo] += float(d["gas_mcf"][i])
+            for s in _STREAMS:
+                p = entry.get(s)
+                if p is None:
+                    curve = make_zero_curve(s)
+                else:
+                    share = plan["shares"][s][api]
+                    # Uptime is applied as a qi haircut (curve × factor ≡ curve
+                    # with qi × factor — q(t) is linear in qi). Order: share
+                    # then uptime; equivalent either way, documented here.
+                    curve = make_curve(p["qi"] * share * uptime, p["di"], p["b"],
+                                       stream=s, terminal_di_annual=term)
+                well_entry[s] = {"curve": _serialize_curve(curve)}
+            new_entries[api] = well_entry
 
-        if short:
-            stream_short.append({"area": g.get("area"), "wells": short})
-        gm = {"area": g.get("area")}
-        if oil_tc is not None:
-            gm["type_curve"] = {"oil": _serialize_curve(oil_tc), "gas": _serialize_curve(gas_tc)}
-            gm["analog_meta"] = {"analog_apis": list(analogs), "n_fit": n_fit,
-                                 "n_skipped": n_skipped, "b_meta": b_meta_oil}
-        group_meta.append(gm)
-        analogs_used = {"n_requested": len(analogs), "n_fit": n_fit, "n_skipped": n_skipped}
-        if b_meta_oil is not None:
-            analogs_used["cohort_b"] = b_meta_oil
-        return_groups.append({
-            "area": g.get("area"), "by_status": by_status, "spectrum": spectrum,
-            "analogs_used": analogs_used,
-        })
-
-    if stream_short:
-        raise AnalogsRequired(stream_short)
+        echo: dict = {"wells": list(wells_list), "anchor_month": anchor_str[:7], "undrilled": undrilled}
+        if undrilled:
+            echo["online_month"] = anchor_str[:7]
+        laterals = [metas[a].lateral_ft for a in wells_list]
+        lateral_total = float(sum(laterals)) if all(bool(l) for l in laterals) else None
+        last_reported = max((prod[a]["months"][-1] for a in wells_list if prod[a]["months"]),
+                            default=None)
+        for s in _STREAMS:
+            p = entry.get(s)
+            trailing_sum = sum(cq.trailing_window_cum(prod[a]["months"], prod[a][_PROD_COL[s]],
+                                                      anchor=anchor_d)
+                               for a in wells_list)
+            if p is None:
+                echo[s] = None
+                if trailing_sum > 0:
+                    warnings.append(f"{s} not asserted but trailing-12 {s} was "
+                                    f"{round(trailing_sum, 1)} — it will contribute zero revenue")
+                continue
+            cum = sum(cq.cum_through(prod[a]["months"], prod[a][_PROD_COL[s]], anchor=anchor_d)
+                      for a in wells_list)
+            entry_curve = make_curve(p["qi"] * uptime, p["di"], p["b"],
+                                     stream=s, terminal_di_annual=term)
+            echo[s] = cq.stream_consequences(
+                entry_curve, anchor=anchor_d, horizon_months=horizon,
+                trailing_12_actual=None if undrilled else trailing_sum,
+                cum_to_date=cum, lateral_ft=lateral_total,
+                anchor_is_future=undrilled)
+            if p["di"] <= term / 12.0:
+                warnings.append(f"{s}: asserted di ({p['di']}) is at/below the terminal monthly "
+                                f"rate — the curve never steepens to the terminal tail")
+        if last_reported and anchor_str > last_reported:
+            warnings.append(f"anchor {anchor_str[:7]} is after the last reported month "
+                            f"({last_reported[:7]}) — fine if you mean current capacity, "
+                            f"but no reported data backs it")
+        if plan["is_cohort"]:
+            echo["shares"] = {s: {a: round(v, 4) for a, v in m.items()}
+                              for s, m in plan["shares"].items()}
+        if warnings:
+            echo["warnings"] = warnings
+        echo_entries.append(echo)
 
     if run_id is None:
         run_id = store.new_run(user_id=user_id, case_file={})
+    existing = store.read_stage(run_id, stage="forecast") or {}
+    merged = dict(existing.get("forecasts") or {})
+    merged.update(new_entries)
+    store.write_stage(run_id, stage="forecast", payload={"forecasts": merged})
 
-    ordered = sorted(oil_by_month)
-    actual_history = {
-        "dates": ordered,
-        "oil": [round(oil_by_month[m], 1) for m in ordered],
-        "gas": [round(gas_by_month[m], 1) for m in ordered],
+    by_status = {code: 0 for code in config.ECON.default_rate_centers}
+    for fc in merged.values():
+        by_status[config.status_code(fc.get("status"))] += 1
+    return {
+        "run_id": run_id,
+        "committed": echo_entries,
+        "wells_committed": len(new_entries),
+        "wells_in_run": len(merged),
+        "by_status": by_status,
     }
-    store.write_stage(run_id, stage="forecast", payload={
-        "forecasts": forecasts, "groups": group_meta, "actual_history": actual_history,
-    })
-    return {"run_id": run_id, "groups": return_groups}
 
 
 def _load_forecast_stage(*, forecast: dict, as_of, months_override):
     """Place the single dateless `forecast` stage on the calendar for economics.
-    Producing wells (have anchor_month) anchor at their last history month; others
-    anchor at the status-derived planned first-prod date (else as_of).
 
-    For producing wells, each stream's stored peak_month is passed as peak_date so
-    project() computes the correct peak_offset (months elapsed from historical peak
-    to anchor). This makes the decline continue from the anchor rate rather than
-    restart at qi_peak. CLIMBING wells' argmax IS the last month (peak==anchor,
-    peak_offset==0) so they are already correct and unchanged by this path."""
+    Asserted stages (the accept-and-echo path): every well carries an
+    ``anchor_month`` — producers anchor where qi applies, undrilled wells at
+    their asserted first-production month — and curves anchor at t=0
+    (peak == anchor), so start = peak = anchor.
+
+    Legacy fit-era stages replay unchanged: per-stream ``peak_month`` keeps
+    project()'s peak_offset correct (their qi was a peak rate, not an anchor
+    rate); wells with no anchor fall back to the status-derived planned
+    first-prod date (else as_of) — the only surviving use of the DUC/PERMITTED
+    config offsets; and ``needs_capex`` falls back to the fit-era
+    ``classification == "no_history"`` trigger."""
     def _norm(d: str | None) -> str | None:
         """Normalize a 'YYYY-MM' partial date to 'YYYY-MM-01' for fromisoformat."""
         return d if (d is None or len(d) != 7) else d + "-01"
 
     forecasts: dict[str, dict] = {}
-    classifications: dict[str, str] = {}
+    needs_capex: dict[str, bool] = {}
     statuses: dict[str, str] = {}
     for api, fc in (forecast.get("forecasts") or {}).items():
-        strat = fc.get("strategy", "pure_analog")
+        strat = fc.get("strategy") or ("asserted" if "assertion" in fc else "pure_analog")
         anchor = fc.get("anchor_month")
         if anchor:
             start = _norm(anchor)
@@ -745,9 +838,9 @@ def _load_forecast_stage(*, forecast: dict, as_of, months_override):
                 "oil": _place_curve(self_curve=fc["oil"]["curve"], start_date=start, strategy=strat),
                 "gas": _place_curve(self_curve=fc["gas"]["curve"], start_date=start, strategy=strat),
             }
-        classifications[api] = fc.get("classification", "no_history")
+        needs_capex[api] = bool(fc.get("needs_capex", fc.get("classification") == "no_history"))
         statuses[api] = fc.get("status") or "PUD"
-    return forecasts, classifications, statuses
+    return forecasts, needs_capex, statuses
 
 
 def run_valuation_for_run(*, run_id: str, params: dict) -> dict:
@@ -768,11 +861,11 @@ def run_valuation_for_run(*, run_id: str, params: dict) -> dict:
     as_of = config.resolve_as_of(econ_overrides.get("effective_date"), today=date.today())
     months_override = econ_overrides.get("months_to_first_prod")
 
-    forecasts, classifications, statuses = _load_forecast_stage(
+    forecasts, needs_capex, statuses = _load_forecast_stage(
         forecast=forecast, as_of=as_of, months_override=months_override)
 
     econ = _economics_from_forecasts(
-        forecasts=forecasts, classifications=classifications,
+        forecasts=forecasts, needs_capex=needs_capex,
         statuses=statuses, econ_overrides=econ_overrides)
     store.write_stage(run_id, stage="economics", payload=econ)
 
@@ -782,7 +875,7 @@ def run_valuation_for_run(*, run_id: str, params: dict) -> dict:
     store.write_stage(run_id, stage="wells", payload={
         "well_meta": _well_meta_payload(apis, meta_by_api),
         "statuses": {a: (meta_by_api[a].status if a in meta_by_api else None) for a in apis},
-        "classifications": classifications,
+        "needs_capex": needs_capex,
     })
 
     return {"run_id": run_id, "npv_at_centers": econ["npv_at_centers"]}

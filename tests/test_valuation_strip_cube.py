@@ -8,7 +8,7 @@ from server.valuation import orchestrator as orch
 def _one_well_forecast():
     """A minimal placed-forecast dict (PDP, anchored at origin) for one well."""
     curve = {
-        "qi_peak": 1000.0, "di": 0.15, "b": 0.8, "terminal_di_monthly": 0.004,
+        "qi": 1000.0, "di": 0.15, "b": 0.8, "terminal_di_monthly": 0.004,
         "switch_month_from_peak": None, "stream": "oil",
         "provenance": {"source": "fit", "strategy": "pdp"},
     }
@@ -19,9 +19,9 @@ def _one_well_forecast():
             "gas": {"curve": gcurve, "peak_date": "2026-07-01", "start_date": "2026-07-01", "strategy": "pdp"},
         }
     }
-    classifications = {"30-000-00001": "history"}
+    needs_capex = {"30-000-00001": False}
     statuses = {"30-000-00001": "PRODUCING"}
-    return placed, classifications, statuses
+    return placed, needs_capex, statuses
 
 
 def _fake_strip(monkeypatch):
@@ -38,9 +38,9 @@ def _fake_strip(monkeypatch):
 
 def test_cube_keys_are_deck_labels_and_band_shifts_oil(monkeypatch):
     _fake_strip(monkeypatch)
-    placed, classifications, statuses = _one_well_forecast()
+    placed, needs_capex, statuses = _one_well_forecast()
     econ = orch._economics_from_forecasts(
-        forecasts=placed, classifications=classifications, statuses=statuses,
+        forecasts=placed, needs_capex=needs_capex, statuses=statuses,
         econ_overrides={"interest_type": "minerals", "interest": {"decimal": 0.01}},
     )
     cube = econ["npv_by_status"]

@@ -17,3 +17,8 @@ Available skills:
   AFEs, production reports, title, division orders, a teaser/overview) and
   wants it turned into structured data for deal valuation, call
   `get_skill("dataroom-extract")` and follow the returned instructions.
+- **well-forecasting** — before forecasting any wells for a deal or
+  valuation (`forecast_wells`), call `get_skill("well-forecasting")` and
+  follow the returned procedure: how to read production history, judge the
+  evidence, assert decline parameters and timing, and interrogate the
+  consequence echo.

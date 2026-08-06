@@ -27,7 +27,7 @@ See [`CLAUDE.md`](./CLAUDE.md) for the full architecture reference.
 ## The tools
 
 - **`run_sql`** — guarded, SELECT-only, capped exploration query
-- **`forecast_wells`** / **`run_valuation`** — well-decline forecasting and economics, returning the data behind a claude.ai deal-sheet artifact
+- **`forecast_wells`** / **`run_valuation`** — accept asserted decline parameters (Claude is the reservoir engineer; the server is the calculator), echo their consequences, and run economics — returning the data behind a claude.ai deal-sheet artifact
 - **`map`** — a MapLibre GL well/unit/PLSS map
 - **`get_skill`** — fetches a packaged, occasional-use procedure (e.g. dataroom extraction)
 - **`save_dataroom_extraction`** — persists a dataroom extraction so the deal record outlives the chat

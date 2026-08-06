@@ -48,14 +48,23 @@ Tools (all return JSON strings):
   `EXPLORATION_SCHEMAS` and a 200-row / 100 KB / 5s cap. Returns `{rows, count}`
   or `{error}`. The cap is on purpose: results land in the visible chat
   thread, so keep it presentable and the context lean.
-- **forecast_wells** — Well-classification + forecast. Takes `groups` (areas,
-  each with `wells` and optional `analogs`) and an optional `run_id`. Classifies
-  each well via `routing.py` (HISTORY / THIN_PEAKED / CLIMBING / NO_HISTORY) and
-  blends analogs for wells lacking history. Returns `{run_id, by_status,
-  spectrum, analogs_used}` per group, or `{analogs_required: [...]}` when an
-  area needs analogs and none were supplied (Claude re-calls with analogs).
-  Claude selects analogs itself via `run_sql` (same formation, comparable
-  lateral, nearby, enough history).
+- **forecast_wells** — Accept-and-echo. Claude is the reservoir engineer
+  (doctrine: `get_skill("well-forecasting")`); it asserts decline parameters
+  per well or cohort — `{qi, di, b}` per stream (qi = rate at the anchor,
+  never peak-anything), a required `anchor_month` (producers: where qi
+  applies; undrilled wells: the asserted first-production month — timing is
+  Claude's call too), optional `uptime_factor` (server commits qi × factor),
+  `struck_months`, and a required `rationale`. The server bounds-validates
+  (all-or-nothing per call, every violation listed, nothing saved on a
+  bounce), merges into the run's forecast stage (re-asserting a well
+  overwrites just that well — commits are cheap), and echoes consequences in
+  future volumes: next-12/24 cum vs trailing-12 actuals, effective annual
+  decline at years 1/5, EUR + EUR/ft, terminal switch timing, warnings.
+  Cohort entries (several `wells`) assert the summed stream; the server
+  allocates to members pro-rata on trailing-12 per stream (exact — q(t) is
+  linear in qi). Run ownership is enforced. Nothing server-side ever chooses
+  a parameter; evidence comes from `run_sql` (offsets, histories, operator
+  timing cadence).
 - **run_valuation** — Takes `run_id` (from `forecast_wells`) and `params`
   (interest type + blanket numbers, optional `by_api` per-well overrides,
   optional `economics_overrides`). Runs econ on the forecast stage in the run
@@ -146,13 +155,23 @@ palettes, not design tokens.)
 
 ### Valuation engine (`server/valuation/`)
 
-Server-side forecast + economics, invoked by the valuation tools (Claude never
-authors this code). Pure, unit-tested modules:
-- **`types.py`** — `DeclineCurve`, `Forecast`, `WellMeta`, `ForecastProvenance`.
-- **`forecast.py`** — `fit_curve` (Arps, b fixed), `fit_curve_best_b`
-  (min-SSE over a bounded b grid — "free b" that can't bound-ride),
-  `override_b` (re-source a curve's b, switch month recomputed), `curve_rate`,
-  `percentile_curves` (cohort median), `project` / `aggregate` (calendar-aware).
+Server-side calculator + economics, invoked by the valuation tools (Claude never
+authors this code). Decline parameters are asserted by Claude via
+`forecast_wells`; nothing in this package fits or chooses one. Methodology
+changes are proven in the sibling **`forecast-benchmark`** repo (blind
+hindcast, both arms scored by the same code) — this repo ships only the
+calculator. Pure, unit-tested modules:
+- **`types.py`** — `DeclineCurve` (qi = anchor rate), `Forecast`, `WellMeta`,
+  `ForecastProvenance`.
+- **`forecast.py`** — the calculator: `make_curve` (asserted params →
+  curve; owns the terminal-switch formula), `make_zero_curve` (unasserted
+  stream), `curve_rate` (hyperbolic + terminal-exponential tail),
+  `project` / `aggregate` (calendar-aware).
+- **`consequences.py`** — the echo math, pure: effective annual decline,
+  next-12/24 cums, trailing-window and cum-through comparators, EUR/EUR-ft,
+  cohort `allocation_shares`. Conventions (t=1..N for producers, t=0.. for
+  undrilled online months; EUR replaces post-anchor actuals, never
+  double-counts) are pinned in its module docstring.
 - **`casefile.py`** — `parse_case_file` / `CaseFile`: validate + type the JSON
   contract `run_valuation` sends (interest_type, blanket `interest` + optional
   `by_api` overrides, `asset_list` as `well_apis` XOR `filter_sql`,
@@ -175,30 +194,24 @@ authors this code). Pure, unit-tested modules:
   `run_valuation` response; Claude fills `DATA`/`TITLE`/`TLDR` and nothing
   else.
 - **`wells.py`** — `bulk_load_wells` / `bulk_load_production`: one query each.
-- **`routing.py`** — per-well classification + analog blend (four states).
-  Analog selection is Claude's job (`cohort.py` was removed). b-sourcing is
-  hindcast-backed (2026-07): HISTORY wells with ≥30 post-peak months fit their
-  own b (`history_own_b`, grid 0.3–1.3); younger HISTORY wells borrow the
-  cohort b, which `orchestrator._build_type_curve_with_stats` gates to
-  analogs with ≥24 post-peak months (clamped 0.3–1.3, 0.8 fallback —
-  reported in `analogs_used.cohort_b`).
-- **`backtest.py`** — hindcast harness: truncate real wells at T months,
-  forecast through the real engine path, score vs held-out actuals
-  (`python -m server.valuation.backtest`). Variants: `production` /
-  `legacy` (pre-gating comparator) / `late_window` (shelved). Change forecast
-  methodology only with a backtest run showing the change wins.
 - **`config.py`** — `EconConfig` (`ECON` singleton): the single source for every
   economic parameter (flat oil/gas deck, diffs, tax/GPT, opex/capex, 360-month
-  horizon, DUC=+18mo / PERMITTED=+36mo timing, per-status discount ladders, the
-  cube's oil-price deck). Read as `config.ECON.<field>`; never re-hardcode at a
-  call site. Forecast/routing mechanics deliberately stay at their use sites.
+  horizon, the terminal decline `terminal_di_annual` — the calculator's one
+  own number — per-status discount ladders, the cube's oil-price deck, and
+  the DUC=+18mo / PERMITTED=+36mo timing fallbacks that now date only legacy
+  runs — new forecasts carry an asserted online month). Read as
+  `config.ECON.<field>`; never re-hardcode at a call site.
 - **`strip.py`** — NYMEX strip price path (`load_strip_curve` etc.); the default
   price deck.
-- **`orchestrator.py`** — `forecast_wells_for_run` / `run_valuation_for_run` /
-  `compose_artifact_payload_for_run`: the functions the tools wrap. Resolves
-  interest per well (`by_api` else blanket) from the authoritative case file
-  and persists net_oil/net_gas so net volumes are exact under per-well
-  interest.
+- **`orchestrator.py`** — `forecast_wells_for_run` (validate → allocate →
+  merge-write → echo; raises `ForecastValidationError` carrying every
+  violation) / `run_valuation_for_run` / `compose_artifact_payload_for_run`:
+  the functions the tools wrap. `_load_forecast_stage` is the one reader of
+  the forecast stage and replays legacy fit-era stages unchanged (tolerant
+  `qi_peak` serde, per-stream peak offsets, status-derived timing fallback,
+  `classification`→`needs_capex` fallback). Resolves interest per well
+  (`by_api` else blanket) from the authoritative case file and persists
+  net_oil/net_gas so net volumes are exact under per-well interest.
 - **`run_record.py`** — `ValuationRunStore`: mint/read/write the
   `platform.valuation_runs` row. Durable per-deal state keyed by a server-minted
   UUID `run_id`; tools carry only `run_id` + the compact summary each returns.
@@ -226,6 +239,14 @@ subfolder with a `SKILL.md` in to add a skill; nothing else registers it.
   `save_dataroom_extraction` (count-verified; re-saved under the same
   `extraction_id` after corrections). Feeds `forecast_wells` /
   `run_valuation` when the room is headed for a deal.
+- **`well-forecasting/`** — the reservoir-engineer doctrine behind
+  `forecast_wells`: reading production history (contamination signatures,
+  strike-vs-average), trust judgment by maturity, qi/anchor + the uptime
+  factor, Di, b as a population quantity (priors table), timing for
+  undrilled wells, the consequence-echo interrogation, and three worked
+  examples. Ported from the benchmark-winning skill in the sibling
+  `forecast-benchmark` repo (v3 doctrine, 2026-07-27), adapted for the
+  agentic context (run_sql evidence, real echo, cohort entries).
   (The deal-sheet template is NOT a skill — it rides in `run_valuation`'s
   response; see `server/valuation/viewer/`.)
 
@@ -327,8 +348,10 @@ Run: `.venv/bin/pytest -q`.
   `ANTHROPIC_API_KEY`), and `network` (no `--run-network`); purges sentinel
   `valuation_runs` rows at session end.
 - Coverage spans the live surface: `run_sql` + the valuation tools
-  (`forecast_wells`, `run_valuation`), the valuation engine (forecast/econ/
-  artifact-payload/strip/routing/backtest), maps, `sql_guard`,
+  (`forecast_wells` accept-and-echo — validation matrix, cohort allocation,
+  merge/overwrite, legacy-stage replay — and `run_valuation`), the
+  calculator (forecast/consequences/econ/artifact-payload/strip), maps,
+  `sql_guard`,
   `briefing_handle_store` (map tokens), the dataroom persistence path —
   store, tool, CSV transport, and the packer round-trip
   (`test_extraction_store.py`, `test_tools_dataroom.py`,

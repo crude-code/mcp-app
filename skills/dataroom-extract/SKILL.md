@@ -135,8 +135,12 @@ decimal are exactly what `forecast_wells` / `run_valuation` need. In that case:
 2. **Show the viewer first** — it's the confirm-before-you-value step. The user
    eyeballs what came out of the room (which wells, what interest decimal, what the
    production looks like) and confirms it's right before any money number is built.
-3. Then proceed into the valuation flow (`forecast_wells` → assumptions grid →
-   `run_valuation`), carrying the wells and the interest from the extraction.
+3. Then proceed into the valuation flow (`get_skill("well-forecasting")` →
+   `forecast_wells` → assumptions grid → `run_valuation`), carrying the wells
+   and the interest from the extraction. The room's own documents feed the
+   forecast too: AFE dates and stated development plans are the first-choice
+   source for undrilled wells' timing, and LOS/check-stub months are evidence
+   when reading the production history.
 
 **Build the viewer every time you process a dataroom**, whether or not a valuation
 follows. It's the deliverable that makes the extraction auditable — not an optional

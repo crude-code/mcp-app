@@ -24,6 +24,17 @@ not to be precious about year 15.
 Where evidence is thin, borrow from the population or carry a range. Never
 fake precision.
 
+Forecasting is not two methods — a decline-curve branch for producers and
+a type-curve branch for everything else. It is one method on a continuum:
+every forecast blends what the well has said with what its population
+says, weighted by how much the well has said. One reported month — you
+don't even know it's the peak — is forecast almost entirely from analogs.
+Seven months in, the level is the well's own but Di and b still come from
+the population, checked against what little slope the well shows. Three
+clean years and the well carries its forecast. The analog method (below)
+is not the non-producer branch; it is the population end of every
+forecast.
+
 Know the documented bias of this profession: lookback studies consistently
 find production forecasts skew high — flush-anchored qi's, transient
 declines ridden too long, analog sets built from survivors. When your
@@ -179,8 +190,8 @@ Maturity moves the dial independently of cleanliness. As a default
 weighting, before contamination adjustments:
 
 - **Under a year on production** — even clean data is mostly transient and
-  flush; it earns a level, not a shape. Forecast from the population; let
-  the well's own months scale it up or down.
+  flush; it earns a level, not a shape. Forecast from the population (run
+  the analog method); let the well's own months scale it up or down.
 - **One to three years** — the blend. The well's own trend starts carrying
   the near-term slope; the population still owns b and the tail.
 - **Three-plus years of clean decline** — the well has expressed itself.
@@ -205,7 +216,11 @@ the last stretch of clean, continuous months — often 6 to 12, sometimes
 months you can't trust, and read the trend's value at the anchor. When
 recent months are contaminated, an older clean level projected forward
 beats a recent dirty one — anchor there; the anchor does not have to be
-the last reported month. After a regime change, the new segment starts
+the last reported month. It does not have to be a reported month at all:
+qi is simply the rate where the forecast starts, and the anchor can sit
+in the future — on a 36-month producer just as on an undrilled location.
+The math is identical everywhere on that spectrum. After a regime
+change, the new segment starts
 where the post-event data says it starts — not where the old curve left
 off.
 
@@ -231,8 +246,8 @@ the future contains no bad months.
 ### 4. What slope does the clean data support? (Di)
 
 When you trust the history, Di comes from the clean recent trend. When you
-don't, take it from offsets whose current regime looks like this well's
-near future. Under the next-12 objective, qi and Di are the money
+don't, take it from the analog set (the analog method below) — wells whose
+current regime looks like this well's near future. Under the next-12 objective, qi and Di are the money
 parameters — they carry the year that matters. Spend your effort here.
 
 ### 5. What sets the tail? (b)
@@ -257,7 +272,7 @@ goes.
 
 Source b from the formation, the basin, the maturity, the completion style,
 and from mature offsets — the only wells old enough to have expressed their
-tails. The priors table at the end gives the bands plays actually exhibit;
+tails (in a built analog set, its oldest members). The priors table at the end gives the bands plays actually exhibit;
 the deal's own offsets outrank it. Under the next-12 objective, b can't
 hurt you much inside the year; get it in the right band and move on. Don't
 agonize, and don't be stupid.
@@ -306,16 +321,116 @@ Interrogate it:
 
 Revise until the consequences survive, then commit final.
 
+## The analog method
+
+Population evidence enters every forecast — corroborating the tail on a
+mature well, owning Di and b on a young one, carrying everything for a
+well that hasn't produced. This is how you build the population.
+
+Offsets answer specific questions — pick them for the question you're
+asking. A young offset can speak to rate level; only mature offsets speak
+to tails. Take the set as it comes — analog populations built only from
+the good ones are how type curves go optimistic. Pull them yourself with
+`run_sql`.
+
+Rule zero: you come up with an estimate. A thin or ugly analog set never
+excuses a refusal — it widens the uncertainty. The honest move is to make
+the call, name its weakness, and work it with the user.
+
+### Building the set
+
+Filter in this order, loosening only when the count demands it:
+
+1. **Geography.** Distance from the subject well. Start around a 15-mile
+   radius and tighten toward 7 as the count allows. `public.wells.geom`
+   is PostGIS — `ST_DWithin` does the work.
+2. **Vintage.** First production in the last five years; reaching further
+   back is rarely justified. Vintage is a proxy for frac design and a bit
+   of depletion — a ten-year-old well had fewer perforations and longer
+   stages, and simply wasn't as good a well.
+3. **Formation.** Same formation. Mixing formations is a starvation move —
+   legitimate when the count forces it, named in the rationale when made.
+4. **Frac design.** Proppant and fluid per lateral foot
+   (`total_proppant_lbs` / `lateral_length_ft`, likewise
+   `total_fluid_bbl`), plus `frac_stages`. That is most of what the data
+   carries about the completion; use it.
+5. **Spacing.** A crowded infill child is not an analog for a bounded
+   parent, or vice versa.
+6. **Smaller cuts** as the situation earns them — the operator's own
+   wells, if you know something about how the operator runs.
+
+Aim for at least 10 wells, usually fewer than 30 — soft numbers, not
+rules. Below ~10 the average is noise-prone, and you say so; above ~30
+the filters are probably too loose to mean "analogous."
+
+One query pulls the candidates:
+
+    SELECT w.well_api, w.operator, w.first_prod_date, w.lateral_length_ft,
+           ROUND(w.total_proppant_lbs / NULLIF(w.lateral_length_ft, 0)) AS lbs_ft
+    FROM public.wells w
+    WHERE ST_DWithin(w.geom::geography,
+            (SELECT geom::geography FROM public.wells WHERE well_api = '05-123-…'),
+            15 * 1609)
+      AND w.formation = 'NIOBRARA'
+      AND w.first_prod_date >= CURRENT_DATE - INTERVAL '5 years'
+      AND w.well_api <> '05-123-…'
+
+**Pads.** Forecasting a pad that's about to go in? Skip individual
+analogs and find analogous *pads* — averaging whole pads smooths out
+single-well noise (allocation swaps between pad-mates cancel in the sum).
+There is no pad column; infer pads as same-operator wells clustered
+tightly with first production within a month or two of each other.
+
+### Reading the parameters
+
+Peak-align the set: chop each well's ramp-up months and line the wells up
+at their peaks, then average. `prod_month` (1 = the well's first
+reported month) makes the alignment mechanical:
+
+    WITH peaks AS (
+      SELECT DISTINCT ON (well_api) well_api, prod_month AS peak_m
+      FROM public.production WHERE well_api IN (…)
+      ORDER BY well_api, oil_bbl DESC)
+    SELECT p.prod_month - k.peak_m AS months_from_peak,
+           COUNT(*) AS n_wells,
+           AVG(p.oil_bbl)::int AS oil_bbl, AVG(p.gas_mcf)::int AS gas_mcf
+    FROM public.production p JOIN peaks k USING (well_api)
+    WHERE p.well_api IN (…)   -- repeat the list; keeps the planner on the
+      AND p.prod_month >= k.peak_m   -- index and inside run_sql's time cap
+    GROUP BY 1 ORDER BY 1
+
+Read the averaged stream like a single well and take the hyperbolic
+parameters from it: the aligned peak sets the level, the early months set
+Di, the flattening sets b. The fit is subject to the same transient
+discipline as any fit — a stack of two-year-olds is transient evidence no
+matter how many wells are in it, so the priors table and the set's oldest
+members still own the tail. And watch `n_wells`: where the stack thins,
+the average has quietly become a different, older population.
+
+**Normalizing.** Dividing rates by lateral length, averaging per-foot,
+and rescaling to the subject's lateral is common practice; know it, and
+do it if the user asks. It is not the default here — the rate-to-length
+relationship is not linear. Prefer filtering to comparable laterals so
+the raw averages compare directly.
+
+### Applying it
+
+The analog curve commits like any other forecast: anchor where the
+subject's forecast starts and read qi there; the subject's own months, if
+it has any, scale the level up or down. Same math for a 36-month producer
+and an undrilled location — only the evidence mix changes.
+
 ## Wells not yet producing: level, shape, and timing
 
 A DUC or permitted location gives you no history — questions 1 and 2
 collapse to "there is none; source everything from the population." Three
 assertions replace them:
 
-- **Level and shape** come from offsets: recent completions on comparable
-  laterals set qi (scale for lateral length and completion intensity; an
-  infill child typically runs below its parents), their early declines set
-  Di, mature offsets set b — same as any population-sourced forecast.
+- **Level and shape** come from the analog method, run in full: build the
+  set, peak-align, and take qi, Di, and b from the averaged stream (an
+  infill child typically runs below its parents — say where the subject
+  sits inside its set). No `uptime_factor` on a well that hasn't produced:
+  there is no record to compute one from, so just assume it runs.
 - **Timing is yours too.** `anchor_month` for a non-producer is the
   asserted **first-production month**, and it can swing a PUD-heavy deal
   more than any decline parameter. Source it in order of quality: the deal
@@ -329,17 +444,6 @@ assertions replace them:
   discounts the well in its status bucket; the echo for these wells leads
   with `online_month` and has no trailing comparison — EUR/ft against the
   offset family is the sanity anchor that remains.
-
-## Offsets
-
-Offsets answer specific questions — pick them for the question you're
-asking. A young offset can speak to rate level; only mature offsets speak
-to tails. Comparable means: same formation, comparable lateral length and
-completion intensity, similar vintage and spacing (a crowded child well is
-not an analog for a bounded parent, or vice versa), nearby, and enough
-history to answer the question at hand. Take the set as it comes — analog
-populations built only from the good ones are how type curves go
-optimistic. Pull them yourself with `run_sql`.
 
 ## Gas and water
 
@@ -374,6 +478,9 @@ Every committed forecast records, in plain language:
 
 Written so another engineer could disagree with a specific line. It cites
 this well's own months and its population — never the worked examples.
+When the analog method carried parameters, the rationale names the set:
+the filters, the count, and any starvation moves (a widened radius, mixed
+formations).
 
 ## Parameter priors
 
@@ -466,3 +573,27 @@ different conclusions. Not templates. Never argue from them.
    since trailing-12 includes seven pre-hit months at the higher level.
    Verified next-12 against an annualized read of the post-hit months
    instead, and the decline profile against offsets. Committed.
+
+### Barely any history — the analog set carries it
+
+*A producing well, ~10,000-ft lateral, one month on.*
+
+1. **Evidence.** One reported month — likely partial, not knowably the
+   peak. It says the well is online and roughly at what scale; it cannot
+   say level, slope, or shape.
+2. **Trust.** Near zero on shape, a sliver on level. This is the
+   population end of the continuum: the analog method runs in full.
+3. **qi/anchor.** Fourteen analogs inside 12 miles — same formation,
+   first production within five years, comparable laterals and proppant
+   per foot. Peak-aligned and averaged. The subject's one month sat
+   modestly below what the analogs' first months typically did, so the
+   level came down proportionally. Anchored at the expected peak — month
+   two — with qi read from the scaled curve there. No uptime factor: the
+   well is brand new; assume it runs.
+4. **Di.** The aligned average's early decline.
+5. **b.** The priors band, checked against the flattening of the set's
+   oldest members.
+6. **Echo.** No trailing-12 exists to compare against, so EUR/ft against
+   the analog family was the sanity anchor — it landed inside the
+   family's range, and the terminal switch landed at a believable age.
+   Committed, with the rationale naming the set and the scale-down.

@@ -242,11 +242,14 @@ subfolder with a `SKILL.md` in to add a skill; nothing else registers it.
 - **`well-forecasting/`** — the reservoir-engineer doctrine behind
   `forecast_wells`: reading production history (contamination signatures,
   strike-vs-average), trust judgment by maturity, qi/anchor + the uptime
-  factor, Di, b as a population quantity (priors table), timing for
-  undrilled wells, the consequence-echo interrogation, and three worked
+  factor, Di, b as a population quantity (priors table), the analog
+  method (filter-hierarchy analog selection + peak-aligned averaging,
+  the population end of a producing↔non-producing continuum), timing for
+  undrilled wells, the consequence-echo interrogation, and four worked
   examples. Ported from the benchmark-winning skill in the sibling
   `forecast-benchmark` repo (v3 doctrine, 2026-07-27), adapted for the
-  agentic context (run_sql evidence, real echo, cohort entries).
+  agentic context (run_sql evidence, real echo, cohort entries); analog
+  doctrine added 2026-08-11.
   (The deal-sheet template is NOT a skill — it rides in `run_valuation`'s
   response; see `server/valuation/viewer/`.)
 

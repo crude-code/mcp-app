@@ -97,23 +97,32 @@ Tools (all return JSON strings):
   instructions, files}`) via `server/skills.py`. Pure/static — no DB, no
   network (fetches are still `trace`-logged, slug read straight from the
   routing header). See `server/skills.py` and `skills/`.
-- **save_dataroom_extraction** — Persists a dataroom-extract
-  `ExtractionResult` (jsonb blob, no normalization — the contract lives with
-  the skill and evolves there). The persisted contract is the room's
-  **private economics** (interests, check-stub revenue, LOS/AFE expenses,
-  deal/wells/tracts/DOs/documents); `production_history` is omitted by
-  default (publicly reconstructable by API). The two tall tables travel as
-  CSV strings + a `sources` provenance legend — authored mechanically by the
-  skill's `persist_pack.py`, expanded back to canonical rows by
-  `server/extraction_transport.py` (headers drift-tested against the packer)
-  — so CSV exists only on the wire, never at rest. Response echoes `stored`
-  per-entity counts, which the skill verifies against the packer's
-  `expected_stored` (shortfall → re-save, same id). Insert mints a
-  server-side UUID `extraction_id`; passing an existing `extraction_id`
-  overwrites that row, scoped to the calling user. Backed by
-  `platform.dataroom_extractions` in Supabase via
-  `server/extraction_store.py` (`ExtractionStore`), the same pattern as
-  `run_record.py`. 2 MB payload cap.
+- **save_dataroom_extraction** — Mints a one-time HTTP upload URL for a
+  dataroom-extract persist kit; carries only `label` (+ optional
+  `extraction_id` for in-place re-saves). The kit itself travels
+  out-of-band: the skill's `persist_pack.py --upload` POSTs it from the
+  code-execution sandbox to `/upload/kit/{token}` (`server/uploads.py`), so
+  extraction data never transits the model's context. Tokens
+  (`server/upload_tokens.py`, `UploadTokenStore`) are minted on the
+  authenticated MCP channel, TTL ~15 min, single-use **on success** — a
+  failed upload can retry the same URL. The handler runs the same path the
+  old inline call did: the two tall tables arrive as CSV strings + a
+  `sources` provenance legend, expanded back to canonical rows by
+  `server/extraction_transport.py` (headers drift-tested against the
+  packer) — CSV exists only on the wire, never at rest. The persisted
+  contract is the room's **private economics** (interests, check-stub
+  revenue, LOS/AFE expenses, deal/wells/tracts/DOs/documents);
+  `production_history` omitted by default (publicly reconstructable by
+  API). The packer verifies the response's `stored` counts against its own
+  `expected_stored` and prints a one-line verdict — the only thing that
+  enters chat. Backed by `platform.dataroom_extractions` via
+  `server/extraction_store.py` (`ExtractionStore`). 2 MB expanded-row cap.
+  A sandbox connection failure = the user's network egress allowlist is
+  missing the upload host (incomplete setup — surfaced to the user, no
+  inline fallback). `/upload/echo/{token}` is a token-gated probe endpoint
+  for measuring the sandbox-proxy size ceiling against a live deploy.
+  nginx: dedicated `/upload/` location (no slug header — the token carries
+  identity), `client_max_body_size 600m`.
 - **get_map_full** — Renderer-only. Returns the full hydrated map spec.
 
 ### MCP App (`renderer/`)
@@ -356,8 +365,10 @@ Run: `.venv/bin/pytest -q`.
   calculator (forecast/consequences/econ/artifact-payload/strip), maps,
   `sql_guard`,
   `briefing_handle_store` (map tokens), the dataroom persistence path —
-  store, tool, CSV transport, and the packer round-trip
+  store, mint tool, upload tokens, HTTP upload handlers, CSV transport, and
+  the packer round-trip + `--upload` mode against a live local HTTP server
   (`test_extraction_store.py`, `test_tools_dataroom.py`,
+  `test_upload_tokens.py`, `test_uploads.py`,
   `test_extraction_transport.py`, `test_persist_pack.py`), team messages
   (`test_team_messages_store.py`, `test_tools_message_team.py`), and schema
   drift.

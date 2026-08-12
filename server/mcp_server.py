@@ -46,13 +46,13 @@ from server.maps.spec import parse_map_spec, MapSpecError
 from server.maps.hydrate import hydrate_map, MapHydrateError
 from server.skills import list_skills, load_skill, SkillNotFound
 from server.extraction_store import ExtractionStore
-from server.extraction_transport import (
-    TransportError, entity_counts, unpack_extraction,
-)
+from server.upload_tokens import UploadTokenStore
+from server.uploads import public_base_url, register_upload_routes
 from server.team_messages import CATEGORIES as MESSAGE_CATEGORIES, TeamMessageStore
 from utils.ses import send_notification
 
 _extraction_store = ExtractionStore()
+_upload_tokens = UploadTokenStore()
 _team_messages = TeamMessageStore()
 
 
@@ -101,6 +101,8 @@ def get_request_slug() -> str:
 # ── MCP Server ───────────────────────────────────────────────────────────────
 
 mcp = FastMCP("Crude Code", instructions=compose_outer_system_prompt())
+
+register_upload_routes(mcp, tokens=_upload_tokens, extraction_store=_extraction_store)
 
 
 _app_path = Path(__file__).resolve().parent.parent / "renderer" / "dist" / "app.html"
@@ -196,64 +198,39 @@ def get_skill(name: str = "") -> str:
 
 _save_extraction_log = _logging.getLogger("cc.save_dataroom_extraction")
 
-# Generous vs. a typical extraction.json (tens of KB), but a hard stop before
-# someone stores a whole parsed dataroom as one row.
-_MAX_EXTRACTION_BYTES = 2_000_000
-
 
 @mcp.tool(description=_load_prompt("outer/tool_save_dataroom_extraction.md"))
-def save_dataroom_extraction(extraction: dict, label: str = "", extraction_id: str = "",
-                             production_csv: str = "", revenue_csv: str = "",
-                             sources: dict | None = None) -> str:
-    """Persist a dataroom-extract ExtractionResult; the two tall tables may
-    arrive CSV-packed (persist_pack.py kit) and are expanded back to the
-    canonical shape before storage. Insert on first save, user-scoped
-    overwrite when extraction_id is supplied. Echoes stored entity counts."""
+def save_dataroom_extraction(label: str, extraction_id: str = "") -> str:
+    """Mint a one-time HTTP upload URL for a persist_pack.py kit. The kit
+    bytes travel out-of-band (a POST from the sandbox) and never transit the
+    model; this call carries only the label plus an optional extraction_id
+    for in-place re-saves. Storage semantics are unchanged — the upload
+    handler runs the same transport-expansion and store code the old inline
+    call did (server/uploads.py)."""
     identity = get_current_identity()
     if not identity:
         return _json.dumps({"error": "Could not identify user"})
 
     with trace("save_dataroom_extraction", user=identity["user_slug"]):
-        if not isinstance(extraction, dict) or not extraction:
-            return _json.dumps({"error": "extraction must be the non-empty ExtractionResult object"})
-
-        try:
-            full = unpack_extraction(
-                extraction,
-                production_csv=production_csv or "",
-                revenue_csv=revenue_csv or "",
-                sources=sources,
-            )
-        except TransportError as e:
-            return _json.dumps({"error": str(e)})
-
-        size = len(_json.dumps(full).encode())
-        if size > _MAX_EXTRACTION_BYTES:
-            return _json.dumps({"error": f"extraction too large ({size} bytes; cap {_MAX_EXTRACTION_BYTES})"})
-
         clean_label = (label or "").strip()
-        try:
-            eid = _extraction_store.save(
-                user_id=identity["user_id"],
-                extraction=full,
-                label=clean_label,
-                extraction_id=extraction_id.strip() or None,
-            )
-        except (ValueError, LookupError) as e:
-            return _json.dumps({"error": str(e)})
-        except Exception as e:
-            _save_extraction_log.error("save_dataroom_extraction failed: %s", e)
-            return _json.dumps({"error": str(e)})
+        if not clean_label:
+            return _json.dumps({"error": "label is required — use the deal/teaser title"})
 
-        stored = entity_counts(full)
+        token = _upload_tokens.mint(
+            user_id=identity["user_id"],
+            user_slug=identity["user_slug"],
+            purpose="kit",
+            meta={"label": clean_label, "extraction_id": extraction_id.strip() or None},
+        )
+        base = public_base_url()
         _save_extraction_log.info(
-            "stored %s label=%r bytes=%d", stored, clean_label, size
+            "minted kit upload label=%r resave=%s", clean_label, bool(extraction_id.strip())
         )
         return _json.dumps({
-            "extraction_id": eid,
-            "label": clean_label,
-            "saved": True,
-            "stored": stored,
+            "upload_url": f"{base}/upload/kit/{token}",
+            "upload_host": base.split("://", 1)[-1],
+            "expires_in_seconds": int(_upload_tokens.ttl_seconds),
+            "how": 'python3 persist_pack.py extraction.json --upload "<upload_url>"',
         })
 
 

@@ -32,29 +32,36 @@ You are NOT writing a report or running a valuation. You are extracting **facts,
    partial extraction. The platform durably keeps the room's *private
    economics* (interests, realized prices/taxes/deductions, LOS/AFE expenses,
    deal, wells, tracts, division orders, documents); the sandbox copy dies
-   with this session. Run the bundled packer, then make ONE tool call from
-   its output:
-   ```bash
-   python3 persist_pack.py extraction.json
-   ```
-   Copy the printed fields verbatim into `save_dataroom_extraction`
-   (`extraction`, `revenue_csv`, `production_csv`, `sources`) plus a short
-   `label` (the deal/teaser title).
+   with this session. The extraction travels as a direct upload from the
+   sandbox — it never passes through the chat. Two steps:
+   1. Call `save_dataroom_extraction` with a short `label` (the deal/teaser
+      title). It returns a one-time `upload_url` (expires in ~15 min).
+   2. ```bash
+      python3 persist_pack.py extraction.json --upload "<upload_url>"
+      ```
+      The script POSTs the kit, verifies the server's stored counts against
+      its own `expected_stored`, and prints a one-line verdict.
+      `{"saved": true, "verified": true, "extraction_id": ...}` means done.
    - **Production policy:** the packer omits `production_history` by default —
      for API'd wells in states the platform ingests (CO/ND/NM/TX/UT/WY),
      public data already covers it, and it notes the omission in
-     `extraction_notes`. Re-run with `--with-production` when wells are
-     name-only, in another state, or the sheet carries NGL detail worth
-     keeping.
-   - **Verify:** the response echoes `stored` counts — they must equal the
-     packer's `expected_stored`. Any shortfall means rows were lost in
-     transit: re-call with the same `extraction_id` until they match.
-   - Keep the returned `extraction_id`: corrections after user review are
-     re-saved under that same id (re-run the packer first), so the stored
-     copy is updated in place, not duplicated. If the save returns an error
-     (row-precise for CSV problems), fix and retry once; if it still fails,
-     tell the user and keep going — never block the extraction or the viewer
-     on persistence.
+     `extraction_notes`. Add `--with-production` when wells are name-only,
+     in another state, or the sheet carries NGL detail worth keeping.
+   - Keep the printed `extraction_id`: corrections after user review are
+     re-saved under that same id — re-run the packer, mint a fresh URL via
+     `save_dataroom_extraction(label, extraction_id=<id>)` (URLs are
+     single-use), and upload again. The stored copy is updated in place,
+     not duplicated.
+   - `verified: false` → mint a fresh URL with the extraction_id and
+     re-upload once. An HTTP error is row-precise for CSV problems: fix and
+     retry once; if it still fails, tell the user and keep going — never
+     block the extraction or the viewer on persistence.
+   - A **connection error** means the sandbox can't reach the upload host:
+     the user's Claude network egress allowlist is missing it (the verdict's
+     `hint` says so). Tell the user to add the `upload_host` from the tool
+     response under Claude's network egress settings and continue in a new
+     chat. This is incomplete setup — do NOT paste the kit into a tool call
+     instead, and do NOT stop the session; build the viewer and continue.
 7. **Produce the viewer** — paste the extraction into the bundled component (see
    *The viewer artifact*). Do this every run, even when a valuation follows.
 
@@ -149,10 +156,12 @@ extra to skip when the goal is downstream.
 ## Hard rules
 
 - **Never fabricate.** Missing → null. Unknown → null. Can't verify it → leave null and explain in `extraction_notes`.
-- **Never persist an abbreviated or "representative" copy.** Pack with
-  `persist_pack.py` and send exactly what it prints; verify the `stored`
-  echo against `expected_stored`. The persisted copy is the only durable
-  record — the sandbox file is gone when the session ends.
+- **Never persist an abbreviated or "representative" copy.** Pack and upload
+  with `persist_pack.py --upload` — the script sends the complete kit and
+  verifies the stored counts itself. The persisted copy is the only durable
+  record — the sandbox file is gone when the session ends. Never retype
+  extraction contents into a tool call; the upload lane exists so no
+  extraction data ever transits the chat.
 - **Never guess an API.** Name-only well → `api: null`.
 - **No OCR.** Image-only PDFs are flagged by triage (`pdf_extractable: false`) — note them in `extraction_notes`; don't invent their contents.
 - **No `.accdb` (Aries) parsing** — note and move on.

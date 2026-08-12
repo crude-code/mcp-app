@@ -1,32 +1,36 @@
 Persist a dataroom extraction to the platform so the deal record outlives the
-chat. Call this only with the kit printed by `persist_pack.py` (bundled with
-the `dataroom-extract` skill) — run the packer, copy its fields into this
-call verbatim. Never hand-assemble the arguments and never send an
-abbreviated or "representative" copy: the sandbox file dies with the session,
-and this stored copy is the only durable record.
+chat. This tool moves no data itself: it returns a **one-time upload URL**,
+and the bundled `persist_pack.py` (dataroom-extract skill) POSTs the kit to
+it directly from the sandbox — the extraction never passes through the chat.
+Never paste extraction contents, CSV tables, or the kit into any tool call.
 
-What the platform keeps is the room's **private economics** — the interests,
-the realized prices / taxes / deductions from check stubs, the LOS/AFE
-expenses — plus the deal, wells, tracts, division orders, and document
-inventory. Production history is omitted by default (public state data
-already covers API'd wells); the packer's `--with-production` flag exists for
-name-only wells, uncovered states, or NGL detail.
+Flow (the skill walks you through it):
+1. Call this tool with a `label` (short human name — the deal/teaser title).
+   It returns `{upload_url, upload_host, expires_in_seconds, how}`.
+2. Run: `python3 persist_pack.py extraction.json --upload "<upload_url>"`
+   (add `--with-production` per the skill's production policy).
+3. The script uploads, verifies the server's stored counts against its own
+   `expected_stored`, and prints a one-line verdict. `{"saved": true,
+   "verified": true, "extraction_id": ...}` means done — mention the
+   extraction_id in chat so the record is traceable.
 
-Arguments (each maps 1:1 to a field the packer prints):
-- `extraction` — the packer's slim `ExtractionResult` (bulk arrays emptied).
-- `revenue_csv` / `production_csv` — the packed tall tables. The server
-  expands them back into canonical rows with full provenance before storing;
-  CSV exists only on the wire.
-- `sources` — the packer's provenance legend.
-- `label` — short human name for the room; use the deal/teaser title.
+Arguments:
+- `label` — required. Short human name for the room.
 - `extraction_id` — omit on first save. Pass the id you got back only when
-  re-saving the *same* room (corrections after review, or a count mismatch)
-  so the row is updated in place, not duplicated.
+  re-saving the *same* room (corrections after review), so the row is
+  updated in place, not duplicated. Re-run the packer first; mint a fresh
+  URL each time (URLs are single-use).
 
-Returns `{extraction_id, label, saved: true, stored: {…}}`. **Compare
-`stored` to the packer's `expected_stored` counts** — any shortfall means
-rows were lost in transit: re-call with the same `extraction_id` until they
-match. Mention the id in chat so the record is traceable. On `{error}`
-(row-precise for CSV problems), fix the kit and re-call once; if it still
-fails, tell the user and continue the workflow — never block the extraction
-or valuation on persistence.
+Failure handling:
+- The URL expires in ~15 minutes and dies when used — a stale or spent URL
+  is fixed by calling this tool again (cheap).
+- `verified: false` in the verdict: mint a fresh URL with the returned
+  extraction_id and re-upload.
+- A **connection error** from the script means the sandbox cannot reach
+  `upload_host`: the user's Claude network egress allowlist is missing it.
+  Tell the user, in plain language, to add that exact host under Claude's
+  network egress settings (Settings → Capabilities on individual plans;
+  their workspace admin on Team/Enterprise), then continue in a new chat.
+  This is incomplete setup, not a degraded mode — do NOT fall back to
+  pasting extraction data into tool calls, and never block the viewer or
+  the rest of the session on it.

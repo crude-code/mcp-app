@@ -134,6 +134,21 @@ def test_roll_up_facts_area_orders_formations_by_frequency():
     assert facts["area"] == "Midland · Wolfcamp/Spraberry"
 
 
+def test_roll_up_facts_area_stays_compact_on_multi_basin_packages():
+    # Three basins, five formations — the field must stay a readable
+    # one-liner, not a concatenation of every distinct string.
+    well_meta = {
+        "A": _wm("PRODUCING", "OP", "MIDLAND", "WOLFCAMP A"),
+        "B": _wm("PRODUCING", "OP", "MIDLAND", "WOLFCAMP A"),
+        "C": _wm("PRODUCING", "OP", "MIDLAND", "LOWER SPRABERRY"),
+        "D": _wm("PRODUCING", "OP", "DELAWARE", "BONE SPRING"),
+        "E": _wm("PRODUCING", "OP", "ANADARKO", "WOODFORD"),
+        "F": _wm("PRODUCING", "OP", "ANADARKO", "MERAMEC"),
+    }
+    facts, _ = roll_up_facts(well_meta, WI_ASSUMPTIONS, CENTERS)
+    assert facts["area"] == "Midland +2 · Wolfcamp A/Lower Spraberry/+3"
+
+
 from server.valuation.deal_sheet import build_production_series
 
 

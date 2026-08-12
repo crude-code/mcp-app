@@ -35,10 +35,18 @@ def _modal_operator(well_meta: dict) -> str:
 
 
 def _area(well_meta: dict) -> str:
+    """Compact one-liner that stays readable on multi-basin packages: modal
+    basin +N (like _modal_operator), top-2 formations +N."""
     basins = Counter(m.get("basin") for m in well_meta.values() if m.get("basin"))
     form_counts = Counter(m.get("formation") for m in well_meta.values() if m.get("formation"))
-    forms = [_titlecase(f) for f, _ in form_counts.most_common()]
-    basin = _titlecase(basins.most_common(1)[0][0]) if basins else "—"
+    basin = "—"
+    if basins:
+        basin = _titlecase(basins.most_common(1)[0][0])
+        if len(basins) > 1:
+            basin = f"{basin} +{len(basins) - 1}"
+    forms = [_titlecase(f) for f, _ in form_counts.most_common(2)]
+    if len(form_counts) > 2:
+        forms.append(f"+{len(form_counts) - 2}")
     if not forms:
         return basin
     return f"{basin} · {'/'.join(forms)}"

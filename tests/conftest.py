@@ -54,6 +54,10 @@ def _purge_valuation_test_rows():
             params=[VALUATION_TEST_USER_ID],
         )
         _query(
+            "DELETE FROM platform.dataroom_rooms WHERE uploaded_by_user_id = %s",
+            params=[VALUATION_TEST_USER_ID],
+        )
+        _query(
             "DELETE FROM platform.team_messages WHERE user_id = %s",
             params=[VALUATION_TEST_USER_ID],
         )

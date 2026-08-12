@@ -45,13 +45,17 @@ _DEAL_SHEET_VIEWER = load_viewer()
 from server.maps.spec import parse_map_spec, MapSpecError
 from server.maps.hydrate import hydrate_map, MapHydrateError
 from server.skills import list_skills, load_skill, SkillNotFound
+from server.blob_store import SupabaseBlobStore
 from server.extraction_store import ExtractionStore
+from server.room_store import RoomStore
 from server.upload_tokens import UploadTokenStore
 from server.uploads import public_base_url, register_upload_routes
 from server.team_messages import CATEGORIES as MESSAGE_CATEGORIES, TeamMessageStore
 from utils.ses import send_notification
 
 _extraction_store = ExtractionStore()
+_room_store = RoomStore()
+_blob_store = SupabaseBlobStore()
 _upload_tokens = UploadTokenStore()
 _team_messages = TeamMessageStore()
 
@@ -102,7 +106,8 @@ def get_request_slug() -> str:
 
 mcp = FastMCP("Crude Code", instructions=compose_outer_system_prompt())
 
-register_upload_routes(mcp, tokens=_upload_tokens, extraction_store=_extraction_store)
+register_upload_routes(mcp, tokens=_upload_tokens, extraction_store=_extraction_store,
+                       room_store=_room_store, blob_store=_blob_store)
 
 
 _app_path = Path(__file__).resolve().parent.parent / "renderer" / "dist" / "app.html"
@@ -197,10 +202,73 @@ def get_skill(name: str = "") -> str:
 # ── save_dataroom_extraction ─────────────────────────────────────────────────
 
 _save_extraction_log = _logging.getLogger("cc.save_dataroom_extraction")
+_open_dataroom_log = _logging.getLogger("cc.open_dataroom")
+
+_SHA256_HEX_LEN = 64
+
+
+@mcp.tool(description=_load_prompt("outer/tool_open_dataroom.md"))
+def open_dataroom(label: str, sha256: str, size_bytes: int) -> str:
+    """Register a dataroom zip before reading it. Known content hash →
+    the room is already captured ({status: "known"}, no upload); new hash →
+    a pending room row plus a one-time upload URL for the zip. Presented to
+    the user as 'filed'/'processed' only — never reveal that a known room
+    was uploaded by anyone else."""
+    identity = get_current_identity()
+    if not identity:
+        return _json.dumps({"error": "Could not identify user"})
+
+    with trace("open_dataroom", user=identity["user_slug"]):
+        clean_label = (label or "").strip()
+        clean_sha = (sha256 or "").strip().lower()
+        if not clean_label:
+            return _json.dumps({"error": "label is required — use the deal/teaser title"})
+        if len(clean_sha) != _SHA256_HEX_LEN or any(c not in "0123456789abcdef" for c in clean_sha):
+            return _json.dumps({"error": "sha256 must be the 64-char hex digest of the zip"})
+        if not isinstance(size_bytes, int) or size_bytes <= 0:
+            return _json.dumps({"error": "size_bytes must be the zip's byte count"})
+
+        try:
+            existing = _room_store.find_by_hash(clean_sha)
+        except Exception as e:  # noqa: BLE001
+            _open_dataroom_log.error("open_dataroom lookup failed: %s", e)
+            return _json.dumps({"error": str(e)})
+
+        if existing:
+            _open_dataroom_log.info("known room %s for label=%r", existing["room_id"], clean_label)
+            return _json.dumps({
+                "status": "known",
+                "room_id": existing["room_id"],
+                "note": ("Room already captured — skip the zip upload and pass "
+                         "room_id to save_dataroom_extraction."),
+            })
+
+        try:
+            room_id = _room_store.create_pending(
+                user_id=identity["user_id"], label=clean_label,
+                sha256=clean_sha, size_bytes=size_bytes,
+            )
+        except Exception as e:  # noqa: BLE001
+            _open_dataroom_log.error("open_dataroom insert failed: %s", e)
+            return _json.dumps({"error": str(e)})
+
+        token = _upload_tokens.mint(
+            user_id=identity["user_id"], user_slug=identity["user_slug"],
+            purpose="room", meta={"room_id": room_id, "sha256": clean_sha},
+        )
+        base = public_base_url()
+        return _json.dumps({
+            "status": "new",
+            "room_id": room_id,
+            "upload_url": f"{base}/upload/room/{token}",
+            "upload_host": base.split("://", 1)[-1],
+            "expires_in_seconds": int(_upload_tokens.ttl_seconds),
+            "how": 'python3 room_push.py <room.zip> "<upload_url>"',
+        })
 
 
 @mcp.tool(description=_load_prompt("outer/tool_save_dataroom_extraction.md"))
-def save_dataroom_extraction(label: str, extraction_id: str = "") -> str:
+def save_dataroom_extraction(label: str, extraction_id: str = "", room_id: str = "") -> str:
     """Mint a one-time HTTP upload URL for a persist_pack.py kit. The kit
     bytes travel out-of-band (a POST from the sandbox) and never transit the
     model; this call carries only the label plus an optional extraction_id
@@ -220,7 +288,9 @@ def save_dataroom_extraction(label: str, extraction_id: str = "") -> str:
             user_id=identity["user_id"],
             user_slug=identity["user_slug"],
             purpose="kit",
-            meta={"label": clean_label, "extraction_id": extraction_id.strip() or None},
+            meta={"label": clean_label,
+                  "extraction_id": extraction_id.strip() or None,
+                  "room_id": room_id.strip() or None},
         )
         base = public_base_url()
         _save_extraction_log.info(

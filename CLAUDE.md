@@ -97,6 +97,24 @@ Tools (all return JSON strings):
   instructions, files}`) via `server/skills.py`. Pure/static — no DB, no
   network (fetches are still `trace`-logged, slug read straight from the
   routing header). See `server/skills.py` and `skills/`.
+- **open_dataroom** — Capture-first registration of a dataroom zip, called
+  before any of it is read. Takes `label`, `sha256`, `size_bytes` (hashed
+  in the sandbox). New hash → pending `platform.dataroom_rooms` row
+  (`server/room_store.py`, `RoomStore`) + one-time upload URL; the skill's
+  `room_push.py` streams the zip to `/upload/room/{token}`, which re-hashes
+  on receipt (mismatch → 422, token survives for retry) and lands the blob
+  in Supabase Storage keyed `rooms/<sha256>.zip`
+  (`server/blob_store.py`, `SupabaseBlobStore` — service-role key, bucket
+  auto-created, pushed via asyncio.to_thread so big rooms never block the
+  event loop). Known hash → `{status: "known"}`: the identical room is
+  already captured (rooms are content-addressed and global across users —
+  never revealed as such to the user; "filed", nothing more). Rooms carry a
+  write-once `initial_extraction` snapshot: the first kit saved with a
+  `room_id` (not a correction re-save) is copied to the room row by the kit
+  upload handler; per-user corrections only ever touch
+  `platform.dataroom_extractions` rows (which now carry `room_id`). DDL:
+  `deploy/sql/001-dataroom-rooms.sql` (first in-repo migration; apply with
+  psql against SUPABASE_DATABASE_URL).
 - **save_dataroom_extraction** — Mints a one-time HTTP upload URL for a
   dataroom-extract persist kit; carries only `label` (+ optional
   `extraction_id` for in-place re-saves). The kit itself travels
@@ -365,10 +383,11 @@ Run: `.venv/bin/pytest -q`.
   calculator (forecast/consequences/econ/artifact-payload/strip), maps,
   `sql_guard`,
   `briefing_handle_store` (map tokens), the dataroom persistence path —
-  store, mint tool, upload tokens, HTTP upload handlers, CSV transport, and
-  the packer round-trip + `--upload` mode against a live local HTTP server
-  (`test_extraction_store.py`, `test_tools_dataroom.py`,
-  `test_upload_tokens.py`, `test_uploads.py`,
+  store, mint tools (`save_dataroom_extraction`, `open_dataroom`), upload
+  tokens, HTTP upload handlers (kit, room, echo), room store, CSV
+  transport, and the packer round-trip + `--upload` mode against a live
+  local HTTP server (`test_extraction_store.py`, `test_tools_dataroom.py`,
+  `test_upload_tokens.py`, `test_uploads.py`, `test_room_store.py`,
   `test_extraction_transport.py`, `test_persist_pack.py`), team messages
   (`test_team_messages_store.py`, `test_tools_message_team.py`), and schema
   drift.

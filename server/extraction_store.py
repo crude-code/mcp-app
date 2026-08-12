@@ -14,10 +14,12 @@ from utils.platform import _query
 
 class ExtractionStore:
     def save(self, *, user_id: int, extraction: dict, label: str = "",
-             extraction_id: str | None = None) -> str:
+             extraction_id: str | None = None, room_id: str | None = None) -> str:
         """Insert a new extraction (mints a UUID) or, when extraction_id is
         given, overwrite that row — scoped to user_id so one user can never
-        touch another's. Returns the extraction_id as a UUID string.
+        touch another's. `room_id` links the extraction to its captured room
+        (platform.dataroom_rooms); on updates it only ever fills a null.
+        Returns the extraction_id as a UUID string.
 
         Raises ValueError on a malformed extraction_id, LookupError when the
         id doesn't exist for this user."""
@@ -27,10 +29,10 @@ class ExtractionStore:
             _query(
                 """
                 INSERT INTO platform.dataroom_extractions
-                    (extraction_id, user_id, label, extraction)
-                VALUES (%s, %s, %s, %s::jsonb)
+                    (extraction_id, user_id, label, extraction, room_id)
+                VALUES (%s, %s, %s, %s::jsonb, %s)
                 """,
-                params=[extraction_id, user_id, label, payload],
+                params=[extraction_id, user_id, label, payload, room_id],
             )
             return extraction_id
 
@@ -41,11 +43,12 @@ class ExtractionStore:
         rows = _query(
             """
             UPDATE platform.dataroom_extractions
-            SET extraction = %s::jsonb, label = %s, updated_at = now()
+            SET extraction = %s::jsonb, label = %s, updated_at = now(),
+                room_id = COALESCE(room_id, %s)
             WHERE extraction_id = %s AND user_id = %s
             RETURNING extraction_id
             """,
-            params=[payload, label, extraction_id, user_id],
+            params=[payload, label, room_id, extraction_id, user_id],
         )
         if not rows:
             raise LookupError(

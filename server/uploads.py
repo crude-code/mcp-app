@@ -10,17 +10,25 @@ path carries it (see server/upload_tokens.py).
 Routes:
 - POST /upload/kit/{token} — a persist_pack.py kit. Expands the CSV tables
   and stores through the exact same code path the old inline tool call used
-  (extraction_transport + ExtractionStore); only the wire changed.
+  (extraction_transport + ExtractionStore); only the wire changed. When the
+  mint bound a room_id, the saved row links to it and the room's write-once
+  initial-extraction snapshot is taken here.
+- POST /upload/room/{token} — the dataroom zip itself (capture-first flow,
+  minted by open_dataroom). Streamed to a temp file while hashing; the
+  digest must match the sha256 asserted at mint time, then the blob lands
+  in Supabase Storage keyed rooms/<sha256>.zip.
 - POST /upload/echo/{token} — probe endpoint: streams the body, answers
   {bytes_received, sha256}. Validates (but never consumes) a token, so the
   sandbox-proxy size ceiling can be measured against a real deployment
   without an open bandwidth sink.
 """
 
+import asyncio
 import hashlib
 import json
 import logging
 import os
+import tempfile
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -35,6 +43,9 @@ _log = logging.getLogger("cc.uploads")
 # tool enforced) and a pre-parse guard on the raw kit body above it.
 MAX_EXTRACTION_BYTES = 2_000_000
 MAX_KIT_BODY_BYTES = 8_000_000
+
+# Room zips: nginx enforces 600m at the edge; this is the in-app backstop.
+MAX_ROOM_BYTES = 600_000_000
 
 
 def public_base_url() -> str:
@@ -55,7 +66,8 @@ def _reject(status: int, message: str) -> JSONResponse:
     return JSONResponse({"error": message}, status_code=status)
 
 
-def register_upload_routes(mcp, *, tokens, extraction_store) -> None:
+def register_upload_routes(mcp, *, tokens, extraction_store,
+                           room_store=None, blob_store=None) -> None:
     @mcp.custom_route("/upload/kit/{token}", methods=["POST"])
     async def upload_kit(request: Request) -> JSONResponse:
         token = request.path_params["token"]
@@ -90,18 +102,29 @@ def register_upload_routes(mcp, *, tokens, extraction_store) -> None:
             return _reject(413, f"extraction too large ({size} bytes; cap {MAX_EXTRACTION_BYTES})")
 
         label = (grant.meta.get("label") or "").strip()
+        room_id = grant.meta.get("room_id") or None
         try:
             eid = extraction_store.save(
                 user_id=grant.user_id,
                 extraction=full,
                 label=label,
                 extraction_id=grant.meta.get("extraction_id") or None,
+                room_id=room_id,
             )
         except (ValueError, LookupError) as e:
             return _reject(409, str(e))
         except Exception as e:  # noqa: BLE001 — DB failures land here
             _log.error("upload_kit store failed: %s", e)
             return _reject(500, str(e))
+
+        if room_id and room_store is not None and not grant.meta.get("extraction_id"):
+            # Write-once room snapshot: only a *first* save (not a
+            # correction re-save) can become the initial extraction, and
+            # the store refuses if a snapshot already exists.
+            try:
+                room_store.save_initial_extraction(room_id, full)
+            except Exception as e:  # noqa: BLE001 — snapshot must never fail the save
+                _log.error("initial-extraction snapshot failed for %s: %s", room_id, e)
 
         tokens.consume(token)
         stored = entity_counts(full)
@@ -115,10 +138,62 @@ def register_upload_routes(mcp, *, tokens, extraction_store) -> None:
             "bytes_received": len(body),
         })
 
+    @mcp.custom_route("/upload/room/{token}", methods=["POST"])
+    async def upload_room(request: Request) -> JSONResponse:
+        token = request.path_params["token"]
+        grant = tokens.claim(token, purpose="room")
+        if grant is None:
+            return _reject(410, "unknown, expired, or already-used upload URL — "
+                                "mint a fresh one with open_dataroom")
+        if room_store is None or blob_store is None:
+            return _reject(500, "room capture is not configured on this server")
+
+        expected_sha = grant.meta["sha256"]
+        room_id = grant.meta["room_id"]
+        digest = hashlib.sha256()
+        received = 0
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+        try:
+            async for chunk in request.stream():
+                received += len(chunk)
+                if received > MAX_ROOM_BYTES:
+                    return _reject(413, f"room too large (cap {MAX_ROOM_BYTES} bytes)")
+                digest.update(chunk)
+                tmp.write(chunk)
+            tmp.close()
+
+            if received == 0:
+                return _reject(400, "empty body")
+            if digest.hexdigest() != expected_sha:
+                return _reject(422, "sha256 mismatch: received bytes do not match the "
+                                    "hash asserted to open_dataroom — retry the upload")
+
+            key = f"rooms/{expected_sha}.zip"
+            try:
+                await asyncio.to_thread(blob_store.put_file, key, tmp.name)
+                final_room_id = room_store.mark_complete(room_id, storage_key=key)
+            except Exception as e:  # noqa: BLE001 — storage/DB failures land here
+                _log.error("upload_room failed for %s: %s", room_id, e)
+                return _reject(500, str(e))
+        finally:
+            tmp.close()
+            os.unlink(tmp.name)
+
+        tokens.consume(token)
+        _log.info("room stored user=%s room=%s bytes=%d", grant.user_slug,
+                  final_room_id, received)
+        return JSONResponse({
+            "saved": True,
+            "room_id": final_room_id,
+            "bytes_received": received,
+            "sha256": expected_sha,
+        })
+
     @mcp.custom_route("/upload/echo/{token}", methods=["POST"])
     async def upload_echo(request: Request) -> JSONResponse:
         token = request.path_params["token"]
-        if tokens.claim(token, purpose="kit") is None:
+        if (tokens.claim(token, purpose="kit") is None
+                and tokens.claim(token, purpose="room") is None):
             return _reject(410, "unknown, expired, or already-used token")
         digest = hashlib.sha256()
         received = 0

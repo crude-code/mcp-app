@@ -16,10 +16,14 @@ Flow (the skill walks you through it):
 
 Arguments:
 - `label` — required. Short human name for the room.
+- `room_id` — the id from `open_dataroom` (the capture step). Links the
+  extraction to its captured room; a first save also becomes the room's
+  write-once initial-extraction snapshot.
 - `extraction_id` — omit on first save. Pass the id you got back only when
   re-saving the *same* room (corrections after review), so the row is
   updated in place, not duplicated. Re-run the packer first; mint a fresh
-  URL each time (URLs are single-use).
+  URL each time (URLs are single-use). Corrections update only your row —
+  never the room snapshot.
 
 Failure handling:
 - The URL expires in ~15 minutes and dies when used — a stale or spent URL

@@ -108,13 +108,19 @@ Tools (all return JSON strings):
   auto-created, pushed via asyncio.to_thread so big rooms never block the
   event loop). Known hash → `{status: "known"}`: the identical room is
   already captured (rooms are content-addressed and global across users —
-  never revealed as such to the user; "filed", nothing more). Rooms carry a
-  write-once `initial_extraction` snapshot: the first kit saved with a
-  `room_id` (not a correction re-save) is copied to the room row by the kit
-  upload handler; per-user corrections only ever touch
-  `platform.dataroom_extractions` rows (which now carry `room_id`). DDL:
-  `deploy/sql/001-dataroom-rooms.sql` (first in-repo migration; apply with
-  psql against SUPABASE_DATABASE_URL).
+  never revealed as such to the user; "filed", nothing more), and the
+  reuse lane kicks in: a returning user gets their own newest row's id, a
+  first-time holder gets a fresh per-user copy of the room's
+  `initial_extraction` snapshot — either way `extraction_ready: true` plus
+  a one-time `extraction_url` (`GET /upload/extraction/{token}`) the
+  sandbox curls straight to `extraction.json`, skipping re-extraction
+  entirely (`extraction_ready: false` → normal flow, pass `room_id` when
+  persisting). Rooms carry a write-once `initial_extraction` snapshot: the
+  first kit saved with a `room_id` (not a correction re-save) is copied to
+  the room row by the kit upload handler; per-user corrections only ever
+  touch `platform.dataroom_extractions` rows (which now carry `room_id`).
+  DDL: `deploy/sql/001-dataroom-rooms.sql` (first in-repo migration; apply
+  with psql against SUPABASE_DATABASE_URL).
 - **save_dataroom_extraction** — Mints a one-time HTTP upload URL for a
   dataroom-extract persist kit; carries only `label` (+ optional
   `extraction_id` for in-place re-saves). The kit itself travels

@@ -6,6 +6,21 @@ from server.extraction_store import ExtractionStore
 from tests import VALUATION_TEST_USER_ID
 
 
+@pytest.mark.db
+def test_find_for_user_room_returns_newest_own_row():
+    store = ExtractionStore()
+    room_id = str(uuid.uuid4())
+    assert store.find_for_user_room(VALUATION_TEST_USER_ID, room_id) is None
+    store.save(user_id=VALUATION_TEST_USER_ID, extraction={"deal": {"name": "v1"}},
+               label="first", room_id=room_id)
+    eid2 = store.save(user_id=VALUATION_TEST_USER_ID, extraction={"deal": {"name": "v2"}},
+                      label="second", room_id=room_id)
+    rec = store.find_for_user_room(VALUATION_TEST_USER_ID, room_id)
+    assert rec["extraction_id"] == eid2
+    # another user's rows never surface
+    assert store.find_for_user_room(VALUATION_TEST_USER_ID + 1, room_id) is None
+
+
 _SAMPLE = {"deal": {"name": "Test Room"}, "wells": [{"api": "05-123-45678"}]}
 
 

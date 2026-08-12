@@ -17,6 +17,10 @@ Routes:
   minted by open_dataroom). Streamed to a temp file while hashing; the
   digest must match the sha256 asserted at mint time, then the blob lands
   in Supabase Storage keyed rooms/<sha256>.zip.
+- GET /upload/extraction/{token} — the reuse lane: serves a stored
+  extraction (the caller's own row, bound at mint time by open_dataroom) so
+  a duplicate room skips re-extraction entirely and the sandbox just curls
+  extraction.json down. Single-use like the upload routes.
 - POST /upload/echo/{token} — probe endpoint: streams the body, answers
   {bytes_received, sha256}. Validates (but never consumes) a token, so the
   sandbox-proxy size ceiling can be measured against a real deployment
@@ -188,6 +192,25 @@ def register_upload_routes(mcp, *, tokens, extraction_store,
             "bytes_received": received,
             "sha256": expected_sha,
         })
+
+    @mcp.custom_route("/upload/extraction/{token}", methods=["GET"])
+    async def download_extraction(request: Request) -> JSONResponse:
+        token = request.path_params["token"]
+        grant = tokens.claim(token, purpose="extraction")
+        if grant is None:
+            return _reject(410, "unknown, expired, or already-used download URL — "
+                                "mint a fresh one with open_dataroom")
+        try:
+            rec = extraction_store.get(grant.meta["extraction_id"])
+        except Exception as e:  # noqa: BLE001
+            _log.error("download_extraction failed: %s", e)
+            return _reject(500, str(e))
+        if rec is None or not rec.get("extraction"):
+            return _reject(404, "extraction not found")
+        tokens.consume(token)
+        _log.info("extraction served user=%s id=%s", grant.user_slug,
+                  grant.meta["extraction_id"])
+        return JSONResponse(rec["extraction"])
 
     @mcp.custom_route("/upload/echo/{token}", methods=["POST"])
     async def upload_echo(request: Request) -> JSONResponse:

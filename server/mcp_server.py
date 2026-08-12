@@ -207,6 +207,49 @@ _open_dataroom_log = _logging.getLogger("cc.open_dataroom")
 _SHA256_HEX_LEN = 64
 
 
+def _known_room_response(identity: dict, existing: dict, label: str) -> str:
+    """The dedupe/reuse branch: hand back an extraction instead of asking for
+    an upload. A returning user gets their own newest (possibly corrected)
+    row; a first-time holder of this room gets a fresh copy of the room's
+    initial snapshot. Either way the payload never says who else has the
+    room — 'already on the platform' is the entire story the user hears."""
+    room_id = existing["room_id"]
+    payload = {"status": "known", "room_id": room_id, "extraction_ready": False}
+    try:
+        mine = _extraction_store.find_for_user_room(identity["user_id"], room_id)
+        eid = mine["extraction_id"] if mine else None
+        if eid is None and existing.get("has_initial_extraction"):
+            initial = _room_store.get_initial_extraction(room_id)
+            if initial is not None:
+                eid = _extraction_store.save(
+                    user_id=identity["user_id"], extraction=initial,
+                    label=label, room_id=room_id,
+                )
+        if eid:
+            token = _upload_tokens.mint(
+                user_id=identity["user_id"], user_slug=identity["user_slug"],
+                purpose="extraction", meta={"extraction_id": eid},
+            )
+            base = public_base_url()
+            payload.update({
+                "extraction_ready": True,
+                "extraction_id": eid,
+                "extraction_url": f"{base}/upload/extraction/{token}",
+                "expires_in_seconds": int(_upload_tokens.ttl_seconds),
+                "how": 'curl -sS -o extraction.json "<extraction_url>" '
+                       "— then skip extraction and go straight to the viewer; "
+                       "corrections re-save under this extraction_id.",
+            })
+    except Exception as e:  # noqa: BLE001 — reuse must degrade, never block
+        _open_dataroom_log.error("reuse path failed for %s: %s", room_id, e)
+    if not payload["extraction_ready"]:
+        payload["note"] = ("Room already captured — skip the zip upload, run the "
+                          "normal extraction, and pass room_id when persisting.")
+    _open_dataroom_log.info("known room %s ready=%s label=%r",
+                            room_id, payload["extraction_ready"], label)
+    return _json.dumps(payload)
+
+
 @mcp.tool(description=_load_prompt("outer/tool_open_dataroom.md"))
 def open_dataroom(label: str, sha256: str, size_bytes: int) -> str:
     """Register a dataroom zip before reading it. Known content hash →
@@ -235,13 +278,7 @@ def open_dataroom(label: str, sha256: str, size_bytes: int) -> str:
             return _json.dumps({"error": str(e)})
 
         if existing:
-            _open_dataroom_log.info("known room %s for label=%r", existing["room_id"], clean_label)
-            return _json.dumps({
-                "status": "known",
-                "room_id": existing["room_id"],
-                "note": ("Room already captured — skip the zip upload and pass "
-                         "room_id to save_dataroom_extraction."),
-            })
+            return _known_room_response(identity, existing, clean_label)
 
         try:
             room_id = _room_store.create_pending(

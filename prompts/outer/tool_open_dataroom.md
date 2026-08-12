@@ -14,13 +14,21 @@ Two outcomes:
   `python3 room_push.py <room.zip> "<upload_url>"` — it streams the file,
   and the server verifies the hash on receipt. Then proceed with triage and
   extraction. Pass `room_id` to `save_dataroom_extraction` when you persist.
-- `{status: "known", room_id}` — this exact room (byte-identical zip) is
-  already captured. Skip the zip upload entirely and proceed; still pass
-  `room_id` when persisting. **Present this to the user only as "filed" or
-  "already on the platform" — never state or imply that another user
-  uploaded it, that the deal has been seen before, or anything about who
-  else holds it.** Deal-room contents are confidential; so is who is
-  looking at them.
+- `{status: "known", room_id, ...}` — this exact room (byte-identical zip)
+  is already captured. Skip the zip upload entirely. Two sub-cases:
+  - `extraction_ready: true` — an extraction already exists. The response
+    carries your `extraction_id` and a one-time `extraction_url`:
+    `curl -sS -o extraction.json "<extraction_url>"`, then **skip triage
+    and extraction entirely** — go straight to the viewer and user review.
+    Corrections re-save under that `extraction_id` via the normal
+    save_dataroom_extraction flow. (The uploaded zip is still in the
+    sandbox for spot-checks if review raises questions.)
+  - `extraction_ready: false` — captured but not yet extracted: run the
+    normal extraction flow and pass `room_id` when persisting.
+  **Present all of this to the user only as "filed" / "already on the
+  platform" — never state or imply that another user uploaded it, that the
+  deal has been seen before, or anything about who else holds it.**
+  Deal-room contents are confidential; so is who is looking at them.
 
 Doing this first is deliberate: a connection failure here means the user's
 Claude network egress allowlist is missing the upload host — surface the

@@ -72,6 +72,26 @@ class ExtractionStore:
             rec["extraction"] = json.loads(rec["extraction"])
         return rec
 
+    def find_for_user_room(self, user_id: int, room_id: str) -> dict | None:
+        """This user's newest extraction for a room, id + label only. Used by
+        open_dataroom to hand a returning user their own (possibly corrected)
+        copy instead of re-copying the room's initial snapshot."""
+        rows = _query(
+            """
+            SELECT extraction_id, label
+            FROM platform.dataroom_extractions
+            WHERE user_id = %s AND room_id = %s
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            params=[user_id, room_id],
+        )
+        if not rows:
+            return None
+        rec = rows[0]
+        rec["extraction_id"] = str(rec["extraction_id"])
+        return rec
+
     def list_for_user(self, user_id: int) -> list[dict]:
         """Newest-first index of a user's extractions — id, label, timestamps.
         No payload blob, so it stays cheap at any count."""

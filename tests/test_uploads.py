@@ -199,6 +199,38 @@ def test_echo_requires_valid_token(rig):
     assert client.post("/upload/echo/nope", content=b"x").status_code == 410
 
 
+# ── extraction download (reuse lane) ─────────────────────────────────────────
+
+
+def test_extraction_download_serves_and_consumes(rig):
+    client, tokens, store, _, _ = rig
+    stored = {"deal": {"name": "Hilltop"}, "wells": [{"api": "05-1"}]}
+    store.get = lambda eid: {"extraction_id": eid, "extraction": stored}
+    token = tokens.mint(user_id=7, user_slug="acme", purpose="extraction",
+                        meta={"extraction_id": "eid-1"})
+    r = client.get(f"/upload/extraction/{token}")
+    assert r.status_code == 200
+    assert r.json() == stored
+    assert client.get(f"/upload/extraction/{token}").status_code == 410
+
+
+def test_extraction_download_missing_row_is_404_token_survives(rig):
+    client, tokens, store, _, _ = rig
+    store.get = lambda eid: None
+    token = tokens.mint(user_id=7, user_slug="acme", purpose="extraction",
+                        meta={"extraction_id": "eid-1"})
+    assert client.get(f"/upload/extraction/{token}").status_code == 404
+    stored = {"deal": {"name": "x"}}
+    store.get = lambda eid: {"extraction": stored}
+    assert client.get(f"/upload/extraction/{token}").json() == stored
+
+
+def test_extraction_download_rejects_other_purposes(rig):
+    client, tokens, _, _, _ = rig
+    token = _kit_token(tokens)
+    assert client.get(f"/upload/extraction/{token}").status_code == 410
+
+
 # ── room capture ─────────────────────────────────────────────────────────────
 
 _ROOM_BYTES = b"PK\x03\x04 fake zip bytes for the test room"

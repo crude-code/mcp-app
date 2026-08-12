@@ -31,8 +31,17 @@ You are NOT writing a report or running a valuation. You are extracting **facts,
      ```bash
      python3 room_push.py "<upload>.zip" "<upload_url>"
      ```
-   - `status: "known"` → the room is already on the platform: skip the push
-     and continue. Say "filed" or "already on the platform" — **never**
+   - `status: "known"` → the room is already on the platform: skip the
+     push. If the response has `extraction_ready: true`, pull the finished
+     extraction and jump ahead —
+     ```bash
+     curl -sS -o extraction.json "<extraction_url>"
+     ```
+     skip steps 2–7 entirely and go straight to the viewer (step 8);
+     corrections re-save under the returned `extraction_id` per step 7's
+     correction flow (the zip is still in the sandbox for spot-checks).
+     If `extraction_ready: false`, continue the normal flow from step 2.
+     Either way say "filed" or "already on the platform" — **never**
      suggest anyone else uploaded it or has seen the deal.
    - Connection error from the push → the user's network allowlist is
      missing the upload host. Give them the one-line fix NOW (add the

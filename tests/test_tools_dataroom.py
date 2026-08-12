@@ -89,10 +89,79 @@ def test_open_known_hash_skips_upload(monkeypatch):
     monkeypatch.setattr(srv._room_store, "find_by_hash",
                         lambda sha: {"room_id": "room-1", "sha256": sha,
                                      "has_initial_extraction": False})
+    monkeypatch.setattr(srv._extraction_store, "find_for_user_room",
+                        lambda uid, rid: None)
     out = json.loads(srv.open_dataroom(label="Room", sha256=_SHA.upper(), size_bytes=10))
     assert out["status"] == "known"
     assert out["room_id"] == "room-1"
+    assert out["extraction_ready"] is False
     assert "upload_url" not in out
+
+
+def test_open_known_with_snapshot_copies_and_serves(monkeypatch):
+    """First-time holder of an already-extracted room: the initial snapshot
+    is copied to a fresh row for THIS user and served via a one-time URL."""
+    monkeypatch.setattr(srv, "get_current_identity", lambda: dict(_IDENTITY))
+    monkeypatch.setattr(srv._room_store, "find_by_hash",
+                        lambda sha: {"room_id": "room-1", "sha256": sha,
+                                     "has_initial_extraction": True})
+    initial = {"deal": {"name": "Hilltop"}, "wells": [{"api": "05-1"}]}
+    monkeypatch.setattr(srv._room_store, "get_initial_extraction",
+                        lambda rid: initial)
+    monkeypatch.setattr(srv._extraction_store, "find_for_user_room",
+                        lambda uid, rid: None)
+    seen = {}
+
+    def fake_save(**kw):
+        seen.update(kw)
+        return "copy-eid"
+
+    monkeypatch.setattr(srv._extraction_store, "save", fake_save)
+    monkeypatch.setenv("CC_UPLOAD_BASE_URL", "https://mcp.example.com")
+    out = json.loads(srv.open_dataroom(label="Hilltop", sha256=_SHA, size_bytes=10))
+    assert out["extraction_ready"] is True
+    assert out["extraction_id"] == "copy-eid"
+    assert out["extraction_url"].startswith("https://mcp.example.com/upload/extraction/")
+    assert seen == {"user_id": 7, "extraction": initial, "label": "Hilltop",
+                    "room_id": "room-1"}
+    token = out["extraction_url"].rsplit("/", 1)[1]
+    grant = srv._upload_tokens.claim(token, purpose="extraction")
+    assert grant.meta == {"extraction_id": "copy-eid"}
+
+
+def test_open_known_returning_user_gets_their_own_row(monkeypatch):
+    """A user who already extracted this room gets their own (corrected)
+    copy back — no fresh copy of the initial snapshot is made."""
+    monkeypatch.setattr(srv, "get_current_identity", lambda: dict(_IDENTITY))
+    monkeypatch.setattr(srv._room_store, "find_by_hash",
+                        lambda sha: {"room_id": "room-1", "sha256": sha,
+                                     "has_initial_extraction": True})
+    monkeypatch.setattr(srv._extraction_store, "find_for_user_room",
+                        lambda uid, rid: {"extraction_id": "mine-eid", "label": "Hilltop"})
+
+    def boom(**kw):
+        raise AssertionError("must not copy the snapshot for a returning user")
+
+    monkeypatch.setattr(srv._extraction_store, "save", boom)
+    out = json.loads(srv.open_dataroom(label="Hilltop", sha256=_SHA, size_bytes=10))
+    assert out["extraction_ready"] is True
+    assert out["extraction_id"] == "mine-eid"
+
+
+def test_open_reuse_failure_degrades_to_normal_flow(monkeypatch):
+    monkeypatch.setattr(srv, "get_current_identity", lambda: dict(_IDENTITY))
+    monkeypatch.setattr(srv._room_store, "find_by_hash",
+                        lambda sha: {"room_id": "room-1", "sha256": sha,
+                                     "has_initial_extraction": True})
+
+    def boom(uid, rid):
+        raise RuntimeError("db hiccup")
+
+    monkeypatch.setattr(srv._extraction_store, "find_for_user_room", boom)
+    out = json.loads(srv.open_dataroom(label="Room", sha256=_SHA, size_bytes=10))
+    assert out["status"] == "known"
+    assert out["extraction_ready"] is False
+    assert "note" in out
 
 
 def test_open_new_hash_mints_room_upload(monkeypatch):

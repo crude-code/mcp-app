@@ -148,6 +148,16 @@ or adapt it. To produce the viewer:
 2. Paste this room's `extraction.json` into the one marked `const EXTRACTION = {}`.
 3. Ship that as the artifact. That's the whole job.
 
+**Size policy.** Big rooms produce extractions too large to inline into an
+artifact — the bulk is almost always `revenue_observations` (row-level check
+stubs with full provenance). Before pasting, if `revenue_observations` has
+more than ~300 rows, set it to `[]` in the pasted copy and append one line
+to `extraction_notes` so the banner discloses it (e.g. "[viewer] 1,559
+revenue rows omitted from this view for size — all persisted in the stored
+extraction."). The persisted copy always keeps every row — this trims the
+*view*, never the record. Apply the same trim to `production_history` if
+it's ever the bulk instead.
+
 The component re-derives the entire view from the schema, so it already handles
 everything that varies room to room — **don't reinvent any of it:**
 - **Spine** — wells if present, else tracts (minerals/royalty rooms). Automatic.

@@ -165,8 +165,8 @@ engine by `tests/test_valuation_defaults_drift.py`.)
 | gas_btu_factor | Gas heat content (converts mcf to MMBtu) | 1.05 MMBtu/mcf | 1.05 |
 | tax_pct | Severance / production tax | 7.5% | 0.075 |
 | gpt_pct | Gathering, processing & transport | 5.0% | 0.05 |
-| opex_per_bbl_usd | Operating cost (per bbl) | $0.00 | 0.0 |
-| opex_per_well_per_month_usd | Operating cost (per well / month) | $0.00 | 0.0 |
+| opex_per_bbl_usd | Operating cost (per GROSS oil bbl — 8/8ths oil only, gas volumes excluded; borne at WI share; WI deals only, never minerals). An LOS rate quoted per boe or per net bbl must be converted before it goes here | $0.00 | 0.0 |
+| opex_per_well_per_month_usd | Operating cost (per well / month while online, borne at WI share; WI deals only) | $0.00 | 0.0 |
 | capex_per_well_usd | Drilling capex (gross, per new well) | $0.00 | 0.0 |
 | horizon_months | Forecast horizon | 360 months (30 yr) | 360 |
 | terminal_di_annual | Terminal decline (annual exponential tail — the calculator's, not assertable) | 5% / yr | 0.05 |

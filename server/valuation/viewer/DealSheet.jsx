@@ -121,13 +121,24 @@ function Rationale({ assertion }) {
 //    residual strip over the months the curve claims to describe. Owned SVG —
 //    the glued residual panel and anchor/struck annotations don't fit a chart
 //    library's layout model. ─────────────────────────────────────────────────
-function logTicks(lo, hi) {
+function logTicksM(lo, hi, mantissas) {
   const out = [];
-  for (let k = -1; k <= 7; k++) [1, 2, 5].forEach((m) => {
+  for (let k = -1; k <= 7; k++) mantissas.forEach((m) => {
     const v = m * Math.pow(10, k);
     if (v > lo && v < hi) out.push(v);
   });
   return out;
+}
+const logTicks = (lo, hi) => logTicksM(lo, hi, [1, 2, 5]);
+
+// Tick set thinned by range, not by renderer collision: mantissas drop as the
+// span widens so the axis never silently hides every other label.
+function axisLogTicks(lo, hi) {
+  for (const ms of [[1, 2, 5], [1, 5], [1]]) {
+    const t = logTicksM(lo, hi, ms);
+    if (t.length <= 7) return t;
+  }
+  return logTicksM(lo, hi, [1]);
 }
 
 function fitDiagnostics(entry, stream) {
@@ -261,7 +272,14 @@ function TypeCurveChart({ tc }) {
   });
   const vals = data.flatMap((r) => Object.entries(r).filter(([kk]) => kk !== "t").map(([, v]) => v)).filter((v) => v > 0);
   if (!vals.length) return null;
-  const lo = Math.max(Math.min(...vals) * 0.75, 0.1), hi = Math.max(...vals) * 1.3;
+  // Floor from the bulk of the data (5th percentile), never above the
+  // committed curve's own minimum — one bad analog month must not drag half
+  // the vertical space below everything that matters. Outliers below the
+  // floor clip (allowDataOverflow), which is the honest treatment.
+  const sorted = [...vals].sort((a, b) => a - b);
+  const p05 = sorted[Math.floor(sorted.length * 0.05)];
+  const curveMin = Math.min(...tc.series.filter((v) => v > 0));
+  const lo = Math.max(Math.min(p05, curveMin) * 0.75, 0.1), hi = sorted[sorted.length - 1] * 1.3;
   const unit = tc.normalization === "per_1000ft" ? "bbl/mo per 1,000 ft" : "bbl/mo";
   return (
     <div>
@@ -270,8 +288,9 @@ function TypeCurveChart({ tc }) {
           <ReLineChart data={data} margin={{ top: 8, right: 10, left: 0, bottom: 0 }}>
             <XAxis dataKey="t" type="number" domain={[1, n]} tickCount={7}
               tick={{ fontSize: 9, fill: C.textDim }} tickLine={false} axisLine={{ stroke: C.border }} />
-            <YAxis scale="log" domain={[lo, hi]} allowDataOverflow width={46} ticks={logTicks(lo, hi)}
-              tick={{ fontSize: 9, fill: C.textDim }} axisLine={false} tickLine={false} tickFormatter={fmtVol} />
+            <YAxis scale="log" domain={[lo, hi]} allowDataOverflow width={52} ticks={axisLogTicks(lo, hi)}
+              tick={{ fontSize: 9, fill: C.textDim }} axisLine={false} tickLine={false}
+              tickFormatter={(v) => v.toLocaleString("en-US")} />
             <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 11, color: C.textPrimary }}
               labelFormatter={(t) => `month ${t}`} formatter={(v, name) => [fmtInt(v), name === "curve" ? "type curve" : (tc.kept.find((a) => a.api === name)?.name ?? name)]} />
             {plotted.map((a) => (
@@ -295,29 +314,52 @@ function TypeCurveChart({ tc }) {
 function CohortMap({ tc }) {
   const map = tc.map;
   if (!map || !map.subjects.length) return null;
-  const S = Math.max(Math.min(84, 640 / map.w_mi, 470 / map.h_mi), 6);
-  const W = map.w_mi * S, H = map.h_mi * S;
-  const px = (x) => x * S, py = (y) => H - y * S;
+  const wells = [
+    ...tc.excluded.map((a) => ({ ...a, cls: "x" })),
+    ...tc.kept.map((a) => ({ ...a, cls: "k" })),
+    ...map.subjects.map((s) => ({ ...s, cls: "s" })),
+  ].filter((w) => w.x != null && w.y != null);
+  // A cohort map showing only the subjects says nothing — suppress it rather
+  // than render a legend for wells that aren't drawn.
+  if (!wells.some((w) => w.cls === "k" || w.cls === "x")) return null;
+
+  // Fixed drawing surface; the data is projected into it. Sizing the viewBox
+  // from the data and letting CSS stretch it scales every fixed-size label
+  // with the extent — the giant-text failure mode.
+  const W = 640, H = 470, M = 24;
+  const lenMi = (w) => (w.lateral_ft || 5280) / 5280;
+  // Bounds cover every stick end-to-end (surface point through lateral tip),
+  // and never collapse below a 2-mile window when the cohort sits on one pad.
+  let x0 = Math.min(...wells.map((w) => w.x)), x1 = Math.max(...wells.map((w) => w.x));
+  let y0 = Math.min(...wells.map((w) => w.y)), y1 = Math.max(...wells.map((w) => w.y + lenMi(w)));
+  const MIN_EXT = 2;
+  if (x1 - x0 < MIN_EXT) { const c = (x0 + x1) / 2; x0 = c - MIN_EXT / 2; x1 = c + MIN_EXT / 2; }
+  if (y1 - y0 < MIN_EXT) { const c = (y0 + y1) / 2; y0 = c - MIN_EXT / 2; y1 = c + MIN_EXT / 2; }
+  const S = Math.min((W - 2 * M) / (x1 - x0), (H - 2 * M) / (y1 - y0));
+  const px = (x) => M + (x - x0) * S, py = (y) => H - M - (y - y0) * S;
   const k = [];
-  for (let i = 0; i <= Math.ceil(map.w_mi); i++) k.push(<line key={`gv${i}`} x1={px(i)} y1={0} x2={px(i)} y2={H} stroke={C.borderSubtle} strokeWidth={1} />);
-  for (let j = 0; j <= Math.ceil(map.h_mi); j++) k.push(<line key={`gh${j}`} x1={0} y1={py(j)} x2={W} y2={py(j)} stroke={C.borderSubtle} strokeWidth={1} />);
+  const gridStep = Math.max(1, Math.ceil((x1 - x0) / 10), Math.ceil((y1 - y0) / 10));
+  for (let i = Math.ceil(x0 / gridStep) * gridStep; i <= x1; i += gridStep)
+    k.push(<line key={`gv${i}`} x1={px(i)} y1={0} x2={px(i)} y2={H} stroke={C.borderSubtle} strokeWidth={1} />);
+  for (let j = Math.ceil(y0 / gridStep) * gridStep; j <= y1; j += gridStep)
+    k.push(<line key={`gh${j}`} x1={0} y1={py(j)} x2={W} y2={py(j)} stroke={C.borderSubtle} strokeWidth={1} />);
   const stick = (w, key, stroke, dashed, wide) => {
-    if (w.x == null || w.y == null) return;
-    const lenMi = (w.lateral_ft || 5280) / 5280;
     k.push(<g key={key}>
-      <line x1={px(w.x)} y1={py(w.y)} x2={px(w.x)} y2={py(Math.min(w.y + lenMi, map.h_mi))} stroke={stroke} strokeWidth={wide ? 2.4 : 1.6} strokeDasharray={dashed ? "5 4" : undefined} />
+      <line x1={px(w.x)} y1={py(w.y)} x2={px(w.x)} y2={py(w.y + lenMi(w))} stroke={stroke} strokeWidth={wide ? 2.4 : 1.6} strokeDasharray={dashed ? "5 4" : undefined} />
       <circle cx={px(w.x)} cy={py(w.y)} r={2.6} fill={stroke} />
     </g>);
   };
-  tc.excluded.forEach((a, i) => stick(a, `x${i}`, C.ghost, true, false));
-  tc.kept.forEach((a, i) => stick(a, `k${i}`, C.ink, false, false));
-  map.subjects.forEach((s, i) => stick(s, `s${i}`, C.accent, true, true));
-  const sx = px(0.3), sy = H - 14;
+  wells.filter((w) => w.cls === "x").forEach((a, i) => stick(a, `x${i}`, C.ghost, true, false));
+  wells.filter((w) => w.cls === "k").forEach((a, i) => stick(a, `k${i}`, C.ink, false, false));
+  wells.filter((w) => w.cls === "s").forEach((s, i) => stick(s, `s${i}`, C.accent, true, true));
+  // Scale bar: the largest round mileage that stays inside a third of the width.
+  const scaleMi = [10, 5, 2, 1, 0.5].find((m) => m * S <= W * 0.33) || 0.5;
+  const sx = 16, sy = H - 14;
   k.push(<g key="scale">
-    <line x1={sx} y1={sy} x2={sx + S} y2={sy} stroke={C.textDim} strokeWidth={1.1} />
+    <line x1={sx} y1={sy} x2={sx + scaleMi * S} y2={sy} stroke={C.textDim} strokeWidth={1.1} />
     <line x1={sx} y1={sy - 4} x2={sx} y2={sy + 4} stroke={C.textDim} strokeWidth={1.1} />
-    <line x1={sx + S} y1={sy - 4} x2={sx + S} y2={sy + 4} stroke={C.textDim} strokeWidth={1.1} />
-    <text x={sx + S / 2} y={sy - 6} textAnchor="middle" fontSize={10} fill={C.textDim}>1 mi</text>
+    <line x1={sx + scaleMi * S} y1={sy - 4} x2={sx + scaleMi * S} y2={sy + 4} stroke={C.textDim} strokeWidth={1.1} />
+    <text x={sx + scaleMi * S / 2} y={sy - 6} textAnchor="middle" fontSize={10} fill={C.textDim}>{scaleMi} mi</text>
   </g>);
   k.push(<g key="north">
     <text x={W - 14} y={20} textAnchor="middle" fontSize={10} fill={C.textDim}>N</text>

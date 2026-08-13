@@ -40,7 +40,16 @@ def bulk_load_wells(apis: list[str]) -> list[WellMeta]:
             w.lateral_length_ft, w.spud_date, w.completion_date, w.first_prod_date, w.operator,
             COALESCE(p.n_months, 0) AS n_history_months,
             p.last_prod AS last_prod_date,
-            ST_AsText(w.geom) AS geom_wkt
+            -- Always a POINT: geom is a POINT for permits/verticals but a
+            -- LINESTRING survey for drilled horizontals, and WellMeta.geom_wkt
+            -- promises a point (evidence's schematic map parses POINT only).
+            -- Heel = first survey vertex; PointOnSurface backstops any other
+            -- geometry type.
+            ST_AsText(CASE
+                WHEN GeometryType(w.geom) = 'POINT' THEN w.geom
+                WHEN GeometryType(w.geom) = 'LINESTRING' THEN ST_StartPoint(w.geom)
+                ELSE ST_PointOnSurface(w.geom)
+            END) AS geom_wkt
         FROM public.wells w
         LEFT JOIN p ON p.well_api = w.well_api
         WHERE w.well_api IN ({quoted})

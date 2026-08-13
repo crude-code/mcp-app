@@ -2,7 +2,7 @@
 artifact-payload path.
 
 No DB, no I/O. Inputs are plain dicts read from the wells/economics stages;
-outputs (exec facts, per-status rows, net production series) feed
+outputs (exec facts, per-status rows, default rates) feed
 `server.valuation.artifact_payload.build_artifact_payload`.
 """
 from collections import Counter, defaultdict
@@ -120,78 +120,6 @@ def roll_up_facts(well_meta: dict, interest: dict, rate_centers: dict) -> tuple[
 def _fmt_rate(rate: float) -> str:
     """0.175 → '17.5' — must match orchestrator._rate_label (the cube's keys)."""
     return f"{rate * 100:g}"
-
-
-# Minimum visible window when there is only a single online event (the user's
-# "+12 months after additional production" rule is undefined for one well, and
-# a lone PDP deal would otherwise cram into 12 months).
-_MIN_WINDOW_MONTHS = 24
-
-
-def _online_offset(code: str) -> int:
-    """Month offset from the NPV origin at which a status comes online."""
-    if code == "DUC":
-        return config.ECON.duc_months_to_first_prod
-    if code == "PUD":
-        return config.ECON.permit_months_to_first_prod
-    return 0  # PDP produces from the origin
-
-
-def _add_months(origin_iso: str, months: int) -> str:
-    """'2026-07-01' + N months → 'YYYY-MM' (calendar label for the x-axis)."""
-    y, m, *_ = origin_iso.split("-")
-    total = int(y) * 12 + (int(m) - 1) + months
-    return f"{total // 12:04d}-{total % 12 + 1:02d}"
-
-
-def build_production_series(
-    *, schedule_totals: dict, horizon_months: int, origin: str,
-    statuses: list[dict], step: int = 1,
-) -> dict:
-    """Net monthly oil/gas/cashflow over the economically active window only.
-
-    The window is anchored at the first producing month and runs through
-    ``max(last_online + 12, first_prod + _MIN_WINDOW_MONTHS)`` (clamped to the
-    horizon), so the 30-year dead tail and the pre-online flat zero line are
-    dropped. `last_online` is the online offset of the latest *present* status
-    (PDP→0, DUC→+18mo, PUD→+36mo).
-
-    `schedule_totals` carries `net_oil`/`net_gas`/`net_cashflow` arrays (index =
-    month offset from `origin`) — already net of each well's revenue interest
-    and summed across wells. Each point gets a calendar `date` (`"YYYY-MM"`) so
-    the renderer plots a real time axis. `statuses` is the `roll_up_facts` list
-    (only `code` + `gross_wells` are read).
-    """
-    oil = schedule_totals.get("net_oil", [])
-    gas = schedule_totals.get("net_gas", [])
-    cash = schedule_totals.get("net_cashflow", [])
-
-    span = min(horizon_months, max(len(oil), len(gas)))
-    first_prod = next(
-        (i for i in range(span)
-         if (i < len(oil) and oil[i] > 0) or (i < len(gas) and gas[i] > 0)),
-        0,
-    )
-    present = [s["code"] for s in statuses if s.get("gross_wells", 0) > 0]
-    last_online = max((_online_offset(c) for c in present), default=0)
-    end = min(max(last_online + 12, first_prod + _MIN_WINDOW_MONTHS), horizon_months - 1)
-
-    series = [
-        {
-            "m": i,
-            "date": _add_months(origin, i),
-            "oil": round(float(oil[i]), 1) if i < len(oil) else 0.0,
-            "gas": round(float(gas[i]), 1) if i < len(gas) else 0.0,
-            "cashflow": round(float(cash[i])) if i < len(cash) else 0,
-        }
-        for i in range(first_prod, end + 1, step)
-    ]
-    return {
-        "series": series,
-        "start_month": first_prod,
-        "end_month": end,
-        "origin": origin,
-    }
 
 
 def default_rates(rate_centers: dict) -> dict:

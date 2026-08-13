@@ -1,11 +1,11 @@
 """Slim, artifact-facing payload for a completed valuation run.
 
 Pure assembly, no DB/IO — mirrors `deal_sheet.py`'s pattern and reuses its
-`roll_up_facts`/`build_production_series` helpers. Returns only what an
-artifact-building Claude turn needs: exec facts, a net production/cashflow
-series (omitted when the deal has no active status), and the blended
-bottom-line economics with the full deck x rate PV cube and scenario axes —
-the latter powers the template's deck/rate selectors and risk-bucket detail.
+`roll_up_facts` helper. Returns only what an artifact-building Claude turn
+needs: exec facts, the blended bottom-line economics with the full
+deck x rate PV cube and scenario axes (powering the template's deck/rate
+selectors and risk-bucket detail), the resolved assumptions, and the
+per-assertion evidence record.
 """
 from pathlib import Path
 
@@ -24,9 +24,9 @@ def load_viewer() -> str:
 
 def build_artifact_payload(*, economics: dict, wells: dict) -> dict:
     """`economics`/`wells` are the run record's stage payloads. Returns
-    `{"facts", "production", "economics", "assumptions", "evidence"}` where
-    economics carries the full scenario cube plus the axes the deal-sheet
-    template's selectors index: `{npv_at_centers, cube, decks, default_deck,
+    `{"facts", "economics", "assumptions", "evidence"}` where economics
+    carries the full scenario cube plus the axes the deal-sheet template's
+    selectors index: `{npv_at_centers, cube, decks, default_deck,
     default_rates, statuses}`. Statuses are data-only (code/label/tag/counts/
     rate ladder) — colors and layout belong to the template, not the payload.
     `assumptions` feeds the template's provenance panel; `evidence` is the
@@ -38,16 +38,6 @@ def build_artifact_payload(*, economics: dict, wells: dict) -> dict:
     interest = economics.get("interest") or economics.get("assumptions") or {}
 
     facts, statuses = ds.roll_up_facts(well_meta, interest, rate_centers)
-
-    production = ds.build_production_series(
-        schedule_totals=economics["schedule"]["totals"],
-        horizon_months=int(economics.get("horizon_months", 360)),
-        origin=economics["schedule"]["origin"],
-        statuses=statuses,
-    )
-    has_activity = any(
-        pt["oil"] or pt["gas"] or pt["cashflow"] for pt in production["series"]
-    )
 
     price_mode = (economics.get("inputs") or {}).get("price_mode", "strip")
     decks, default_deck = config.deck_labels(price_mode)
@@ -75,7 +65,6 @@ def build_artifact_payload(*, economics: dict, wells: dict) -> dict:
 
     return {
         "facts": facts,
-        "production": production["series"] if has_activity else None,
         "assumptions": assumptions,
         "evidence": wells.get("evidence"),
         "economics": {

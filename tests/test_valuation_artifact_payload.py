@@ -36,19 +36,6 @@ def test_build_artifact_payload_returns_facts_and_economics():
     assert payload["economics"]["npv_at_centers"]["total"] == 27e6
 
 
-def test_build_artifact_payload_includes_production_when_active():
-    payload = build_artifact_payload(economics=_economics(), wells=WELLS)
-    assert payload["production"] is not None
-    assert payload["production"][0]["oil"] == 100.0
-
-
-def test_build_artifact_payload_omits_production_when_no_activity():
-    zeroed = _economics(schedule={"origin": "2026-07-01", "totals": {
-        "net_oil": [0.0] * 360, "net_gas": [0.0] * 360, "net_cashflow": [0.0] * 360}})
-    payload = build_artifact_payload(economics=zeroed, wells=WELLS)
-    assert payload["production"] is None
-
-
 def test_build_artifact_payload_includes_cube_and_scenario_axes():
     econ = _economics(npv_by_status=CUBE, inputs={"price_mode": "strip"})
     payload = build_artifact_payload(economics=econ, wells=WELLS)
@@ -58,7 +45,7 @@ def test_build_artifact_payload_includes_cube_and_scenario_axes():
     assert e["default_deck"] == "Strip"
     # default rate = center rung, formatted like the cube keys ('17.5' style)
     assert e["default_rates"]["PDP"] == "17.5"
-    assert set(payload) == {"facts", "production", "economics", "assumptions", "evidence"}
+    assert set(payload) == {"facts", "economics", "assumptions", "evidence"}
 
 
 def test_build_artifact_payload_assumptions_and_evidence_passthrough():

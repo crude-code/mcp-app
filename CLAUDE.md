@@ -72,8 +72,7 @@ Tools (all return JSON strings):
   (interest type + blanket numbers, optional `by_api` per-well overrides,
   optional `economics_overrides`). Runs econ on the forecast stage in the run
   record, assembles the artifact payload (`build_artifact_payload` in
-  `server/valuation/artifact_payload.py` — exec facts, a net production
-  series when the deal has an active status, `economics` carrying
+  `server/valuation/artifact_payload.py` — exec facts, `economics` carrying
   `npv_at_centers`, the full deck×status×rate `cube`, `decks`,
   `default_deck`, `default_rates`, and `statuses`, plus `assumptions` for
   the sheet's provenance panel and `evidence` — the per-assertion judgment
@@ -218,11 +217,10 @@ calculator. Pure, unit-tested modules:
 - **`econ.py`** — `compute_gross_revenue`, `compute_net_cashflow` (WI vs
   minerals branch), `npv`, `resolve_well_interest`. Defaults from `config.ECON`.
 - **`deal_sheet.py`** — pure assembly helpers for the artifact payload (no
-  DB): exec facts (`roll_up_facts`), the net forecast production series
-  (`build_production_series`), and `default_rates`. Consumed by
+  DB): exec facts (`roll_up_facts`) and `default_rates`. Consumed by
   `artifact_payload.py`.
 - **`artifact_payload.py`** — `build_artifact_payload`: assembles the
-  payload `run_valuation` returns (`facts`, `production`, `economics` —
+  payload `run_valuation` returns (`facts`, `economics` —
   `npv_at_centers`, the full deck×status×rate `cube`, `decks`,
   `default_deck`, `default_rates`, `statuses` — plus `assumptions` and the
   `evidence` passthrough) from a run's `wells` + `economics` stages,

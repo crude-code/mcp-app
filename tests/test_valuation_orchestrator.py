@@ -294,7 +294,7 @@ def test_compose_artifact_payload_for_run_reads_stages(monkeypatch):
 
     payload = compose_artifact_payload_for_run("r1")
     assert payload["facts"]["deal_type"] == "Working Interest"
-    assert payload["production"] is not None
+    assert payload["evidence"] is None            # legacy wells stage, no evidence
     assert payload["economics"]["npv_at_centers"]["total"] == 27e6
 
 

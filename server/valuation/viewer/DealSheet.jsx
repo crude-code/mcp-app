@@ -8,8 +8,8 @@
 // without evidence renders the headline sheet alone.
 import { useState } from "react";
 import {
-  LineChart as ReLineChart, Line, BarChart as ReBarChart, Bar, Cell,
-  XAxis, YAxis, Tooltip, ReferenceLine, ResponsiveContainer,
+  LineChart as ReLineChart, Line,
+  XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from "recharts";
 
 // ── Palette — the one object to edit if the user asks for a restyle ─────────
@@ -608,7 +608,6 @@ function EvidenceModule({ label, title, sub, entries, Panel, noteFor, defaultOpe
 function DealSheet({ title, tldr, data }) {
   const { facts } = data;
   const econ = data.economics;
-  const production = data.production; // [{m, date, oil, gas, cashflow}] | null
   const assumptions = data.assumptions || {};
   const cube = econ.cube;
 
@@ -623,7 +622,6 @@ function DealSheet({ title, tldr, data }) {
   const singleStatus = statuses.length === 1;
   const [deck, setDeck] = useState(econ.default_deck);
   const [rates, setRates] = useState(econ.default_rates);
-  const [view, setView] = useState("cash");
 
   const pv = (code) => cube[deck]?.[code]?.[rates[code]] ?? 0;
   const pvByCode = Object.fromEntries(statuses.map((s) => [s.code, pv(s.code)]));
@@ -846,57 +844,6 @@ function DealSheet({ title, tldr, data }) {
           defaultOpen={!producing.length && undrilled.length <= 3}
         />
       ) : null}
-
-      {/* DEAL FORECAST — only when the deal has an active production window */}
-      {production && (
-        <div style={{ padding: "14px 20px", borderTop: `1px solid ${C.border}` }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-            <div style={LBL}>Deal forecast</div>
-            <Segmented small options={["Production", "Net Cashflow"]}
-              value={view === "prod" ? "Production" : "Net Cashflow"}
-              onChange={(v) => setView(v === "Production" ? "prod" : "cash")} />
-          </div>
-          <div style={{ color: C.textDim, fontSize: 12, marginBottom: 10 }}>
-            {view === "prod" ? (
-              <>net oil <span style={{ color: C.up }}>●</span>&nbsp; net gas <span style={{ color: C.down }}>●</span> &nbsp;·&nbsp; volumes per month, independent of the price deck</>
-            ) : (
-              <><span style={{ color: C.down }}>▮</span> CAPEX&nbsp; <span style={{ color: C.up }}>▮</span> Net Cashflow &nbsp;·&nbsp; net to interest, per month</>
-            )}
-          </div>
-          <div style={{ height: 184, border: `1px solid ${C.border}`, borderRadius: 6, background: C.panelMute, padding: "8px 4px" }}>
-            <ResponsiveContainer width="100%" height="100%">
-              {view === "prod" ? (
-                <ReLineChart data={production} margin={{ top: 8, right: 6, left: 4, bottom: 0 }}>
-                  <XAxis dataKey="date" tick={{ fontSize: 9, fill: C.textDim }} tickLine={false}
-                    axisLine={{ stroke: C.border }} tickFormatter={fmtDate} minTickGap={28} />
-                  <YAxis yAxisId="oil" tick={{ fontSize: 9, fill: C.up }} axisLine={false} tickLine={false} width={46}
-                    label={{ value: "net oil · bbl", angle: -90, position: "insideLeft", style: { fontSize: 9, fill: C.up, letterSpacing: "0.06em" } }} />
-                  <YAxis yAxisId="gas" orientation="right" tick={{ fontSize: 9, fill: C.down }} axisLine={false} tickLine={false} width={46}
-                    label={{ value: "net gas · mcf", angle: 90, position: "insideRight", style: { fontSize: 9, fill: C.down, letterSpacing: "0.06em" } }} />
-                  <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 12, color: C.textPrimary }}
-                    labelFormatter={(d) => fmtDate(String(d))} />
-                  <Line yAxisId="oil" name="net oil (bbl)" type="monotone" dataKey="oil" stroke={C.up} strokeWidth={2} dot={false} isAnimationActive={false} />
-                  <Line yAxisId="gas" name="net gas (mcf)" type="monotone" dataKey="gas" stroke={C.down} strokeWidth={1.5} dot={false} isAnimationActive={false} />
-                </ReLineChart>
-              ) : (
-                <ReBarChart data={production} margin={{ top: 8, right: 6, left: 8, bottom: 0 }}>
-                  <XAxis dataKey="date" tick={{ fontSize: 9, fill: C.textDim }} tickLine={false}
-                    axisLine={{ stroke: C.border }} tickFormatter={fmtDate} minTickGap={28} />
-                  <YAxis tick={{ fontSize: 9, fill: C.textDim }} axisLine={false} tickLine={false} width={52} tickFormatter={fmtCompact} />
-                  <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 12, color: C.textPrimary }}
-                    labelFormatter={(d) => fmtDate(String(d))} formatter={(v) => [fmtUSD(Number(v)), Number(v) >= 0 ? "Net Cashflow" : "CAPEX"]} />
-                  <ReferenceLine y={0} stroke={C.textDim} />
-                  <Bar dataKey="cashflow" isAnimationActive={false}>
-                    {production.map((p) => (
-                      <Cell key={p.m} fill={p.cashflow >= 0 ? C.up : C.down} />
-                    ))}
-                  </Bar>
-                </ReBarChart>
-              )}
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )}
 
       {evidence.length ? (
         <div style={{ padding: "9px 20px", borderTop: `1px solid ${C.borderSubtle}`, fontSize: 10.5, color: C.textDim }}>

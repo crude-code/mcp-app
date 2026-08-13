@@ -105,12 +105,10 @@ A working-interest deal instead looks like:
 
 ### Returns
 
-`{"surface": "deal_sheet_artifact", "run_id", "data": {"facts", "production",
+`{"surface": "deal_sheet_artifact", "run_id", "data": {"facts",
 "economics", "assumptions", "evidence"}, "viewer": "<DealSheet.jsx source>"}`.
 
 - `data.facts` — exec summary: `deal_type`, `interest`, `operator`, `area`.
-- `data.production` — net monthly oil/gas/cashflow series over the deal's active
-  window, or `null` when the deal has no active status yet to show.
 - `data.economics` — the numbers and the scenario grid:
   - `npv_at_centers` — the blended bottom line. `.total` is the headline PV;
     `.by_status` breaks it out by PDP/DUC/PUD. Narrate the result in chat from
@@ -153,9 +151,10 @@ Rules: **never** rebuild, restructure, or restyle the component (if the user
 asks for a different look, edit only the `C` palette object at the top).
 Dependencies are `react` and `recharts` only — no lucide-react, no Tailwind,
 no CSS variables, no MCP-app/host APIs (this runs in the claude.ai artifact
-sandbox, not the MCP app). If `data.production` is `null` the template hides
-the forecast chart on its own — don't remove the section or fabricate a
-series. Re-running the valuation (new assumptions) means a fresh `data` →
+sandbox, not the MCP app). The template hides on its own anything the
+payload lacks (an evidence module with no entries, a legacy run with
+`evidence: null`) — don't remove sections or fabricate data to fill them.
+Re-running the valuation (new assumptions) means a fresh `data` →
 update the artifact's `DATA` and nothing else.
 
 On a malformed `params` the tool returns `{"error": "..."}` naming the exact field

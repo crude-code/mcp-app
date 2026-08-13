@@ -63,8 +63,11 @@ def test_run_valuation_tool_returns_artifact_payload(monkeypatch):
     assert out["run_id"] == "run-9"
     assert out["data"]["facts"]["deal_type"] == "Minerals / Royalty"
     assert out["data"]["economics"]["npv_at_centers"]["total"] == 1234.0
-    # The frozen artifact template ships with every response.
+    # The frozen artifact template ships with every response, plus the
+    # content-addressed fast lane for sessions with code execution.
     assert "export default function App" in out["viewer"]
+    assert out["viewer_sha256"] == srv._DEAL_SHEET_SHA256
+    assert out["viewer_url"].endswith(f"deal-sheet-{out['viewer_sha256'][:12]}.jsx")
 
 
 def test_deal_sheet_viewer_is_artifact_safe():

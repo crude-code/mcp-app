@@ -36,12 +36,16 @@ from server.valuation.orchestrator import (
     compose_artifact_payload_for_run, forecast_wells_for_run,
     run_valuation_for_run, ForecastValidationError,
 )
-from server.valuation.artifact_payload import load_viewer
+from server.valuation.artifact_payload import load_viewer, viewer_sha256, viewer_url
 
 # Frozen deal-sheet artifact template, shipped in every run_valuation response
 # so the template Claude fills always matches the payload contract that
-# produced `data`.
+# produced `data`. The content-addressed URL + sha ride along so a session
+# with code execution can download the template instead of re-emitting it
+# token by token; the inline source stays the universal fallback.
 _DEAL_SHEET_VIEWER = load_viewer()
+_DEAL_SHEET_SHA256 = viewer_sha256()
+_DEAL_SHEET_URL = viewer_url(_DEAL_SHEET_SHA256)
 from server.maps.spec import parse_map_spec, MapSpecError
 from server.maps.hydrate import hydrate_map, MapHydrateError
 from server.skills import list_skills, load_skill, SkillNotFound
@@ -508,6 +512,8 @@ def run_valuation(run_id: str, params: dict) -> str:
                 "run_id": run_id,
                 "data": data,
                 "viewer": _DEAL_SHEET_VIEWER,
+                "viewer_url": _DEAL_SHEET_URL,
+                "viewer_sha256": _DEAL_SHEET_SHA256,
             }, default=str)
         except Exception as e:  # noqa: BLE001
             return _json.dumps({"error": str(e)})

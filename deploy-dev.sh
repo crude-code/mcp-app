@@ -41,6 +41,21 @@ if ! cmp -s "$NGINX_REPO" "$NGINX_LIVE" 2>/dev/null; then
     fi
 fi
 
+# --- deal-sheet template publish ------------------------------------------
+# Mirrors the prod block in deploy.sh — dev publishes into the same shared
+# directory (content-addressed, so no skew with prod is possible). The apex
+# /templates/ location itself is owned by crudecode-site.conf, which only a
+# prod deploy syncs.
+TEMPLATE_SRC=server/valuation/viewer/DealSheet.jsx
+TEMPLATE_DIR=/var/www/cc-templates
+TEMPLATE_SHA=$(sha256sum "$TEMPLATE_SRC" | cut -c1-12)
+TEMPLATE_DEST="${TEMPLATE_DIR}/deal-sheet-${TEMPLATE_SHA}.jsx"
+if [ ! -f "$TEMPLATE_DEST" ]; then
+    sudo mkdir -p "$TEMPLATE_DIR"
+    sudo install -m 644 "$TEMPLATE_SRC" "$TEMPLATE_DEST"
+    echo "published deal-sheet template ${TEMPLATE_SHA}"
+fi
+
 # --- python + renderer ---------------------------------------------------
 # Mirror prod's deploy.sh install block — dev and prod should diverge only
 # in branch + paths + service name, never in installed packages. When a new

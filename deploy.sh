@@ -56,6 +56,23 @@ if [ "$NGINX_CHANGED" = "1" ]; then
     fi
 fi
 
+# --- deal-sheet template publish -------------------------------------------
+# Publish the frozen artifact template as a static, content-addressed file
+# the apex vhost serves at /templates/ (crudecode-site.conf). Content
+# addressing lets prod and dev publish into the same directory with no
+# version skew: each server mints the URL for exactly the bytes it ships,
+# and a missing file can only 404 (Claude falls back to the inline viewer).
+# Old hashes are left in place — they're tiny and immutable.
+TEMPLATE_SRC=server/valuation/viewer/DealSheet.jsx
+TEMPLATE_DIR=/var/www/cc-templates
+TEMPLATE_SHA=$(sha256sum "$TEMPLATE_SRC" | cut -c1-12)
+TEMPLATE_DEST="${TEMPLATE_DIR}/deal-sheet-${TEMPLATE_SHA}.jsx"
+if [ ! -f "$TEMPLATE_DEST" ]; then
+    sudo mkdir -p "$TEMPLATE_DIR"
+    sudo install -m 644 "$TEMPLATE_SRC" "$TEMPLATE_DEST"
+    echo "published deal-sheet template ${TEMPLATE_SHA}"
+fi
+
 # --- python + renderer + mcp server ---------------------------------------
 # Always reinstall + rebuild — these are cheap, idempotent, and skipping
 # them risks an inconsistent on-disk state if a later restart fires.

@@ -77,12 +77,18 @@ Tools (all return JSON strings):
   `default_deck`, `default_rates`, and `statuses`, plus `assumptions` for
   the sheet's provenance panel and `evidence` — the per-assertion judgment
   record built by `server/valuation/evidence.py` at valuation time), and
-  returns `{surface: "deal_sheet_artifact", run_id, data, viewer}` —
-  `viewer` is the frozen `DealSheet.jsx` template
-  (`server/valuation/viewer/`), shipped in every response so the template
-  always matches the payload contract. Claude builds the deal-sheet
-  artifact itself by filling `data` into `viewer`, per the guardrail in
-  `prompts/outer/tool_run_valuation.md` — no MCP-app render. See
+  returns `{surface: "deal_sheet_artifact", run_id, data, viewer,
+  viewer_url, viewer_sha256}` — `viewer` is the frozen `DealSheet.jsx`
+  template (`server/valuation/viewer/`), shipped in every response so the
+  template always matches the payload contract; `viewer_url` +
+  `viewer_sha256` are the fast lane — the same source published as a
+  static content-addressed file (`deal-sheet-<sha12>.jsx`) on the apex
+  `crudecode.dev/templates/`, so a session with code execution downloads
+  it instead of re-emitting ~50 KB token by token (inline `viewer` stays
+  the universal fallback: Team/Enterprise egress defaults block external
+  domains, and code execution can be off). Claude builds the deal-sheet
+  artifact itself by filling `data` into the template, per the guardrail
+  in `prompts/outer/tool_run_valuation.md` — no MCP-app render. See
   `server/valuation/`.
 - **message_team** — Files a user message (bug / feedback / feature_request /
   data_request / other) to the Crude Code team. Table-first: inserts into
@@ -224,8 +230,12 @@ calculator. Pure, unit-tested modules:
   `npv_at_centers`, the full deck×status×rate `cube`, `decks`,
   `default_deck`, `default_rates`, `statuses` — plus `assumptions` and the
   `evidence` passthrough) from a run's `wells` + `economics` stages,
-  reusing `deal_sheet.py`'s helpers. Also `load_viewer`: reads the frozen
-  artifact template.
+  reusing `deal_sheet.py`'s helpers. Also `load_viewer` (reads the frozen
+  artifact template), `viewer_sha256` (digest of the template file bytes),
+  and `viewer_url` (the published content-addressed URL;
+  `CC_TEMPLATE_BASE_URL` overrides the apex base for local testing) —
+  naming pinned against the deploy scripts and nginx by
+  `tests/test_template_publish_drift.py`.
 - **`evidence.py`** — evidence assembly, pure (DB loads passed in by the
   orchestrator): groups the forecast stage back into assertion entries
   (`entry_id`; same-`curve_label` analog entries merge), hydrates reported
@@ -383,9 +393,12 @@ accepted) and `SUPABASE_DATABASE_URL`.
 
 - **`deploy.sh`** / **`deploy-dev.sh`** — idempotent scripts run on the host by
   GitHub Actions (`.github/workflows/deploy.yml` / `deploy-dev.yml`) on push to
-  `main` / `dev`. Pull, sync the nginx config, rebuild the renderer, and
-  restart the MCP server only when a path it actually loaded into memory
-  changed since the last successful deploy (tracked in
+  `main` / `dev`. Pull, sync the nginx config, publish the deal-sheet
+  template (content-addressed into `/var/www/cc-templates/`, served by the
+  apex vhost at `crudecode.dev/templates/` — both scripts publish into the
+  same dir; only the prod deploy syncs the apex vhost config), rebuild the
+  renderer, and restart the MCP server only when a path it actually loaded
+  into memory changed since the last successful deploy (tracked in
   `.last-mcp-deployed-sha`).
 - **`deploy/nginx/`** — the canonical prod/dev vhost configs, synced onto the
   host by the deploy scripts.

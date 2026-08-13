@@ -371,14 +371,18 @@ Aim for at least 10 wells, usually fewer than 30 — soft numbers, not
 rules. Below ~10 the average is noise-prone, and you say so; above ~30
 the filters are probably too loose to mean "analogous."
 
-One query pulls the candidates:
+One query pulls the candidates. The bounding-box line is load-bearing: a
+bare `ST_DWithin` on `geom::geography` can't use the spatial index and
+times out; the `&&` prefilter (expand by ~`radius_mi * 0.025` degrees)
+makes the same query run in under a second, and the exact geography check
+then trims the box's corners:
 
     SELECT w.well_api, w.operator, w.first_prod_date, w.lateral_length_ft,
            ROUND(w.total_proppant_lbs / NULLIF(w.lateral_length_ft, 0)) AS lbs_ft
-    FROM public.wells w
-    WHERE ST_DWithin(w.geom::geography,
-            (SELECT geom::geography FROM public.wells WHERE well_api = '05-123-…'),
-            15 * 1609)
+    FROM public.wells w,
+         (SELECT geom FROM public.wells WHERE well_api = '05-123-…') s
+    WHERE w.geom && ST_Expand(s.geom, 15 * 0.025)
+      AND ST_DWithin(w.geom::geography, s.geom::geography, 15 * 1609)
       AND w.formation = 'NIOBRARA'
       AND w.first_prod_date >= CURRENT_DATE - INTERVAL '5 years'
       AND w.well_api <> '05-123-…'
@@ -386,8 +390,12 @@ One query pulls the candidates:
 **Pads.** Forecasting a pad that's about to go in? Skip individual
 analogs and find analogous *pads* — averaging whole pads smooths out
 single-well noise (allocation swaps between pad-mates cancel in the sum).
-There is no pad column; infer pads as same-operator wells clustered
-tightly with first production within a month or two of each other.
+In the DJ, pads are pre-computed: `features.well_assignments` maps any
+well to its cohort, and `features.cohorts` / `features.subcohorts` carry
+the group rollups, completion stats, and parent/infill context — join
+there before deriving anything yourself. Outside the DJ there is no pad
+column; infer pads as same-operator wells clustered tightly with first
+production within a month or two of each other.
 
 ### Reading the parameters
 

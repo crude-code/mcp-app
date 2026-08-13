@@ -8,7 +8,7 @@ All tables live on the Crude Code Postgres database.
 - `public` — well data (wells, production, operators)
 - `market` — commodity prices, futures, news, weekly supply, STEO forecasts
 - `financials` — SEC-derived operator financials (income, balance_sheet, cash_flow, reserves, operator_production)
-- `features` — DJ development cohorts (cohorts, subcohorts, well_assignments, parent_wells). DJ basin only today.
+- `features` — pre-computed development cohorts: pads/rows of co-developed wells with group rollups and parent/infill context (cohorts, subcohorts, well_assignments, parent_wells). The fastest path to "which pad is this well on" and "find analogous pads". DJ basin only today.
 - `shapes` — PLSS geometry (townships, sections) and LandtracUnit polygons (landtrac_units, landtrac_unit_wells). **Exploration only** — `shapes.*` cannot appear in a `map` layer query, only in `run_sql`.
 <!-- cc:schemas:end -->
 
@@ -57,6 +57,84 @@ boe: integer               -- Barrels of oil equivalent
 `public.production`. It is never `api`, `uwi`, or `well_id`. (`api_uwi` exists
 only on `shapes.landtrac_unit_wells`, the Landtrac bridge — it joins to
 `public.wells(well_api)`.) When in doubt, the column is `well_api`.
+
+**Query patterns that beat the 5-second cap.** `public.production` is ~12M
+rows and `public.wells` ~220K; two natural first queries time out every
+time, and both have a fast form:
+
+- **Never join `production` against a broad well filter** (a basin, an
+  operator, a status). `wells JOIN production WHERE basin = …` aggregates
+  millions of rows and dies. Narrow first — a CTE selecting the specific
+  `well_api`s (a spatial hit list, a `LIMIT`ed top-N), then join production
+  to the CTE. For operator-level production trends, skip the join entirely:
+  `financials.operator_production` is already aggregated.
+- **Spatial filters need a bounding-box prefilter.** `ST_DWithin` on
+  `geom::geography` alone cannot use the spatial index (it's on the
+  geometry) — ~60s. Pair it with an indexed box, expanded ~0.025° per mile
+  of radius, and it drops under a second:
+
+      FROM public.wells w,
+           (SELECT geom FROM public.wells WHERE well_api = '…') s
+      WHERE w.geom && ST_Expand(s.geom, <radius_mi> * 0.025)
+        AND ST_DWithin(w.geom::geography, s.geom::geography, <radius_mi> * 1609)
+
+## features.well_assignments
+The bridge into the cohort layer: which development cohort (pad/row) each
+well belongs to. DJ basin only today — a well with no row here is either
+outside the DJ or unassigned.
+```
+well_api: text             -- joins public.wells / public.production
+unit_id: text
+cohort_id: text            -- joins features.cohorts
+subcohort_id: text         -- joins features.subcohorts
+```
+
+## features.cohorts
+**The pad table.** Co-developed well groups — wells drilled and turned online
+together (a pad, a row, a unit's development phase) — pre-computed with
+group-level rollups. For "which pad is this well on", "read the pad as one
+stream", or "find analogous pads nearby", join here via `well_assignments`
+instead of re-deriving pads by operator/date clustering. One row per cohort:
+- identity & timing — `cohort_id`, `unit_id`, `cohort_anchor_month`,
+  `sub_seq`, `well_count`, `span_start`/`span_end`/`span_days`
+- who & what — `primary_operator`, `operators[]`, `formations[]`
+- geometry — `cohort_footprint_acres`, `geom_coverage_pct`,
+  `modal_lateral_azimuth_deg`, `azimuth_dispersion_deg`,
+  `median_lateral_length_ft` (+ `lateral_length_p10_ft`/`_p90_ft`)
+- production rollups — `cum_oil_bbl`, `cum_gas_mcf`, `cum_boe`,
+  `cum_boe_6mo`/`_12mo`/`_24mo`, `peak_month_boe`, `peak_month_date`,
+  `months_online`, `latest_prod_month`, `recent_rate_boepd`
+- parent / infill context — `is_infill`, `parent_count` (+ `_same_unit`,
+  `_spatial_only`, `_horizontal`, `_vertical` variants),
+  `earliest_parent_first_prod`, `years_since_nearest_parent`,
+  `parent_cum_oil_at_anchor`, `parent_cum_boe_at_anchor`,
+  `active_parent_count_at_anchor`, `parent_rate_boepd_at_anchor`
+
+## features.subcohorts
+A cohort sliced by formation, with completion-design stats — the analog
+filters (lateral band, proppant/fluid per foot, stages, spacing) served
+pre-computed. Columns: `subcohort_id`, `cohort_id`, `formation`,
+`well_count`, spacing percentiles (`intra_spacing_p10/p50/p90_ft`), lateral
+and design percentiles (`median_lateral_length_ft`,
+`median_proppant_lbs_per_ft`, `median_fluid_bbl_per_ft`, `median_stages`,
+`median_tvd_ft`, each with p10/p90), `completion_data_coverage_pct`, the
+same production rollups as cohorts, and same-formation parent context
+(`same_fm_parent_count`, `same_fm_parent_cum_oil_at_anchor`, …).
+
+## features.parent_wells
+Per-cohort parent list — the wells that pre-dated the cohort and bound its
+infill behavior.
+```
+cohort_id: text            -- joins features.cohorts
+parent_well_api: text      -- joins public.wells
+formation: text
+first_prod_date: date
+months_before_cohort_anchor: integer
+orientation: text
+operator: text
+relationship: text
+distance_to_cohort_hull_ft: integer
+```
 
 ## market.spot_prices
 Daily WTI, Brent, and Henry Hub spot prices. **This is the only price history table to use.**

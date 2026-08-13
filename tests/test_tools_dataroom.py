@@ -30,6 +30,13 @@ def test_mints_claimable_upload_url(monkeypatch):
     out = json.loads(srv.save_dataroom_extraction(label="  Bison Whitetail  "))
     assert out["upload_url"].startswith("https://mcp.example.com/upload/kit/")
     assert out["upload_host"] == "mcp.example.com"
+    # A path-bearing base (the /dev-prefixed apex lane) keeps the path in
+    # the URL but must never leak it into upload_host — that string is what
+    # users are told to put in their egress allowlist, which takes hostnames.
+    monkeypatch.setenv("CC_UPLOAD_BASE_URL", "https://crudecode.dev/dev")
+    out2 = json.loads(srv.save_dataroom_extraction(label="Bison Whitetail"))
+    assert out2["upload_url"].startswith("https://crudecode.dev/dev/upload/kit/")
+    assert out2["upload_host"] == "crudecode.dev"
     assert out["expires_in_seconds"] > 0
     token = out["upload_url"].rsplit("/", 1)[1]
     grant = srv._upload_tokens.claim(token, purpose="kit")

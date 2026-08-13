@@ -34,6 +34,8 @@ import logging
 import os
 import tempfile
 
+from urllib.parse import urlparse
+
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
@@ -64,6 +66,14 @@ def public_base_url() -> str:
     except RuntimeError:
         host = ""
     return f"https://{host}" if host else "http://127.0.0.1:9000"
+
+
+def public_host() -> str:
+    """Hostname of `public_base_url()` — the thing a user adds to their
+    Claude network egress allowlist. Derived with a real URL parse so a
+    path-bearing base (the /dev-prefixed apex lane) never leaks its path
+    into that instruction."""
+    return urlparse(public_base_url()).hostname or ""
 
 
 def _reject(status: int, message: str) -> JSONResponse:

@@ -53,7 +53,7 @@ from server.blob_store import SupabaseBlobStore
 from server.extraction_store import ExtractionStore
 from server.room_store import RoomStore
 from server.upload_tokens import UploadTokenStore
-from server.uploads import public_base_url, register_upload_routes
+from server.uploads import public_base_url, public_host, register_upload_routes
 from server.team_messages import CATEGORIES as MESSAGE_CATEGORIES, TeamMessageStore
 from utils.ses import send_notification
 
@@ -302,7 +302,7 @@ def open_dataroom(label: str, sha256: str, size_bytes: int) -> str:
             "status": "new",
             "room_id": room_id,
             "upload_url": f"{base}/upload/room/{token}",
-            "upload_host": base.split("://", 1)[-1],
+            "upload_host": public_host(),
             "expires_in_seconds": int(_upload_tokens.ttl_seconds),
             "how": 'python3 room_push.py <room.zip> "<upload_url>"',
         })
@@ -339,7 +339,7 @@ def save_dataroom_extraction(label: str, extraction_id: str = "", room_id: str =
         )
         return _json.dumps({
             "upload_url": f"{base}/upload/kit/{token}",
-            "upload_host": base.split("://", 1)[-1],
+            "upload_host": public_host(),
             "expires_in_seconds": int(_upload_tokens.ttl_seconds),
             "how": 'python3 persist_pack.py extraction.json --upload "<upload_url>"',
         })

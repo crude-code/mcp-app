@@ -28,7 +28,7 @@ from utils.prompts import (
 )
 from utils.briefing_handle_store import BriefingHandleStore
 from utils.schemas import EXPLORATION_SCHEMAS
-from utils.sql_guard import GuardError, run_guarded
+from utils.sql_guard import GuardError, dry_run, run_guarded
 
 _briefing_handles = BriefingHandleStore(ttl_seconds=86_400.0)  # 24h
 
@@ -54,6 +54,8 @@ from server.extraction_store import ExtractionStore
 from server.room_store import RoomStore
 from server.upload_tokens import UploadTokenStore
 from server.uploads import public_base_url, register_upload_routes
+from server.valuation.run_record import ValuationRunStore
+from server import exports as _exports
 from server.team_messages import CATEGORIES as MESSAGE_CATEGORIES, TeamMessageStore
 from utils.ses import send_notification
 
@@ -62,6 +64,7 @@ _room_store = RoomStore()
 _blob_store = SupabaseBlobStore()
 _upload_tokens = UploadTokenStore()
 _team_messages = TeamMessageStore()
+_run_store = ValuationRunStore()
 
 
 _log_setup()
@@ -111,7 +114,8 @@ def get_request_slug() -> str:
 mcp = FastMCP("Crude Code", instructions=compose_outer_system_prompt())
 
 register_upload_routes(mcp, tokens=_upload_tokens, extraction_store=_extraction_store,
-                       room_store=_room_store, blob_store=_blob_store)
+                       room_store=_room_store, blob_store=_blob_store,
+                       run_store=_run_store)
 
 
 _app_path = Path(__file__).resolve().parent.parent / "renderer" / "dist" / "app.html"
@@ -517,6 +521,63 @@ def run_valuation(run_id: str, params: dict) -> str:
             }, default=str)
         except Exception as e:  # noqa: BLE001
             return _json.dumps({"error": str(e)})
+
+
+# ── export_data ──────────────────────────────────────────────────────────────
+
+_export_log = _logging.getLogger("cc.export")
+
+# A person, not a sandbox: long enough to survive stepping away from the desk,
+# short enough that the link is a session deliverable rather than a standing
+# endpoint. Re-minting is one tool call inside a live session.
+_EXPORT_TTL_HOURS = 24
+
+
+@mcp.tool(description=_load_prompt("outer/tool_export_data.md"))
+def export_data(kind: str, run_id: str = "", sql: str = "",
+                schema: str = "public", label: str = "") -> str:
+    """Mint a browser-clickable CSV download URL. The bytes are assembled at
+    fetch time (server/exports.py) and never transit the model's context; this
+    call returns only a link and a filename."""
+    identity = get_current_identity()
+    if not identity:
+        return _json.dumps({"error": "Could not identify user"})
+
+    with trace("export_data", user=identity["user_slug"]):
+        if kind not in _exports.KINDS:
+            return _json.dumps({
+                "error": f"unknown kind {kind!r}; expected one of {list(_exports.KINDS)}"
+            })
+        if kind in ("volumes", "parameters") and not run_id.strip():
+            return _json.dumps({"error": f"kind {kind!r} needs a run_id"})
+        if kind == "query" and not sql.strip():
+            return _json.dumps({"error": "kind 'query' needs a sql SELECT"})
+
+        # Validate a query at mint time so a broken SELECT fails here, in the
+        # conversation, rather than behind a link the user has already clicked.
+        if kind == "query":
+            try:
+                dry_run(sql, schema=schema, allowed_schemas=EXPLORATION_SCHEMAS)
+            except GuardError as e:
+                return _json.dumps({"error": str(e)})
+
+        token = _upload_tokens.mint(
+            user_id=identity["user_id"],
+            user_slug=identity["user_slug"],
+            purpose="export",
+            meta={"kind": kind, "run_id": run_id.strip() or None,
+                  "sql": sql.strip() or None, "schema": schema},
+            ttl_seconds=_EXPORT_TTL_HOURS * 3600,
+        )
+        filename = _exports.filename_for(kind, run_id=run_id.strip(), label=label)
+        base = public_base_url()
+        _export_log.info("minted export kind=%s run=%s", kind, run_id.strip() or "-")
+        return _json.dumps({
+            "download_url": f"{base}/export/{token}/{filename}",
+            "filename": filename,
+            "kind": kind,
+            "expires_in_hours": _EXPORT_TTL_HOURS,
+        })
 
 
 if __name__ == "__main__":

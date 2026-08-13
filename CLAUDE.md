@@ -90,6 +90,25 @@ Tools (all return JSON strings):
   artifact itself by filling `data` into the template, per the guardrail
   in `prompts/outer/tool_run_valuation.md` — no MCP-app render. See
   `server/valuation/`.
+- **export_data** — The download lane: hands the user a CSV of work the
+  session already did, as a file instead of a chat payload. Takes a `kind`
+  (`volumes` — monthly gross + net oil/gas per well over the run's full
+  horizon; `parameters` — the committed decline curves per well per stream,
+  committed *and* asserted qi, Di, b, terminal switch, anchor, rationale;
+  `query` — a `run_sql` SELECT re-run at export scale, 100k rows against the
+  200-row chat cap) and returns `{download_url, filename, kind,
+  expires_in_hours}` — a few hundred bytes of context no matter how large the
+  file. Bytes are assembled at *fetch* time by `server/exports.py` straight
+  from the run record and streamed down `GET /export/{token}/{filename}`
+  (`server/uploads.py`), so nothing sits at rest and an expired link costs one
+  re-mint, never a recomputation. The mirror of the upload lane, with two
+  differences that follow from the client being a browser rather than the
+  sandbox: the token is never consumed (browsers retry, people double-click)
+  and its grant carries a 24-hour TTL instead of the 15-minute upload default.
+  A `query` export is dry-run at mint time so a bad SELECT fails in the
+  conversation, not behind a link the user already clicked. Deliberately not a
+  data feed: the link expires, re-minting needs a live session, and the caps
+  are finite — see `prompts/outer/tool_export_data.md`.
 - **message_team** — Files a user message (bug / feedback / feature_request /
   data_request / other) to the Crude Code team. Table-first: inserts into
   `platform.team_messages` (`server/team_messages.py`, the durable record),
@@ -426,6 +445,9 @@ Run: `.venv/bin/pytest -q`.
   transport, and the packer round-trip + `--upload` mode against a live
   local HTTP server (`test_extraction_store.py`, `test_tools_dataroom.py`,
   `test_upload_tokens.py`, `test_uploads.py`, `test_room_store.py`,
-  `test_extraction_transport.py`, `test_persist_pack.py`), team messages
+  `test_extraction_transport.py`, `test_persist_pack.py`), the export lane
+  (`test_exports.py` — CSV assembly, the browser-facing download semantics,
+  and a drift guard tying the volume columns to the orchestrator's schedule),
+  team messages
   (`test_team_messages_store.py`, `test_tools_message_team.py`), and schema
   drift.

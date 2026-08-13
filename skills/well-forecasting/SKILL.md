@@ -143,6 +143,14 @@ Aggregation is an engineering call with known breakers: mixed vintages,
 mixed formations, value concentrated in a handful of wells. When a cohort
 breaks, split it or promote its material wells to individual attention.
 
+Your triage is also the deal sheet's table of contents: every
+`forecast_wells` entry becomes one evidence panel on the valuation
+artifact — an individual well shows its history against your curve, a
+cohort shows the summed stream, an analog-carried entry shows the cohort
+behind the type curve. Forty wells where five carry the PV reads best as
+six panels: five named wells and one aggregated tail. The reviewer sees
+your triage itself — which is the point.
+
 ## The six questions
 
 Answer these in order for every well (or cohort) you forecast. The
@@ -419,6 +427,21 @@ The analog curve commits like any other forecast: anchor where the
 subject's forecast starts and read qi there; the subject's own months, if
 it has any, scale the level up or down. Same math for a 36-month producer
 and an undrilled location — only the evidence mix changes.
+
+### Recording the cohort
+
+Whenever the analog method carried the parameters, record the cohort
+structurally in the `forecast_wells` entry — the `analog_cohort` field:
+the `curve_label` (permits sharing a curve share the label), the
+`criteria` in plain terms, the `kept` APIs, and the candidates you
+`excluded` with a reason each ("different formation", "lateral outside
+band", "pre-2019 vintage", "beyond 3 mi"). This is the same judgment the
+rationale narrates, in a form the server can verify and hydrate: the deal
+sheet shows your kept analogs' real production against your curve and
+your exclusion reasons next to them, so the buyer can check the cohort
+instead of trusting it. Kept analogs must exist and have reported
+production — the call bounces otherwise, which also catches a mistyped
+API before it becomes fake evidence.
 
 ## Wells not yet producing: level, shape, and timing
 

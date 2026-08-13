@@ -36,7 +36,7 @@ def bulk_load_wells(apis: list[str]) -> list[WellMeta]:
             GROUP BY well_api
         )
         SELECT
-            w.well_api, w.well_status, w.basin, w.formation, w.county,
+            w.well_api, w.well_name, w.well_status, w.basin, w.formation, w.county,
             w.lateral_length_ft, w.spud_date, w.completion_date, w.first_prod_date, w.operator,
             COALESCE(p.n_months, 0) AS n_history_months,
             p.last_prod AS last_prod_date,
@@ -69,6 +69,7 @@ def bulk_load_wells(apis: list[str]) -> list[WellMeta]:
             planned_first_prod_date=None,
             geom_wkt=r.get("geom_wkt"),
             operator=r.get("operator"),
+            well_name=r.get("well_name"),
         ))
     return out
 

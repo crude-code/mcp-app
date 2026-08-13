@@ -27,3 +27,7 @@ repomix-*
 # --- Personal planning/spec notes, never part of the shipped repo ---
 docs/
 refactor.md
+
+# --- Local design references (never commit — uploads/ may carry real dataroom data) ---
+valuation_mockup/
+dataroom_mockup/

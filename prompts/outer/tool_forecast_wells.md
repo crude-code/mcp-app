@@ -17,9 +17,22 @@ Pass `forecasts`: a list of entries, each one well or one cohort:
   "anchor_month": "2026-05",
   "uptime_factor": 0.96,
   "struck_months": ["2025-11", "2026-02"],
-  "rationale": "…"
+  "rationale": "…",
+  "analog_cohort": {
+    "curve_label": "Wolfcamp A · 10,000 ft",
+    "criteria": "Wolfcamp A · 8–12k ft lateral · first prod 2019+ · within 3 mi",
+    "kept": ["42-389-…", "42-389-…"],
+    "excluded": [{"api": "42-389-…", "reason": "different formation"}]
+  }
 }
 ```
+
+Each entry is also one **evidence unit** on the deal sheet `run_valuation`
+builds: an individual well becomes a history-vs-curve panel, a cohort
+becomes one summed panel, and entries carrying an `analog_cohort` become a
+type-curve panel showing the cohort behind the curve. Triage accordingly —
+wells that carry the value get individual entries; the low-value tail
+aggregates (per the skill).
 
 - `wells` — one API = individual forecast. Several APIs = a **cohort**: the
   parameters describe the group's summed stream; the server splits volumes
@@ -47,6 +60,19 @@ Pass `forecasts`: a list of entries, each one well or one cohort:
 - `struck_months` — optional audit list of months you struck.
 - `rationale` — required. The six-question record per the skill, written so
   another engineer could disagree with a specific line.
+- `analog_cohort` — optional, and REQUIRED in spirit whenever the analog
+  method carried the parameters (any undrilled location; a young producer
+  forecast from its population): the structured record of the cohort
+  judgment. `curve_label` (entries sharing a label share one type curve —
+  give every permit on the same curve the same label), `criteria` (the
+  filter in plain terms), `kept` (analog APIs whose production informed the
+  curve — each must exist and have reported production), optional
+  `excluded` (`[{api, reason}]` — candidates you rejected and why; the
+  reasons are the evidence), optional `normalization` (`"per_1000ft"`
+  default, `"absolute"` if you prefer raw rates). Display-only: it never
+  changes the math, but the server hydrates it (real series, laterals,
+  locations) into the deal sheet's evidence module, so a hallucinated API
+  bounces the call.
 
 **Validation is all-or-nothing per call**: any violation returns
 `{"error": "validation_failed", "violations": [...]}` with every problem

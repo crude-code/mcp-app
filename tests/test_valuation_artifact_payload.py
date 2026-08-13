@@ -58,7 +58,32 @@ def test_build_artifact_payload_includes_cube_and_scenario_axes():
     assert e["default_deck"] == "Strip"
     # default rate = center rung, formatted like the cube keys ('17.5' style)
     assert e["default_rates"]["PDP"] == "17.5"
-    assert set(payload) == {"facts", "production", "economics"}
+    assert set(payload) == {"facts", "production", "economics", "assumptions", "evidence"}
+
+
+def test_build_artifact_payload_assumptions_and_evidence_passthrough():
+    econ = _economics(
+        inputs={"price_mode": "strip", "strip_trade_date": "2026-08-11",
+                "oil_price": 68.2, "gas_price": 3.1, "oil_diff": 2.5, "gas_diff": 0.0,
+                "tax_pct": 0.075, "gpt_pct": 0.05},
+        cost_inputs={"capex_per_well": 9.4e6, "opex_per_well_month": 4000.0, "opex_per_bbl": 2.0},
+        cashflow_total_undiscounted=41e6,
+    )
+    econ["schedule"]["totals"]["capex"] = [0.0] * 359 + [235000.0]
+    evidence = {"entries": [{"id": "e1", "kind": "producing", "pv": 1.0}]}
+    payload = build_artifact_payload(economics=econ, wells={**WELLS, "evidence": evidence})
+    a = payload["assumptions"]
+    assert a["effective_month"] == "2026-07"
+    assert a["price_mode"] == "strip" and a["strip_trade_date"] == "2026-08-11"
+    assert a["capex_per_well"] == 9.4e6
+    assert a["undiscounted_cashflow"] == 41e6
+    assert a["net_capex_total"] == 235000
+    assert payload["evidence"] == evidence
+
+
+def test_build_artifact_payload_evidence_none_on_legacy_wells_stage():
+    payload = build_artifact_payload(economics=_economics(), wells=WELLS)
+    assert payload["evidence"] is None
 
 
 def test_build_artifact_payload_statuses_are_data_only():

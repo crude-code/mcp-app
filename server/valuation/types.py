@@ -49,3 +49,4 @@ class WellMeta:
     planned_first_prod_date: date | None        # spud_date + offset if first_prod_date is None
     geom_wkt: str | None = None                 # well point as WKT, for centroid math
     operator: str | None = None                 # public.wells.operator (free-text)
+    well_name: str | None = None                # public.wells.well_name (display)

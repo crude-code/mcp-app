@@ -54,7 +54,10 @@ Tools (all return JSON strings):
   never peak-anything), a required `anchor_month` (producers: where qi
   applies; undrilled wells: the asserted first-production month — timing is
   Claude's call too), optional `uptime_factor` (server commits qi × factor),
-  `struck_months`, and a required `rationale`. The server bounds-validates
+  `struck_months`, a required `rationale`, and an optional structured
+  `analog_cohort` (curve_label / criteria / kept / excluded-with-reasons —
+  the analog method's judgment record, display-only; kept analogs must
+  exist and have production). The server bounds-validates
   (all-or-nothing per call, every violation listed, nothing saved on a
   bounce), merges into the run's forecast stage (re-asserting a well
   overwrites just that well — commits are cheap), and echoes consequences in
@@ -68,17 +71,20 @@ Tools (all return JSON strings):
 - **run_valuation** — Takes `run_id` (from `forecast_wells`) and `params`
   (interest type + blanket numbers, optional `by_api` per-well overrides,
   optional `economics_overrides`). Runs econ on the forecast stage in the run
-  record, assembles a slim artifact payload (`build_artifact_payload` in
+  record, assembles the artifact payload (`build_artifact_payload` in
   `server/valuation/artifact_payload.py` — exec facts, a net production
-  series when the deal has an active status, and `economics` carrying
+  series when the deal has an active status, `economics` carrying
   `npv_at_centers`, the full deck×status×rate `cube`, `decks`,
-  `default_deck`, `default_rates`, and `statuses`), and returns
-  `{surface: "deal_sheet_artifact", run_id, data, viewer}` — `viewer` is the
-  frozen `DealSheet.jsx` template (`server/valuation/viewer/`), shipped in
-  every response so the template always matches the payload contract. Claude
-  builds the deal-sheet artifact itself by filling `data` into `viewer`, per
-  the guardrail in `prompts/outer/tool_run_valuation.md` — no MCP-app render.
-  See `server/valuation/`.
+  `default_deck`, `default_rates`, and `statuses`, plus `assumptions` for
+  the sheet's provenance panel and `evidence` — the per-assertion judgment
+  record built by `server/valuation/evidence.py` at valuation time), and
+  returns `{surface: "deal_sheet_artifact", run_id, data, viewer}` —
+  `viewer` is the frozen `DealSheet.jsx` template
+  (`server/valuation/viewer/`), shipped in every response so the template
+  always matches the payload contract. Claude builds the deal-sheet
+  artifact itself by filling `data` into `viewer`, per the guardrail in
+  `prompts/outer/tool_run_valuation.md` — no MCP-app render. See
+  `server/valuation/`.
 - **message_team** — Files a user message (bug / feedback / feature_request /
   data_request / other) to the Crude Code team. Table-first: inserts into
   `platform.team_messages` (`server/team_messages.py`, the durable record),
@@ -215,17 +221,32 @@ calculator. Pure, unit-tested modules:
   DB): exec facts (`roll_up_facts`), the net forecast production series
   (`build_production_series`), and `default_rates`. Consumed by
   `artifact_payload.py`.
-- **`artifact_payload.py`** — `build_artifact_payload`: assembles the slim
-  payload `run_valuation` returns (`facts`, `production`, and `economics` —
+- **`artifact_payload.py`** — `build_artifact_payload`: assembles the
+  payload `run_valuation` returns (`facts`, `production`, `economics` —
   `npv_at_centers`, the full deck×status×rate `cube`, `decks`,
-  `default_deck`, `default_rates`, `statuses`) from a run's `wells` +
-  `economics` stages, reusing `deal_sheet.py`'s helpers. Also `load_viewer`:
-  reads the frozen artifact template.
+  `default_deck`, `default_rates`, `statuses` — plus `assumptions` and the
+  `evidence` passthrough) from a run's `wells` + `economics` stages,
+  reusing `deal_sheet.py`'s helpers. Also `load_viewer`: reads the frozen
+  artifact template.
+- **`evidence.py`** — evidence assembly, pure (DB loads passed in by the
+  orchestrator): groups the forecast stage back into assertion entries
+  (`entry_id`; same-`curve_label` analog entries merge), hydrates reported
+  histories (capped 60 mo), evaluates the committed curves forward from
+  their anchors, prices each well off the persisted `by_well` schedule at
+  its status-center rate (entry PVs sum to the headline by construction),
+  and hydrates analog cohorts — kept analogs' per-1,000-ft series, excluded
+  reasons, mile-space coordinates from `wells.geom`. Display-only; nothing
+  here feeds the cashflow math. Written into the `wells` stage at
+  valuation time.
 - **`viewer/DealSheet.jsx`** — the frozen deal-sheet artifact template
   (react + recharts only; no host APIs, no CSS vars — it runs in the
-  claude.ai artifact sandbox). Shipped verbatim as `viewer` in every
-  `run_valuation` response; Claude fills `DATA`/`TITLE`/`TLDR` and nothing
-  else.
+  claude.ai artifact sandbox). V3 layout: exec header + PV-by-status +
+  sensitivity + "what informed the model", then two data-driven evidence
+  modules (producing fits with residual strip; type curves with analog
+  cohort, kept/excluded tables, schematic map) that render only when the
+  payload carries entries of that kind. Shipped verbatim as `viewer` in
+  every `run_valuation` response; Claude fills `DATA`/`TITLE`/`TLDR` and
+  nothing else.
 - **`wells.py`** — `bulk_load_wells` / `bulk_load_production`: one query each.
 - **`config.py`** — `EconConfig` (`ECON` singleton): the single source for every
   economic parameter (flat oil/gas deck, diffs, tax/GPT, opex/capex, 360-month

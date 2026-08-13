@@ -9,6 +9,7 @@ benchmark evidence for this division of labor lives in the sibling
 ``forecast-benchmark`` repo.
 """
 import math
+import uuid
 from datetime import date, datetime, timezone
 
 import numpy as np
@@ -19,6 +20,7 @@ from server.valuation import consequences as cq
 from server.valuation import strip
 from server.valuation.casefile import MAX_ASSET_WELLS, parse_run_params
 from server.valuation.econ import cashflow_components, compute_gross_revenue, npv, resolve_well_interest
+from server.valuation.evidence import build_evidence, collect_analog_apis
 from server.valuation.forecast import make_curve, make_zero_curve, project
 from server.valuation.run_record import ValuationRunStore
 from server.valuation.types import DeclineCurve, Forecast, ForecastProvenance, WellMeta
@@ -46,6 +48,13 @@ _MAX_FUTURE_ANCHOR_MONTHS = 360  # loose cap on asserted online dates
 _STREAMS = ("oil", "gas")
 _PARAM_FIELDS = {"qi", "di", "b"}
 _PROD_COL = {"oil": "oil_bbl", "gas": "gas_mcf"}
+
+# analog_cohort: the structured record of the analog method's cohort judgment.
+# Display evidence only — nothing here feeds the cashflow math.
+_MAX_ANALOGS = 40                      # per list (kept / excluded)
+_COHORT_KEYS_REQ = {"curve_label", "criteria", "kept"}
+_COHORT_KEYS_ALL = _COHORT_KEYS_REQ | {"normalization", "excluded"}
+_NORMALIZATIONS = ("per_1000ft", "absolute")
 
 
 def _resolve_asset_list(asset_list: dict) -> list[str]:
@@ -569,6 +578,74 @@ def _validate_entry_structure(i: int, entry, violations: list[dict]) -> None:
         if not isinstance(struck, list) or any(_norm_month_str(m) is None for m in struck):
             bad("struck_months", "struck_months must be a list of 'YYYY-MM' strings")
 
+    ac = entry.get("analog_cohort")
+    if ac is not None:
+        _validate_analog_cohort_structure(i, ac, wells if isinstance(wells, list) else [], violations)
+
+
+def _validate_analog_cohort_structure(i: int, ac, entry_wells: list, violations: list[dict]) -> None:
+    """Structural (DB-free) validation of one entry's analog_cohort block.
+    Existence-in-DB checks happen later with the other semantic validation."""
+    def bad(field: str, message: str):
+        violations.append({"entry": i, "field": field, "message": message})
+
+    if not isinstance(ac, dict):
+        bad("analog_cohort", "analog_cohort must be an object")
+        return
+    keys = set(ac)
+    if not _COHORT_KEYS_REQ <= keys or not keys <= _COHORT_KEYS_ALL:
+        bad("analog_cohort", f"analog_cohort keys must include {sorted(_COHORT_KEYS_REQ)} and may "
+                             f"add {sorted(_COHORT_KEYS_ALL - _COHORT_KEYS_REQ)}; got {sorted(keys)}")
+        return
+
+    label = ac.get("curve_label")
+    if not isinstance(label, str) or not label.strip() or len(label) > 80:
+        bad("analog_cohort.curve_label", "curve_label must be a non-empty string (≤ 80 chars); "
+                                         "entries sharing a label share one type curve")
+    criteria = ac.get("criteria")
+    if not isinstance(criteria, str) or not criteria.strip():
+        bad("analog_cohort.criteria", "criteria is required — the cohort filter in plain terms "
+                                      "(formation, lateral band, vintage, radius)")
+    norm = ac.get("normalization", "per_1000ft")
+    if norm not in _NORMALIZATIONS:
+        bad("analog_cohort.normalization", f"normalization must be one of {_NORMALIZATIONS}")
+
+    kept = ac.get("kept")
+    if (not isinstance(kept, list) or not kept
+            or not all(isinstance(a, str) and a for a in kept)):
+        bad("analog_cohort.kept", "kept must be a non-empty list of analog well API strings")
+        return
+    if len(kept) != len(set(kept)):
+        bad("analog_cohort.kept", "the same analog appears more than once in kept")
+    if len(kept) > _MAX_ANALOGS:
+        bad("analog_cohort.kept", f"{len(kept)} kept analogs; at most {_MAX_ANALOGS}")
+
+    excluded = ac.get("excluded") or []
+    if not isinstance(excluded, list):
+        bad("analog_cohort.excluded", "excluded must be a list of {api, reason} objects")
+        return
+    if len(excluded) > _MAX_ANALOGS:
+        bad("analog_cohort.excluded", f"{len(excluded)} excluded analogs; at most {_MAX_ANALOGS}")
+    excl_apis: list[str] = []
+    for j, e in enumerate(excluded):
+        if (not isinstance(e, dict) or set(e) != {"api", "reason"}
+                or not isinstance(e.get("api"), str) or not e.get("api")
+                or not isinstance(e.get("reason"), str) or not e.get("reason", "").strip()):
+            bad("analog_cohort.excluded", f"excluded[{j}] must be exactly {{api, reason}}, both "
+                                          "non-empty strings — the reason is the point")
+        else:
+            excl_apis.append(e["api"])
+    if len(excl_apis) != len(set(excl_apis)):
+        bad("analog_cohort.excluded", "the same analog appears more than once in excluded")
+
+    overlap = set(kept) & set(excl_apis)
+    if overlap:
+        bad("analog_cohort", f"analog(s) in both kept and excluded: {sorted(overlap)[:5]}")
+    subject_overlap = (set(kept) | set(excl_apis)) & set(a for a in entry_wells if isinstance(a, str))
+    if subject_overlap:
+        bad("analog_cohort", f"subject well(s) listed as their own analogs: "
+                             f"{sorted(subject_overlap)[:5]}")
+
 
 def forecast_wells_for_run(*, run_id: str | None, forecasts: list[dict], user_id: int = 0) -> dict:
     """Accept-and-echo. Bounds-validate Claude's asserted parameters, persist
@@ -628,6 +705,34 @@ def forecast_wells_for_run(*, run_id: str | None, forecasts: list[dict], user_id
             if api not in metas:
                 violations.append({"entry": i, "well": api, "field": "wells",
                                    "message": f"{api} not found in public.wells"})
+
+    # Analog existence + usability, batched: one extra query for every analog
+    # referenced anywhere in the call.
+    analog_apis = sorted({
+        a
+        for entry in forecasts if entry.get("analog_cohort")
+        for a in (list(entry["analog_cohort"]["kept"])
+                  + [e["api"] for e in (entry["analog_cohort"].get("excluded") or [])])
+    })
+    analog_metas = {m.api: m for m in bulk_load_wells(analog_apis)} if analog_apis else {}
+    for i, entry in enumerate(forecasts):
+        ac = entry.get("analog_cohort")
+        if not ac:
+            continue
+        for api in ac["kept"]:
+            m = analog_metas.get(api)
+            if m is None:
+                violations.append({"entry": i, "well": api, "field": "analog_cohort.kept",
+                                   "message": f"analog {api} not found in public.wells"})
+            elif m.n_history_months == 0:
+                violations.append({"entry": i, "well": api, "field": "analog_cohort.kept",
+                                   "message": f"kept analog {api} has no reported production — it "
+                                              "cannot inform a type curve; exclude it with a reason "
+                                              "or drop it"})
+        for e in ac.get("excluded") or []:
+            if e["api"] not in analog_metas:
+                violations.append({"entry": i, "well": e["api"], "field": "analog_cohort.excluded",
+                                   "message": f"excluded analog {e['api']} not found in public.wells"})
     if violations:
         raise ForecastValidationError(violations)
     prod = bulk_load_production(all_wells)
@@ -700,7 +805,9 @@ def forecast_wells_for_run(*, run_id: str | None, forecasts: list[dict], user_id
         undrilled = not any(plan["has_history"].values())
         warnings: list[str] = []
 
+        ac = entry.get("analog_cohort")
         assertion = {
+            "entry_id": uuid.uuid4().hex[:12],
             "asserted": {s: (dict(entry[s]) if entry.get(s) is not None else None) for s in _STREAMS},
             "uptime_factor": uptime,
             "struck_months": [_norm_month_str(m)[:7] for m in (entry.get("struck_months") or [])],
@@ -709,6 +816,14 @@ def forecast_wells_for_run(*, run_id: str | None, forecasts: list[dict], user_id
                         "shares": {s: {a: round(v, 6) for a, v in m.items()}
                                    for s, m in plan["shares"].items()}}
                        if plan["is_cohort"] else None),
+            "analog_cohort": ({
+                "curve_label": ac["curve_label"].strip(),
+                "criteria": ac["criteria"].strip(),
+                "normalization": ac.get("normalization", "per_1000ft"),
+                "kept": list(ac["kept"]),
+                "excluded": [{"api": e["api"], "reason": e["reason"].strip()}
+                             for e in (ac.get("excluded") or [])],
+            } if ac else None),
             "committed_at": committed_at,
         }
 
@@ -773,6 +888,10 @@ def forecast_wells_for_run(*, run_id: str | None, forecasts: list[dict], user_id
         if plan["is_cohort"]:
             echo["shares"] = {s: {a: round(v, 4) for a, v in m.items()}
                               for s, m in plan["shares"].items()}
+        if ac:
+            echo["analog_cohort"] = {"curve_label": ac["curve_label"].strip(),
+                                     "kept": len(ac["kept"]),
+                                     "excluded": len(ac.get("excluded") or [])}
         if warnings:
             echo["warnings"] = warnings
         echo_entries.append(echo)
@@ -872,10 +991,25 @@ def run_valuation_for_run(*, run_id: str, params: dict) -> dict:
     # Reload meta for the deal-sheet facts/buckets (correct regardless of stages).
     apis = list(forecasts)
     meta_by_api = {m.api: m for m in bulk_load_wells(apis)}
+
+    # Evidence: the per-assertion judgment record (histories, committed curves,
+    # per-well PV, hydrated analog cohorts). Built from the RAW forecast stage —
+    # it needs the assertions, not the calendar-placed curves.
+    prod = bulk_load_production(apis)
+    kept_analogs, all_analogs = collect_analog_apis(forecast)
+    analog_meta = {m.api: m for m in bulk_load_wells(all_analogs)} if all_analogs else {}
+    analog_prod = bulk_load_production(kept_analogs) if kept_analogs else {}
+    evidence = build_evidence(
+        forecast=forecast, schedule=econ["schedule"], meta_by_api=meta_by_api,
+        prod=prod, analog_meta=analog_meta, analog_prod=analog_prod,
+        rate_centers=econ["rate_centers"],
+    )
+
     store.write_stage(run_id, stage="wells", payload={
         "well_meta": _well_meta_payload(apis, meta_by_api),
         "statuses": {a: (meta_by_api[a].status if a in meta_by_api else None) for a in apis},
         "needs_capex": needs_capex,
+        "evidence": evidence,
     })
 
     return {"run_id": run_id, "npv_at_centers": econ["npv_at_centers"]}

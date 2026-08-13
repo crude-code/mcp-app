@@ -104,5 +104,9 @@
       "path": "Engineering/Aries_Falcon.zip", "category": "engineering", "file_type": "zip", "size_bytes": 5120334, "summary": "Aries .accdb economics — not parsed (phase 2)."
     }
   ],
+  "flags": [
+    "Falcon 2H is name-only — no API anywhere in the room; its interest decimal rests on the DO packet alone.",
+    "Aries database (.accdb) not parsed — reserve assumptions unverified."
+  ],
   "extraction_notes": "Falcon 2H had no API printed anywhere in the room (left null for server-side resolution). Aries .accdb not parsed. No image-only PDFs encountered. 'Offset Wells' folder ignored per convention — not part of the deal."
 }

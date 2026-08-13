@@ -211,4 +211,7 @@ class ExtractionResult(BaseModel):
     expenses: list[ExpensePoint] = []
     division_orders: list[DivisionOrder] = []
     documents: list[Document] = []
-    extraction_notes: str | None = None
+    flags: list[str] = []            # read-before-bidding caveats: one short sentence
+    #   each (a payout reversion, an ownership mismatch, an unmodeled term...).
+    #   These lead the viewer's cover page; keep them load-bearing and few.
+    extraction_notes: str | None = None  # the longer data-quality prose record

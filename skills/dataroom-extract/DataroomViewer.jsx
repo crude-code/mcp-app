@@ -1,566 +1,360 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// DATAROOM VIEWER — frozen, data-driven render component.
+// Crude Code dataroom viewer — frozen artifact template.
+// Paste viewer_payload.py's output into DATA at the bottom; write TITLE and
+// TLDR. Do not restyle or restructure. Dependencies: react only.
 //
-// Ship this VERBATIM. Do not rewrite it, do not adapt its structure per deal,
-// do not embed example data into it. The ONLY thing you change per room is the
-// EXTRACTION constant below — paste in that room's extraction.json and you're
-// done. The component re-derives the entire view from the schema:
-//
-//   • The WELL is the spine. Anything carrying a `well_api` (interests, expenses,
-//     revenue_observations, production_history) nests under its well.
-//   • If there are no wells (a minerals/royalty room), the spine flips to TRACTS
-//     and interests / division_orders nest under each tract instead.
-//   • A section renders ONLY when its data is present. Null field → omitted.
-//   • If a well has production_history, its decline curve leads; otherwise it's
-//     a field summary. (data decides presence; these two rules decide prominence.)
-//
-// Trust rules are structural here, not optional: every record shows its
-// provenance, extraction_notes leads as a data-quality banner, and nothing is
-// derived — every number is a field from the extraction, shown as-is.
-//
-// Styling mirrors the Crude Code valuation widget: the graphite "signal
-// instrument" chrome wrapper, a white screen, teal accent, Space Grotesk /
-// Inter / Space Mono. Tokens are ported as locals because a claude.ai Artifact
-// can't reach the app's index.css.
-//
-// Runtime: claude.ai Artifact. Deps: react + recharts + lucide-react only.
-// ─────────────────────────────────────────────────────────────────────────────
-import React, { useState, useMemo } from "react";
-import {
-  Building2, MapPin, FileText, AlertTriangle,
-  ChevronRight, ChevronDown, Droplet, Coins, Receipt,
-  Map as MapIcon, ScrollText, Layers, Search,
-} from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+// The viewer is the room's cover page: what's in the package, what the
+// extraction flagged, and where every number sits — a triage surface, not a
+// record browser (the persisted extraction is the durable record). It is
+// data-driven: every module renders only when the payload carries its data —
+// a minerals room shows tracts instead of the well manifest, a room with no
+// revenue drops the LTM column and share bars, no flags → no flags block.
+// Every derived number (LTM rollups, shares, interest sums) is computed
+// deterministically by viewer_payload.py — nothing here or in the fill step
+// does arithmetic on the room's economics.
+import { useState } from "react";
 
-// ── Paste this room's extraction.json here. Nothing else in this file changes. ──
-const EXTRACTION = {};
-
-// ── design tokens (ported from index.css: --ac-* chrome + light content) ───────
-const T = {
-  // graphite faceplate chrome
-  panelBg: "linear-gradient(180deg,#1c2024 0%,#15181b 60%,#101316 100%)",
-  panelBorder: "#07090b",
-  emblemBg: "radial-gradient(circle at 32% 26%, #2a3036, #0e1114)",
-  line: "#2c3439",
-  barIdle: "#39424a",
-  chromeTitle: "#eef3f5",
-  chromeMuted: "#7d868d",
-  pillText: "#06262b",
-  pillBg: "linear-gradient(180deg,#13aacb,#0a7e99)",
-  pillBorder: "#0a3a42",
-  screen: "#ffffff",
-  screenBorder: "#06080a",
-  cyan: "#0a9ec2",
-  cyanDim: "#0e7490",
-  cyanRgb: "10 158 194",
-  // light content
-  page: "#fafaf8",
+// ── Palette — matches the deal-sheet template so the two read as siblings ───
+const C = {
   surface: "#ffffff",
   panelMute: "#f6f7f4",
   border: "#ececea",
   borderSubtle: "#f0f0ee",
-  primary: "#0a0a0a",
-  body: "#374151",
-  muted: "#4b5563",
-  dim: "#6b7280",
+  textPrimary: "#0a0a0a",
+  textBody: "#374151",
+  textMuted: "#4b5563",
+  textDim: "#6b7280",
   accent: "#0e7490",
-  up: "#059669",
-  down: "#dc2626",
-  amber: "#b45309",
-  amberBg: "#fffbeb",
-  amberBorder: "#fcd9a5",
-  amberText: "#92400e",
-  // fonts
-  heading: "'Space Grotesk', Inter, system-ui, sans-serif",
-  sans: "'Inter', system-ui, sans-serif",
-  mono: "'Space Mono', ui-monospace, SFMono-Regular, monospace",
+  accentSoft: "#e6f2f5",
+  flag: "#b45309",
+  flagBg: "#fdf7ef",
+  barTrack: "#e8e9e6",
+  mono: "ui-monospace, SFMono-Regular, Menlo, monospace",
 };
-const glow = (a) => `rgb(${T.cyanRgb} / ${a})`;
-const LBL = { fontFamily: T.mono, fontSize: 10, letterSpacing: "0.13em", textTransform: "uppercase", color: T.dim, fontWeight: 600 };
-
-// ── formatters ───────────────────────────────────────────────────────────────
-const pct = (v) => (v == null ? null : (v * 100).toFixed(3).replace(/\.?0+$/, "") + "%");
-const usd = (v) => (v == null ? null : "$" + Math.round(v).toLocaleString());
-function fmtVal(v) {
-  if (v === null || v === undefined || v === "") return null;
-  if (typeof v === "number") return v.toLocaleString();
-  return String(v);
-}
-const prettyKey = (k) =>
-  k.replace(/_/g, " ").replace(/\b(usd|api|nri|wi|ri|orri|npri|tvd|md|bbl|mcf|ngl|nma|nra)\b/gi, (m) => m.toUpperCase());
-
-const CAT_COLOR = {
-  engineering: "#0e7490", title: "#6d28d9", financial: "#059669",
-  legal: "#b45309", regulatory: "#a16207", marketing: "#be185d", other: "#6b7280",
+const LBL = {
+  fontFamily: C.mono, fontSize: 10, letterSpacing: "0.13em",
+  textTransform: "uppercase", color: C.textDim, fontWeight: 600,
 };
-const TYPE_COLOR = { PDP: T.up, PUD: T.amber, DUC: T.accent, SI: T.dim, PA: T.down };
+const TILE_K = { ...LBL, fontSize: 8.5 };
+const TH = { ...LBL, fontSize: 8.5, textAlign: "right", padding: "4px 8px", whiteSpace: "nowrap" };
 
-// Nested, well_api-keyed children rendered as field grids (charts handled separately).
-const CHILD_TYPES = [
-  { key: "interests", label: "Interest", icon: Coins,
-    fmt: { wi_decimal: pct, nri_decimal: pct, ri_decimal: pct, orri_decimal: pct, npri_decimal: pct } },
-  { key: "expenses", label: "Economics", icon: Receipt,
-    fmt: { capex_per_well_usd: usd, amount_usd: usd, opex_per_bbl_usd: usd, opex_per_well_per_month_usd: usd } },
-  { key: "revenue_observations", label: "Revenue", icon: Coins,
-    fmt: { price: usd, gross_revenue: usd, taxes: usd, deductions: usd, net_revenue: usd, owner_decimal: pct } },
-];
+const fmtUSD = (v) => `$${Math.round(v).toLocaleString("en-US")}`;
+const fmtCompact = (v) => {
+  const a = Math.abs(v), sign = v < 0 ? "-" : "";
+  if (a >= 1e6) return `${sign}$${(a / 1e6).toFixed(2)}M`;
+  if (a >= 1e3) return `${sign}$${Math.round(a / 1e3)}K`;
+  return `${sign}$${Math.round(a)}`;
+};
+const fmtInt = (v) => (v == null ? "—" : Math.round(v).toLocaleString("en-US"));
+const fmtPct = (v) => (v == null ? "—" : v.toFixed(3).replace(/\.?0+$/, "") + "%");
+const fmtMonth = (d) => (d ? String(d).slice(0, 7) : "—");
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const fmtDay = (d) => {
+  const [y, m, day] = String(d).split("-").map(Number);
+  return `${MONTHS[m - 1] ?? ""} ${day ?? ""}, ${y}`;
+};
+const daysUntil = (d) => Math.ceil((new Date(`${d}T00:00:00`) - Date.now()) / 86400000);
 
-// ── primitives ───────────────────────────────────────────────────────────────
-function Field({ label, value, mono }) {
-  if (value === null || value === undefined || value === "") return null;
+function StatTiles({ tiles }) {
   return (
-    <div style={{ minWidth: 0 }}>
-      <div style={{ ...LBL, fontSize: 8.5, marginBottom: 3 }}>{label}</div>
-      <div style={{ fontSize: 13, color: T.primary, fontFamily: mono ? T.mono : T.sans, fontVariantNumeric: "tabular-nums", wordBreak: "break-word" }}>{value}</div>
-    </div>
-  );
-}
-
-function Provenance({ p }) {
-  if (!p) return null;
-  return (
-    <div style={{ marginTop: 8, padding: "7px 10px", background: T.panelMute, borderRadius: 6, fontSize: 11.5, color: T.muted, fontFamily: T.mono }}>
-      <div style={{ display: "flex", gap: 6, alignItems: "baseline", flexWrap: "wrap" }}>
-        <FileText size={11} style={{ color: T.dim, flexShrink: 0, position: "relative", top: 1 }} />
-        <span style={{ color: T.body }}>{p.source_file}</span>
-        {p.source_locator && <span style={{ color: T.dim }}>· {p.source_locator}</span>}
-      </div>
-      {p.notes && <div style={{ marginTop: 3, fontStyle: "italic", fontFamily: T.sans }}>{p.notes}</div>}
-    </div>
-  );
-}
-
-function Grid({ children }) {
-  return <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 12 }}>{children}</div>;
-}
-
-function recordFields(rec, fmt = {}, skip = []) {
-  return Object.entries(rec)
-    .filter(([k]) => k !== "provenance" && !skip.includes(k))
-    .map(([k, v]) => {
-      const disp = fmt[k] ? fmt[k](v) : fmtVal(v);
-      return disp == null ? null : <Field key={k} label={prettyKey(k)} value={disp} mono={["api", "well_api"].includes(k)} />;
-    });
-}
-
-// ── production decline chart (leads when a well has production_history) ─────────
-function DeclineChart({ points }) {
-  const data = useMemo(() => {
-    return (points || [])
-      .filter((p) => p.month)
-      .slice()
-      .sort((a, b) => String(a.month).localeCompare(String(b.month)))
-      .map((p) => ({ month: p.month, oil: p.oil_bbl ?? null, gas: p.gas_mcf ?? null }));
-  }, [points]);
-  if (data.length < 2) return null;
-  const hasGas = data.some((d) => d.gas != null);
-  return (
-    <div style={{ marginTop: 14 }}>
-      <div style={{ ...LBL, fontSize: 9, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
-        <Layers size={12} style={{ color: T.dim }} />
-        Production · {data.length} mo
-        <span style={{ color: T.up }}>● oil</span>
-        {hasGas && <span style={{ color: T.down }}>● gas</span>}
-      </div>
-      <div style={{ height: 184, border: `1px solid ${T.border}`, borderRadius: 6, background: T.panelMute, padding: "8px 4px" }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-            <CartesianGrid stroke={T.border} strokeDasharray="2 2" vertical={false} />
-            <XAxis dataKey="month" tick={{ fontSize: 9, fill: T.dim }} axisLine={{ stroke: T.border }} tickLine={false} minTickGap={28} />
-            <YAxis tick={{ fontSize: 9, fill: T.dim }} axisLine={false} tickLine={false} width={46} />
-            <Tooltip contentStyle={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 4, fontSize: 12, color: T.primary }} />
-            <Line type="monotone" dataKey="oil" name="oil (bbl)" stroke={T.up} dot={false} strokeWidth={2} isAnimationActive={false} />
-            {hasGas && <Line type="monotone" dataKey="gas" name="gas (mcf)" stroke={T.down} dot={false} strokeWidth={1.5} isAnimationActive={false} />}
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-    </div>
-  );
-}
-
-// ── a field-grid block for nested interests / expenses / revenue ──────────────
-function ChildBlock({ type, records }) {
-  if (!records || records.length === 0) return null;
-  const Icon = type.icon;
-  return (
-    <div style={{ marginTop: 14 }}>
-      <div style={{ ...LBL, fontSize: 9, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
-        <Icon size={12} style={{ color: T.accent }} />
-        {type.label}
-        {records.length > 1 && <span style={{ color: T.dim }}>· {records.length} records</span>}
-      </div>
-      {records.map((rec, i) => (
-        <div key={i} style={{ marginBottom: i < records.length - 1 ? 10 : 0, paddingLeft: 18 }}>
-          <Grid>{recordFields(rec, type.fmt, ["well_api", "tract_name", "scope"])}</Grid>
-          <Provenance p={rec.provenance} />
+    <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(tiles.length, 6)},1fr)`, gap: 1, background: C.border, border: `1px solid ${C.border}`, borderRadius: 7, overflow: "hidden" }}>
+      {tiles.map(([k, v, n]) => (
+        <div key={k} style={{ background: C.surface, padding: "8px 10px" }}>
+          <div style={TILE_K}>{k}</div>
+          <div style={{ fontSize: 16, fontWeight: 650, color: C.textPrimary, marginTop: 2, fontVariantNumeric: "tabular-nums" }}>{v}</div>
+          {n ? <div style={{ fontSize: 10, color: C.textDim }}>{n}</div> : null}
         </div>
       ))}
     </div>
   );
 }
 
-function StatPill({ label, value }) {
+function SectionShell({ label, right, open, onToggle, children }) {
   return (
-    <div style={{ textAlign: "right" }}>
-      <div style={{ ...LBL, fontSize: 8.5 }}>{label}</div>
-      <div style={{ fontSize: 12.5, color: T.primary, fontVariantNumeric: "tabular-nums", marginTop: 1 }}>{value}</div>
-    </div>
-  );
-}
-
-function TypeBadge({ t }) {
-  if (!t) return null;
-  const c = TYPE_COLOR[t] || T.dim;
-  return <span style={{ fontFamily: T.mono, fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", padding: "2px 9px", borderRadius: 5, background: c + "16", color: c, border: `1px solid ${c}33` }}>{t}</span>;
-}
-
-// ── well spine row ─────────────────────────────────────────────────────────────
-function WellRow({ well, kids, defaultOpen }) {
-  const [open, setOpen] = useState(defaultOpen);
-  const interest = (kids.interests || [])[0];
-  const expense = (kids.expenses || [])[0];
-  const production = kids.production_history || [];
-  return (
-    <div style={{ borderTop: `1px solid ${T.borderSubtle}` }}>
-      <div onClick={() => setOpen(!open)} style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", background: open ? T.panelMute : "transparent" }}>
-        <span style={{ color: T.dim, flexShrink: 0 }}>{open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</span>
-        <Droplet size={15} style={{ color: T.accent, flexShrink: 0 }} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: T.heading, fontSize: 14, fontWeight: 600, color: T.primary, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{well.name || well.api || "Unnamed well"}</div>
-          <div style={{ fontSize: 11.5, color: T.dim, fontFamily: T.mono }}>{well.api || "no API"}</div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 16, flexShrink: 0 }}>
-          {interest && interest.wi_decimal != null && <StatPill label="WI / NRI" value={`${pct(interest.wi_decimal)} / ${pct(interest.nri_decimal)}`} />}
-          {interest && interest.wi_decimal == null && interest.ri_decimal != null && <StatPill label="RI" value={pct(interest.ri_decimal)} />}
-          {expense && expense.amount_usd != null && <StatPill label="Net cost" value={usd(expense.amount_usd)} />}
-          <TypeBadge t={well.well_type} />
-        </div>
+    <div style={{ border: `1px solid ${C.border}`, borderRadius: 7, overflow: "hidden" }}>
+      <div onClick={onToggle} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 14px", cursor: "pointer", background: open ? C.panelMute : "transparent" }}>
+        <span style={{ color: C.accent, fontFamily: C.mono, fontSize: 11, width: 10 }}>{open ? "▾" : "▸"}</span>
+        <span style={{ minWidth: 0, flex: 1, display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>{label}</span>
+        {right ? <span style={{ fontSize: 12, color: C.textMuted, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{right}</span> : null}
       </div>
-      {open && (
-        <div style={{ padding: "10px 14px 18px 39px", background: T.page }}>
-          <Grid>{recordFields(well, {}, ["public_well_object", "name", "api"])}</Grid>
-          <Provenance p={well.provenance} />
-          {/* prominence rule: production leads when present */}
-          {production.length >= 2 && <DeclineChart points={production} />}
-          {CHILD_TYPES.map((ct) => <ChildBlock key={ct.key} type={ct} records={kids[ct.key]} />)}
-        </div>
-      )}
+      {open ? <div style={{ borderTop: `1px solid ${C.borderSubtle}` }}>{children}</div> : null}
     </div>
   );
 }
 
-// ── tract spine row (minerals/royalty rooms with no wells) ─────────────────────
-function TractRow({ tract, interests, divisionOrders, defaultOpen }) {
-  const [open, setOpen] = useState(defaultOpen);
+// ── Flags — the read-before-bidding list ────────────────────────────────────
+function Flags({ flags }) {
   return (
-    <div style={{ borderTop: `1px solid ${T.borderSubtle}` }}>
-      <div onClick={() => setOpen(!open)} style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", background: open ? T.panelMute : "transparent" }}>
-        <span style={{ color: T.dim, flexShrink: 0 }}>{open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</span>
-        <MapIcon size={15} style={{ color: T.accent, flexShrink: 0 }} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: T.heading, fontSize: 14, fontWeight: 600, color: T.primary }}>{tract.name || tract.legal_description || "Tract"}</div>
-          <div style={{ fontSize: 11.5, color: T.dim }}>{[tract.county, tract.state].filter(Boolean).join(", ")}</div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 16, flexShrink: 0 }}>
-          {tract.nma != null && <StatPill label="NMA" value={fmtVal(tract.nma)} />}
-          {tract.royalty_decimal != null && <StatPill label="Royalty" value={pct(tract.royalty_decimal)} />}
-        </div>
-      </div>
-      {open && (
-        <div style={{ padding: "10px 14px 18px 39px", background: T.page }}>
-          <Grid>{recordFields(tract, { royalty_decimal: pct })}</Grid>
-          <Provenance p={tract.provenance} />
-          <ChildBlock type={CHILD_TYPES[0]} records={interests} />
-          {divisionOrders && divisionOrders.length > 0 && (
-            <div style={{ marginTop: 14 }}>
-              <div style={{ ...LBL, fontSize: 9, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
-                <ScrollText size={12} style={{ color: T.accent }} /> Division orders · {divisionOrders.length}
-              </div>
-              {divisionOrders.map((d, i) => (
-                <div key={i} style={{ marginBottom: 10, paddingLeft: 18 }}>
-                  <Grid>{recordFields(d, { decimal: pct }, ["tract_name"])}</Grid>
-                  <Provenance p={d.provenance} />
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── generic table for standalone entities (documents, leftover tracts/DOs) ─────
-const STANDALONE_COLS = {
-  tracts: [["name", "Name"], ["county", "County"], ["gross_acres", "Gross ac"], ["nma", "NMA"], ["royalty_decimal", "Royalty"]],
-  division_orders: [["property_name", "Property"], ["well_api", "Well API"], ["decimal", "Decimal"], ["grantee", "Grantee"]],
-  documents: [["path", "File"], ["category", "Category"]],
-};
-const STANDALONE_FMT = { tracts: { royalty_decimal: pct }, division_orders: { decimal: pct }, documents: {} };
-
-function StandaloneTable({ entityKey, rows }) {
-  const [openRow, setOpenRow] = useState(null);
-  const cols = STANDALONE_COLS[entityKey];
-  const fmt = STANDALONE_FMT[entityKey] || {};
-  return (
-    <div style={{ overflowX: "auto", border: `1px solid ${T.border}`, borderRadius: 8 }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-        <thead>
-          <tr style={{ background: T.panelMute }}>
-            <th style={{ width: 28 }}></th>
-            {cols.map(([k, lbl]) => (
-              <th key={k} style={{ textAlign: "left", padding: "9px 10px", ...LBL, fontSize: 9 }}>{lbl}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, i) => {
-            const open = openRow === i;
-            return (
-              <React.Fragment key={i}>
-                <tr onClick={() => setOpenRow(open ? null : i)} style={{ cursor: "pointer", borderTop: `1px solid ${T.borderSubtle}`, background: open ? T.panelMute : "transparent" }}>
-                  <td style={{ padding: "7px 6px", color: T.dim }}>{open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
-                  {cols.map(([k]) => {
-                    let v = row[k];
-                    let disp = fmt[k] ? fmt[k](v) : fmtVal(v);
-                    if (k === "path" && typeof v === "string") disp = v.split("/").slice(-1)[0];
-                    const isCat = k === "category" && v && CAT_COLOR[v];
-                    return (
-                      <td key={k} style={{ padding: "8px 10px", color: disp == null ? "#b8bcc4" : T.body, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", fontFamily: ["api", "well_api"].includes(k) ? T.mono : T.sans }}>
-                        {isCat ? <span style={{ fontFamily: T.mono, fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", padding: "2px 8px", borderRadius: 5, background: CAT_COLOR[v] + "16", color: CAT_COLOR[v] }}>{v}</span> : (disp ?? "—")}
-                      </td>
-                    );
-                  })}
-                </tr>
-                {open && (
-                  <tr style={{ background: T.page }}>
-                    <td></td>
-                    <td colSpan={cols.length} style={{ padding: "6px 10px 14px" }}>
-                      <Grid>{recordFields(row, fmt)}</Grid>
-                      <Provenance p={row.provenance} />
-                    </td>
-                  </tr>
-                )}
-              </React.Fragment>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function SectionHeader({ icon: Icon, label, count }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-      <Icon size={15} style={{ color: T.accent }} />
-      <h3 style={{ margin: 0, fontFamily: T.heading, fontSize: 14, fontWeight: 600, color: T.primary }}>{label}</h3>
-      <span style={{ ...LBL, fontSize: 9, color: T.dim, background: T.panelMute, borderRadius: 20, padding: "2px 9px" }}>{count}</span>
-    </div>
-  );
-}
-
-// ── settled signal-bar level meter (static "results" reading) ──────────────────
-const BAR_H = [16, 22, 14, 24, 18, 26, 15, 21];
-function SignalBars() {
-  return (
-    <div style={{ display: "flex", alignItems: "flex-end", gap: 2.5, height: 26, padding: "0 11px", borderLeft: "1px solid rgba(255,255,255,.06)", borderRight: "1px solid rgba(255,255,255,.06)", flexShrink: 0 }}>
-      {BAR_H.map((h, i) => (
-        <span key={i} style={{ width: 3, borderRadius: 1, height: h, background: i >= 5 ? T.barIdle : T.cyan, boxShadow: i < 5 ? `0 0 6px ${glow(0.55)}` : "none" }} />
-      ))}
-    </div>
-  );
-}
-
-// ── the "signal instrument" chrome wrapper (mirrors AgentContainer) ────────────
-function Chrome({ subtitle, pill, children }) {
-  return (
-    <div style={{ fontFamily: T.heading, background: T.panelBg, borderRadius: 13, overflow: "hidden", border: `1px solid ${T.panelBorder}`, boxShadow: "inset 0 1px 0 rgba(120,180,200,.10), inset 0 0 0 1px rgba(255,255,255,.015), 0 24px 56px -28px rgba(0,0,0,.7)", padding: 14, position: "relative" }}>
-      {/* faint cyan grid wash on the faceplate */}
-      <div style={{ position: "absolute", inset: 0, backgroundImage: `linear-gradient(${glow(0.05)} 1px, transparent 1px), linear-gradient(90deg, ${glow(0.05)} 1px, transparent 1px)`, backgroundSize: "22px 22px", maskImage: "linear-gradient(180deg, rgba(0,0,0,.6), transparent 70%)", WebkitMaskImage: "linear-gradient(180deg, rgba(0,0,0,.6), transparent 70%)", pointerEvents: "none" }} />
-
-      {/* HEADER */}
-      <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 13, padding: "3px 5px 14px" }}>
-        {/* emblem — concentric dial with lit core */}
-        <div style={{ width: 38, height: 38, borderRadius: 9, background: T.emblemBg, border: `1px solid ${T.line}`, display: "grid", placeItems: "center", boxShadow: "inset 0 1px 1px rgba(150,210,230,.14), inset 0 0 10px rgba(0,0,0,.6)", flexShrink: 0 }}>
-          <span style={{ width: 16, height: 16, borderRadius: "50%", border: `1.5px solid ${T.cyanDim}`, display: "grid", placeItems: "center" }}>
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: T.cyan, boxShadow: `0 0 8px ${T.cyan}, 0 0 14px ${glow(0.5)}` }} />
-          </span>
-        </div>
-
-        {/* title + subtitle */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: T.heading, fontSize: 16.5, fontWeight: 700, letterSpacing: "-0.01em", color: T.chromeTitle, lineHeight: 1.1 }}>Dataroom Results</div>
-          {subtitle && <div style={{ fontFamily: T.mono, fontSize: 9.5, letterSpacing: "0.05em", color: T.chromeMuted, marginTop: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{subtitle.toUpperCase()}</div>}
-        </div>
-
-        <SignalBars />
-        {pill && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: T.mono, fontSize: 12, fontWeight: 700, color: T.pillText, background: T.pillBg, border: `1px solid ${T.pillBorder}`, borderRadius: 5, padding: "6px 10px", boxShadow: `inset 0 1px 0 rgba(255,255,255,.4), 0 0 12px ${glow(0.28)}`, letterSpacing: "0.06em", flexShrink: 0 }}>
-            {pill}
+    <div>
+      <div style={{ ...LBL, marginBottom: 6 }}>Flags · {flags.length}</div>
+      <div style={{ display: "grid", gridTemplateColumns: flags.length > 1 ? "1fr 1fr" : "1fr", gap: "2px 28px" }}>
+        {flags.map((f, i) => (
+          <div key={i} style={{ display: "flex", gap: 8, fontSize: 12.5, lineHeight: 1.45, padding: "4px 0", color: C.textBody }}>
+            <span style={{ fontFamily: C.mono, color: C.flag, fontWeight: 700, flex: "none" }}>{String(i + 1).padStart(2, "0")}</span>
+            <span>{f}</span>
           </div>
-        )}
-      </div>
-
-      {/* WHITE SCREEN — content body, light mode */}
-      <div style={{ position: "relative", background: T.screen, borderRadius: 8, border: `1px solid ${T.screenBorder}`, boxShadow: `inset 0 0 0 1px ${glow(0.1)}, 0 2px 0 rgba(0,0,0,.25)`, overflow: "hidden" }}>
-        <div style={{ height: 3, background: `linear-gradient(90deg, ${T.cyan}, ${T.cyanDim} 60%, transparent)` }} />
-        {children}
+        ))}
       </div>
     </div>
   );
 }
 
-// ── top level ──────────────────────────────────────────────────────────────────
-export default function DataroomViewer() {
-  const data = EXTRACTION || {};
-  const deal = data.deal || {};
-  const [query, setQuery] = useState("");
-  const wells = data.wells || [];
-  const tracts = data.tracts || [];
-
-  // spine rule: wells if present, else tracts
-  const spine = wells.length > 0 ? "well" : tracts.length > 0 ? "tract" : "none";
-
-  const childrenByApi = useMemo(() => {
-    const idx = {};
-    for (const ct of [...CHILD_TYPES, { key: "production_history" }]) {
-      for (const rec of data[ct.key] || []) {
-        if (!rec.well_api) continue;
-        (idx[rec.well_api] ||= {});
-        (idx[rec.well_api][ct.key] ||= []).push(rec);
-      }
-    }
-    return idx;
-  }, [data]);
-
-  const interestsByTract = useMemo(() => {
-    const idx = {};
-    for (const rec of data.interests || []) {
-      if (!rec.tract_name) continue;
-      (idx[rec.tract_name] ||= []).push(rec);
-    }
-    return idx;
-  }, [data]);
-  const dosByTract = useMemo(() => {
-    const idx = {};
-    for (const rec of data.division_orders || []) {
-      if (!rec.property_name) continue;
-      (idx[rec.property_name] ||= []).push(rec);
-    }
-    return idx;
-  }, [data]);
-
-  const q = query.trim().toLowerCase();
-  const matches = (obj, extra) => !q || (JSON.stringify(obj) + JSON.stringify(extra || {})).toLowerCase().includes(q);
-  const shownWells = wells.filter((w) => matches(w, childrenByApi[w.api]));
-  const shownTracts = tracts.filter((t) => matches(t, interestsByTract[t.name]));
-
-  const headerStats = [
-    deal.category && ["Interest", deal.category],
-    deal.well_count != null && ["Wells", deal.well_count],
-    deal.gross_acres != null && ["Gross acres", deal.gross_acres.toLocaleString()],
-    deal.net_acres != null && ["Net acres", deal.net_acres.toLocaleString()],
-    deal.pv10_mid_mm != null && ["Seller PV10", "$" + deal.pv10_mid_mm + "MM"],
-    deal.basin && ["Basin", deal.basin],
+// ── Well manifest — one collapsible group per status, columns data-driven ───
+function ManifestGroup({ group, packageLtm, defaultOpen }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const rows = group.wells;
+  const has = (k) => rows.some((r) => r[k] != null);
+  const cols = [
+    has("operator") && { k: "operator", h: "Operator", align: "left", f: (r) => r.operator },
+    has("formation") && { k: "formation", h: "Formation", align: "left", f: (r) => r.formation },
+    has("wi_pct") && { k: "wi_pct", h: "WI %", f: (r) => fmtPct(r.wi_pct) },
+    has("nri_pct") && { k: "nri_pct", h: "NRI %", f: (r) => fmtPct(r.nri_pct) },
+    has("ri_pct") && { k: "ri_pct", h: "RI %", f: (r) => fmtPct(r.ri_pct) },
+    has("lateral_ft") && { k: "lateral_ft", h: "Lat ft", f: (r) => fmtInt(r.lateral_ft) },
+    has("first_prod") && { k: "first_prod", h: "First prod", f: (r) => fmtMonth(r.first_prod) },
+    has("ltm_net_revenue") && { k: "ltm", h: "LTM net rev", f: (r) => (r.ltm_net_revenue == null ? "—" : fmtUSD(r.ltm_net_revenue)) },
   ].filter(Boolean);
-
-  // standalone sections = entities that aren't the spine
-  const standalone = [];
-  if (spine !== "tract" && tracts.length > 0) standalone.push(["tracts", "Tracts", MapIcon, tracts]);
-  if (spine !== "tract" && (data.division_orders || []).length > 0) standalone.push(["division_orders", "Division orders", ScrollText, data.division_orders]);
-  if ((data.documents || []).length > 0) standalone.push(["documents", "Documents", FileText, data.documents]);
-
-  const subtitle = [deal.seller, [deal.county, deal.state].filter(Boolean).join(", "), deal.formation].filter(Boolean).join("  ·  ") || deal.title || "Extraction";
-  const pill = spine === "well"
-    ? `${deal.category ? deal.category + " · " : ""}${wells.length} ${wells.length === 1 ? "WELL" : "WELLS"}`
-    : spine === "tract"
-      ? `${tracts.length} ${tracts.length === 1 ? "TRACT" : "TRACTS"}`
-      : "EXTRACTION";
+  const hasShare = has("revenue_share_pct");
+  const span = 1 + cols.length + (hasShare ? 1 : 0);
 
   return (
-    <div style={{ fontFamily: T.sans, color: T.body }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap');`}</style>
+    <SectionShell
+      open={open}
+      onToggle={() => setOpen((o) => !o)}
+      label={
+        <>
+          <span style={{ fontSize: 13.5, fontWeight: 650, color: C.textPrimary }}>
+            {group.label} <span style={{ fontWeight: 400, color: C.textDim }}>({group.status})</span>
+          </span>
+          <span style={{ fontSize: 12, color: C.textDim }}>{group.well_count} well{group.well_count === 1 ? "" : "s"}</span>
+        </>
+      }
+      right={group.ltm_net_revenue != null ? `${fmtUSD(group.ltm_net_revenue)} LTM net rev` : null}
+    >
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+          <thead>
+            <tr>
+              <th style={{ ...TH, textAlign: "left" }}>Well</th>
+              {cols.map((c) => <th key={c.k} style={{ ...TH, textAlign: c.align || "right" }}>{c.h}</th>)}
+              {hasShare ? <th style={{ ...TH, width: 74 }} /> : null}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <FragmentRow key={r.api || r.name || i} r={r} cols={cols} hasShare={hasShare} span={span} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </SectionShell>
+  );
+}
 
-      <Chrome subtitle={subtitle} pill={pill}>
-        <div style={{ padding: "20px 22px 26px" }}>
-          {/* deal header band */}
-          <div style={{ borderBottom: `1px solid ${T.border}`, paddingBottom: 18, marginBottom: 20 }}>
-            <div style={{ ...LBL, fontSize: 9, color: T.accent, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
-              Dataroom extraction
-              {deal.process_type && <span style={{ color: T.dim }}>· {deal.process_type}</span>}
+function FragmentRow({ r, cols, hasShare, span }) {
+  return (
+    <>
+      <tr style={{ borderTop: `1px solid ${C.borderSubtle}` }}>
+        <td style={{ padding: "5px 8px", fontWeight: 550, color: C.textPrimary, whiteSpace: "nowrap" }}>
+          {r.name || r.api || "—"}
+          {r.note ? <span style={{ color: C.flag, marginLeft: 5 }} title={r.note}>⚑</span> : null}
+        </td>
+        {cols.map((c) => (
+          <td key={c.k} style={{ padding: "5px 8px", textAlign: c.align || "right", fontVariantNumeric: "tabular-nums", color: c.align === "left" ? C.textDim : C.textBody, whiteSpace: "nowrap" }}>
+            {c.f(r) ?? "—"}
+          </td>
+        ))}
+        {hasShare ? (
+          <td style={{ padding: "5px 8px" }}>
+            <div style={{ height: 5, background: C.barTrack, borderRadius: 2 }}>
+              <div style={{ height: "100%", background: C.accent, borderRadius: 2, width: `${Math.max(r.revenue_share_pct ?? 0, r.revenue_share_pct != null ? 0.5 : 0)}%` }} />
             </div>
-            <h1 style={{ margin: "0 0 8px", fontFamily: T.heading, fontSize: 22, fontWeight: 700, lineHeight: 1.2, color: T.primary }}>{deal.title || "Untitled extraction"}</h1>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", fontSize: 13, color: T.muted, marginBottom: headerStats.length ? 16 : 0 }}>
-              {deal.seller && <span><Building2 size={12} style={{ verticalAlign: -1, marginRight: 4 }} />{deal.seller}</span>}
-              {deal.operator && <span>Operated by {deal.operator}</span>}
-              {(deal.county || deal.state) && <span><MapPin size={12} style={{ verticalAlign: -1, marginRight: 4 }} />{[deal.county, deal.state].filter(Boolean).join(", ")}</span>}
-              {deal.formation && <span>{deal.formation}</span>}
-              {deal.broker && <span>Broker: {deal.broker}</span>}
-            </div>
-            {headerStats.length > 0 && (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 1, background: T.border, border: `1px solid ${T.border}`, borderRadius: 7, overflow: "hidden", marginBottom: deal.summary ? 16 : 0 }}>
-                {headerStats.map(([lbl, val]) => (
-                  <div key={lbl} style={{ background: T.surface, padding: "10px 12px" }}>
-                    <div style={{ ...LBL, fontSize: 8.5 }}>{lbl}</div>
-                    <div style={{ fontFamily: T.heading, fontSize: 18, fontWeight: 600, marginTop: 3, color: T.primary, fontVariantNumeric: "tabular-nums" }}>{val}</div>
-                  </div>
+          </td>
+        ) : null}
+      </tr>
+      {r.note ? (
+        <tr>
+          <td colSpan={span} style={{ padding: "0 8px 6px 22px", fontSize: 11, color: C.flag, lineHeight: 1.4 }}>{r.note}</td>
+        </tr>
+      ) : null}
+    </>
+  );
+}
+
+// ── Tracts — the spine for minerals / royalty rooms ─────────────────────────
+function TractsTable({ tracts }) {
+  const has = (k) => tracts.some((t) => t[k] != null);
+  const cols = [
+    has("county") && { k: "county", h: "County", align: "left", f: (t) => [t.county, t.state].filter(Boolean).join(", ") },
+    has("gross_acres") && { k: "gross_acres", h: "Gross ac", f: (t) => fmtInt(t.gross_acres) },
+    has("nma") && { k: "nma", h: "NMA", f: (t) => (t.nma == null ? "—" : t.nma.toLocaleString("en-US")) },
+    has("nra") && { k: "nra", h: "NRA", f: (t) => (t.nra == null ? "—" : t.nra.toLocaleString("en-US")) },
+    has("royalty_pct") && { k: "royalty_pct", h: "Royalty %", f: (t) => fmtPct(t.royalty_pct) },
+    has("operator") && { k: "operator", h: "Operator", align: "left", f: (t) => t.operator },
+    has("lessee") && { k: "lessee", h: "Lessee", align: "left", f: (t) => t.lessee },
+  ].filter(Boolean);
+  return (
+    <div>
+      <div style={{ ...LBL, marginBottom: 6 }}>Tracts · {tracts.length}</div>
+      <div style={{ border: `1px solid ${C.border}`, borderRadius: 7, overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+          <thead>
+            <tr>
+              <th style={{ ...TH, textAlign: "left" }}>Tract</th>
+              {cols.map((c) => <th key={c.k} style={{ ...TH, textAlign: c.align || "right" }}>{c.h}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {tracts.map((t, i) => (
+              <tr key={t.name || i} style={{ borderTop: i ? `1px solid ${C.borderSubtle}` : "none" }}>
+                <td style={{ padding: "5px 8px", fontWeight: 550, color: C.textPrimary }}>
+                  {t.name || "—"}
+                  {t.legal_description ? <div style={{ fontSize: 10.5, fontWeight: 400, color: C.textDim }}>{t.legal_description}</div> : null}
+                </td>
+                {cols.map((c) => (
+                  <td key={c.k} style={{ padding: "5px 8px", textAlign: c.align || "right", fontVariantNumeric: "tabular-nums", color: c.align === "left" ? C.textDim : C.textBody }}>
+                    {c.f(t) ?? "—"}
+                  </td>
                 ))}
-              </div>
-            )}
-            {deal.summary && <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: T.body }}>{deal.summary}</p>}
-          </div>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 
-          {/* data-quality banner */}
-          {data.extraction_notes && (
-            <div style={{ display: "flex", gap: 10, padding: "12px 14px", background: T.amberBg, border: `1px solid ${T.amberBorder}`, borderRadius: 8, marginBottom: 22 }}>
-              <AlertTriangle size={16} style={{ color: T.amber, flexShrink: 0, marginTop: 1 }} />
-              <div>
-                <div style={{ ...LBL, fontSize: 9, color: T.amber, marginBottom: 5 }}>Extraction notes &amp; data quality</div>
-                <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.6, color: T.amberText }}>{data.extraction_notes}</p>
-              </div>
-            </div>
-          )}
-
-          {spine !== "none" && (
-            <>
-              <div style={{ position: "relative", marginBottom: 18 }}>
-                <Search size={15} style={{ position: "absolute", left: 11, top: 10, color: T.dim }} />
-                <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter by name, API, or any nested value…"
-                       style={{ width: "100%", boxSizing: "border-box", padding: "8px 12px 8px 34px", fontFamily: T.sans, fontSize: 13, border: `1px solid ${T.border}`, borderRadius: 8, outline: "none", background: T.surface, color: T.primary }} />
-              </div>
-
-              <div style={{ marginBottom: 26 }}>
-                {spine === "well" ? (
-                  <>
-                    <SectionHeader icon={Droplet} label="Wells" count={q ? `${shownWells.length}/${wells.length}` : wells.length} />
-                    <div style={{ border: `1px solid ${T.border}`, borderRadius: 8, overflow: "hidden" }}>
-                      {shownWells.length === 0 && <div style={{ padding: 16, fontSize: 13, color: T.dim }}>No wells match the filter.</div>}
-                      {shownWells.map((w, i) => <WellRow key={w.api ? w.api + i : i} well={w} kids={childrenByApi[w.api] || {}} defaultOpen={wells.length === 1} />)}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <SectionHeader icon={MapIcon} label="Tracts" count={q ? `${shownTracts.length}/${tracts.length}` : tracts.length} />
-                    <div style={{ border: `1px solid ${T.border}`, borderRadius: 8, overflow: "hidden" }}>
-                      {shownTracts.length === 0 && <div style={{ padding: 16, fontSize: 13, color: T.dim }}>No tracts match the filter.</div>}
-                      {shownTracts.map((t, i) => <TractRow key={i} tract={t} interests={interestsByTract[t.name]} divisionOrders={dosByTract[t.name]} defaultOpen={tracts.length === 1} />)}
-                    </div>
-                  </>
-                )}
-              </div>
-            </>
-          )}
-
-          {standalone.map(([key, label, icon, rows]) => (
-            <div key={key} style={{ marginBottom: 24 }}>
-              <SectionHeader icon={icon} label={label} count={rows.length} />
-              <StandaloneTable entityKey={key} rows={rows} />
-            </div>
+// ── Documents — collapsible folder groups ───────────────────────────────────
+function DocFolder({ group }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <div onClick={() => setOpen((o) => !o)} style={{ display: "grid", gridTemplateColumns: "14px 1fr auto auto", gap: 10, alignItems: "center", padding: "6px 12px", cursor: "pointer", borderTop: `1px solid ${C.borderSubtle}`, background: open ? C.panelMute : "transparent" }}>
+        <span style={{ color: C.accent, fontFamily: C.mono, fontSize: 11 }}>{open ? "▾" : "▸"}</span>
+        <span style={{ fontSize: 12.5, fontWeight: 500, color: C.textPrimary, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{group.folder}</span>
+        <span style={{ fontSize: 11, color: C.textDim }}>{group.categories}</span>
+        <span style={{ fontSize: 12, color: C.textMuted, fontVariantNumeric: "tabular-nums" }}>{group.count} file{group.count === 1 ? "" : "s"}</span>
+      </div>
+      {open ? (
+        <div style={{ padding: "7px 12px 10px 36px", borderTop: `1px solid ${C.borderSubtle}`, background: C.panelMute, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "3px 22px" }}>
+          {group.files.map((f) => (
+            <div key={f} style={{ fontSize: 11.5, color: C.textBody, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{f}</div>
           ))}
         </div>
-      </Chrome>
+      ) : null}
     </div>
   );
+}
+
+// ── The viewer ──────────────────────────────────────────────────────────────
+function DataroomViewer({ title, tldr, data }) {
+  const deal = data.deal || {};
+  const stats = data.stats || {};
+  const manifest = data.manifest || [];
+  const tracts = data.tracts || [];
+  const documents = data.documents || [];
+  const flags = data.flags || [];
+  const [notesOpen, setNotesOpen] = useState(false);
+
+  const contextLine = [deal.seller, deal.broker, deal.basin, deal.state].filter(Boolean).join(" · ");
+  const tag = [deal.category, deal.asset_type].filter(Boolean).join(" · ");
+  const due = deal.bid_due_date ? daysUntil(deal.bid_due_date) : null;
+  const totalWells = manifest.reduce((s, g) => s + g.well_count, 0);
+  const wiRange = stats.wi_min_pct != null && stats.wi_max_pct != null && stats.wi_min_pct !== stats.wi_max_pct
+    ? `${fmtPct(stats.wi_min_pct)} – ${fmtPct(stats.wi_max_pct)}` : null;
+
+  const tiles = [
+    stats.well_count != null && ["Wells", fmtInt(stats.well_count)],
+    stats.tract_count != null && ["Tracts", fmtInt(stats.tract_count)],
+    stats.net_boed != null && ["Net prod", fmtInt(stats.net_boed), "boe/d"],
+    stats.seller_pv10_mm != null && ["Seller PV10", `$${stats.seller_pv10_mm.toFixed(2)}MM`, "seller-stated"],
+    stats.ltm_net_revenue_mo != null && ["LTM net rev", `${fmtCompact(stats.ltm_net_revenue_mo)}/mo`, "pre-opex, net"],
+    stats.avg_wi_pct != null && ["Avg WI", fmtPct(stats.avg_wi_pct), wiRange],
+    stats.doc_count != null && ["Documents", fmtInt(stats.doc_count)],
+  ].filter(Boolean).slice(0, 6);
+
+  const ltmFootnote = data.ltm_window
+    ? `LTM net revenue = check-stub / LOS net revenue ${data.ltm_window.start} → ${data.ltm_window.end}, net to the extracted interest, pre-opex. Bar = share of package LTM net revenue.`
+    : null;
+
+  return (
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden", fontFamily: "Inter, system-ui, sans-serif" }}>
+      {/* HEADER */}
+      <div style={{ padding: "18px 20px", borderBottom: `1px solid ${C.border}`, background: C.panelMute }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ ...LBL, color: C.accent }}>Dataroom · extraction{deal.process_type ? ` · ${deal.process_type}` : ""}</div>
+            <div style={{ fontSize: 23, fontWeight: 680, color: C.textPrimary, marginTop: 6, lineHeight: 1.2 }}>{title}</div>
+            {contextLine ? <div style={{ fontSize: 12.5, color: C.textMuted, marginTop: 4 }}>{contextLine}</div> : null}
+          </div>
+          <div style={{ textAlign: "right", flex: "none", display: "flex", flexDirection: "column", gap: 7, alignItems: "flex-end" }}>
+            {tag ? (
+              <span style={{ fontFamily: C.mono, fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", color: C.accent, border: `1px solid ${C.accent}`, borderRadius: 5, padding: "3px 8px" }}>{tag}</span>
+            ) : null}
+            {deal.bid_due_date ? (
+              <span style={{ ...LBL, color: due != null && due <= 7 && due >= 0 ? C.flag : C.textDim }}>
+                Bid due {fmtDay(deal.bid_due_date)}{due != null && due >= 0 ? ` · ${due} day${due === 1 ? "" : "s"}` : ""}
+              </span>
+            ) : null}
+            {deal.effective_date ? <span style={{ fontSize: 11, color: C.textDim }}>Effective {fmtDay(deal.effective_date)}</span> : null}
+          </div>
+        </div>
+        {tldr ? <div style={{ fontSize: 12.5, color: C.textBody, lineHeight: 1.55, marginTop: 12, maxWidth: 640 }}>{tldr}</div> : null}
+        {tiles.length ? <div style={{ marginTop: 14 }}><StatTiles tiles={tiles} /></div> : null}
+      </div>
+
+      <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 18 }}>
+        {flags.length ? <Flags flags={flags} /> : null}
+
+        {manifest.length ? (
+          <div>
+            <div style={{ ...LBL, marginBottom: 6 }}>Well manifest · by status</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {manifest.map((g) => (
+                <ManifestGroup key={g.status} group={g} defaultOpen={totalWells <= 8} />
+              ))}
+            </div>
+            {ltmFootnote ? <div style={{ fontSize: 10.5, color: C.textDim, marginTop: 6 }}>{ltmFootnote}</div> : null}
+          </div>
+        ) : null}
+
+        {tracts.length ? <TractsTable tracts={tracts} /> : null}
+
+        {documents.length ? (
+          <div>
+            <div style={{ ...LBL, marginBottom: 6 }}>Documents{stats.doc_count != null ? ` · ${stats.doc_count}` : ""}</div>
+            <div style={{ border: `1px solid ${C.border}`, borderRadius: 7, overflow: "hidden" }}>
+              {documents.map((g) => <DocFolder key={g.folder} group={g} />)}
+            </div>
+          </div>
+        ) : null}
+
+        {data.notes ? (
+          <div style={{ borderTop: `1px solid ${C.borderSubtle}`, paddingTop: 10 }}>
+            <div onClick={() => setNotesOpen((o) => !o)} style={{ cursor: "pointer", display: "flex", gap: 8, alignItems: "baseline" }}>
+              <span style={{ color: C.accent, fontFamily: C.mono, fontSize: 11 }}>{notesOpen ? "▾" : "▸"}</span>
+              <span style={LBL}>Extraction notes — the data-quality record</span>
+            </div>
+            {notesOpen ? (
+              <div style={{ fontSize: 11.5, color: C.textMuted, lineHeight: 1.55, marginTop: 7, whiteSpace: "pre-wrap" }}>{data.notes}</div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+
+      <div style={{ padding: "9px 20px", borderTop: `1px solid ${C.borderSubtle}`, fontSize: 10.5, color: C.textDim }}>
+        Every number above is a field from the extraction or a deterministic rollup computed by the extraction kit;
+        the persisted record keeps full row-level detail and per-record provenance.
+      </div>
+    </div>
+  );
+}
+
+// ── Fill these three in. Everything above is frozen. ────────────────────────
+const DATA = null;  /* paste viewer_payload.py's output verbatim */
+const TITLE = "";   /* short deal title — DATA.deal.title is usually right */
+const TLDR = "";    /* 1–2 sentences you write: what the package is, what to look at first */
+
+export default function App() {
+  return <DataroomViewer title={TITLE} tldr={TLDR} data={DATA} />;
 }

@@ -15,7 +15,7 @@ You are NOT writing a report or running a valuation. You are extracting **facts,
 
 - **Output contract:** `extraction.json`, an `ExtractionResult` exactly as defined in **`schema.py`** (bundled here). Read `schema.py` once — it is the authoritative target. Every field is optional and typed; there is no escape-valve `extras` dict.
 - **Worked example:** **`example.json`** is a complete, filled extraction for a small synthetic deal. Match its shape exactly — every record carries a `provenance` block; entity lists are empty/omitted when the room doesn't support them.
-- **Then a viewer:** a self-contained React artifact that displays the extraction (see *The viewer artifact*). **`DataroomViewer.jsx`** is the finished, frozen component — you paste the extraction in, you don't rebuild it.
+- **Then a viewer:** a self-contained React artifact — the room's cover page (see *The viewer artifact*). **`viewer_payload.py`** (bundled) derives the display payload from the extraction; **`DataroomViewer.jsx`** is the finished, frozen component you paste that payload into. You never rebuild the component and never paste the raw extraction.
 
 ## Workflow
 
@@ -93,8 +93,9 @@ You are NOT writing a report or running a valuation. You are extracting **facts,
      response under Claude's network egress settings and continue in a new
      chat. This is incomplete setup — do NOT paste the kit into a tool call
      instead, and do NOT stop the session; build the viewer and continue.
-8. **Produce the viewer** — paste the extraction into the bundled component (see
-   *The viewer artifact*). Do this every run, even when a valuation follows.
+8. **Produce the viewer** — derive the display payload and paste it into the
+   bundled component (see *The viewer artifact*). Do this every run, even when
+   a valuation follows.
 
 ## What matters (for valuation)
 
@@ -108,6 +109,8 @@ You are NOT writing a report or running a valuation. You are extracting **facts,
 **Useful when cleanly present:** `deal` (the listing summary), `tracts` (matters for mineral/royalty deals), `division_orders`.
 
 **Always cheap, always do:** `documents` — a one-line inventory entry per file (lift it from the manifest) with a category guess. Audit trail.
+
+**Finish with `flags`** — the read-before-bidding list, one short sentence each: the caveats a bidder must see before trusting the numbers (a payout reversion you didn't model, a teaser-vs-well-list ownership mismatch, a data source you spot-checked rather than parsed, an unbroken-out tax line). These lead the viewer's cover page, numbered. Keep them load-bearing and few — 3–6 for a typical room; a caveat that only qualifies your extraction process belongs in `extraction_notes` instead.
 
 **Noise — do NOT extract:**
 - Anything labeled **"offset"** — offset wells, offset permits, offset leases, offset production. The seller picks these nearby wells essentially at random; **they are not part of the deal and will inflate the asset if you include them.** This is the single most common extraction mistake. Ignore them.
@@ -139,39 +142,44 @@ You are NOT writing a report or running a valuation. You are extracting **facts,
 
 ## The viewer artifact
 
-Once `extraction.json` is written, give the user a viewer so they can see the
-package at a glance and trust every number back to its file. **`DataroomViewer.jsx`**
-(bundled here) is the finished, frozen component — you do **not** build, redesign,
-or adapt it. To produce the viewer:
+Once `extraction.json` is written, give the user a viewer: the room's **cover
+page** — headline facts, the read-before-bidding flags, the well manifest by
+status with LTM net revenue, the document inventory. **`DataroomViewer.jsx`**
+(bundled here) is the finished, frozen component — you do **not** build,
+redesign, or adapt it. To produce the viewer:
 
-1. Open `DataroomViewer.jsx`.
-2. Paste this room's `extraction.json` into the one marked `const EXTRACTION = {}`.
+1. Derive the display payload:
+   ```bash
+   python3 viewer_payload.py extraction.json > viewer_payload.json
+   ```
+2. Open `DataroomViewer.jsx` and fill the three slots at the bottom:
+   paste `viewer_payload.json` into `DATA`, write `TITLE` (short deal title —
+   `deal.title` is usually right) and `TLDR` (1–2 sentences: what the package
+   is, what to look at first).
 3. Ship that as the artifact. That's the whole job.
 
-**Size policy.** Big rooms produce extractions too large to inline into an
-artifact — the bulk is almost always `revenue_observations` (row-level check
-stubs with full provenance). Before pasting, if `revenue_observations` has
-more than ~300 rows, set it to `[]` in the pasted copy and append one line
-to `extraction_notes` so the banner discloses it (e.g. "[viewer] 1,559
-revenue rows omitted from this view for size — all persisted in the stored
-extraction."). The persisted copy always keeps every row — this trims the
-*view*, never the record. Apply the same trim to `production_history` if
-it's ever the bulk instead.
+**Never paste the raw extraction into the artifact.** The payload is the
+viewer's entire data contract: `viewer_payload.py` computes every derived
+number on the page (LTM net-revenue rollups over the trailing-12 window,
+revenue shares, per-well interest sums, status groups, document folders)
+deterministically from the extraction — so no rollup is ever done by hand, and
+the artifact stays small no matter how many revenue/production rows the room
+carried. The persisted copy keeps every row; the viewer is triage, not the
+record.
 
-The component re-derives the entire view from the schema, so it already handles
-everything that varies room to room — **don't reinvent any of it:**
-- **Spine** — wells if present, else tracts (minerals/royalty rooms). Automatic.
-- **Prominence** — a well with `production_history` leads with its decline curve;
-  otherwise a field summary. Automatic.
-- **Presence** — every section renders only when its data exists; null fields are
-  omitted. Automatic.
-- **Trust** — provenance on every record, `extraction_notes` as the data-quality
-  banner, and **nothing derived** (every number is a field shown as-is) are baked
-  into the component, not your responsibility to re-enforce each run.
+The component is data-driven, so it already handles everything that varies
+room to room — **don't reinvent any of it:**
+- **Spine** — the well manifest when the room has wells; the tracts table for
+  minerals/royalty rooms. Automatic.
+- **Presence** — every module renders only when the payload carries its data:
+  no flags → no flags block, no revenue → no LTM column or share bars, null
+  fields → omitted tiles/columns. Automatic.
+- **Trust** — the flags list leads, `extraction_notes` ships as the collapsible
+  data-quality record, and the footer states the derivation. Baked in.
 
-So there are no per-room layout decisions to make and nothing to overfit to: same
-component, just this room's data. Deps are `react` + `recharts` + `lucide-react`
-(the claude.ai Artifact runtime) — don't add others.
+So there are no per-room layout decisions to make and nothing to overfit to:
+same component, just this room's payload. The only dependency is `react` —
+don't add others.
 
 ## When the dataroom feeds a valuation
 
@@ -181,8 +189,9 @@ decimal are exactly what `forecast_wells` / `run_valuation` need. In that case:
 
 1. Extract → write `extraction.json` → persist (`save_dataroom_extraction`).
 2. **Show the viewer first** — it's the confirm-before-you-value step. The user
-   eyeballs what came out of the room (which wells, what interest decimal, what the
-   production looks like) and confirms it's right before any money number is built.
+   eyeballs what came out of the room (which wells, what interest decimal, where
+   the revenue concentrates, what got flagged) and confirms it's right before any
+   money number is built.
 3. Then proceed into the valuation flow (`get_skill("well-forecasting")` →
    `forecast_wells` → assumptions grid → `run_valuation`), carrying the wells
    and the interest from the extraction. The room's own documents feed the

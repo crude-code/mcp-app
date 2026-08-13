@@ -295,12 +295,20 @@ no DB/network/identity, so it works with no `CC_DB_URL` set. Drop a new
 subfolder with a `SKILL.md` in to add a skill; nothing else registers it.
 - **`dataroom-extract/`** — turns an uploaded oil & gas dataroom (LOS, check
   stubs, AFEs, production reports, title, division orders) into a structured
-  `extraction.json` plus a bundled, frozen React viewer artifact
-  (`DataroomViewer.jsx`) Claude pastes the extraction into. The extraction's
-  private economics are persisted via `persist_pack.py` →
+  `extraction.json` (now carrying a `flags` list — the read-before-bidding
+  caveats) plus a viewer artifact built like the deal sheet: the bundled
+  `viewer_payload.py` derives a compact display payload (LTM net-revenue
+  rollups, revenue shares, interest sums, status groups, document folders —
+  deterministic code, never model arithmetic; ~13 KB where the raw
+  extraction is ~1.4 MB) and Claude fills it into the frozen
+  `DataroomViewer.jsx` (react-only cover page: stat strip, numbered flags,
+  collapsible status-grouped manifest, doc folders; wells spine or tracts
+  spine, modules hide when data is absent) as `DATA`/`TITLE`/`TLDR`. The
+  extraction's private economics are persisted via `persist_pack.py` →
   `save_dataroom_extraction` (count-verified; re-saved under the same
-  `extraction_id` after corrections). Feeds `forecast_wells` /
-  `run_valuation` when the room is headed for a deal.
+  `extraction_id` after corrections; the raw extraction never gets pasted
+  into an artifact). Feeds `forecast_wells` / `run_valuation` when the room
+  is headed for a deal.
 - **`well-forecasting/`** — the reservoir-engineer doctrine behind
   `forecast_wells`: reading production history (contamination signatures,
   strike-vs-average), trust judgment by maturity, qi/anchor + the uptime
@@ -426,6 +434,8 @@ Run: `.venv/bin/pytest -q`.
   transport, and the packer round-trip + `--upload` mode against a live
   local HTTP server (`test_extraction_store.py`, `test_tools_dataroom.py`,
   `test_upload_tokens.py`, `test_uploads.py`, `test_room_store.py`,
-  `test_extraction_transport.py`, `test_persist_pack.py`), team messages
+  `test_extraction_transport.py`, `test_persist_pack.py`), the dataroom
+  viewer payload — derived rollups plus the payload ⇄ frozen-template drift
+  pin (`test_dataroom_viewer_payload.py`), team messages
   (`test_team_messages_store.py`, `test_tools_message_team.py`), and schema
   drift.

@@ -4,7 +4,10 @@ sandbox. The platform keeps the original documents so every extraction stays
 auditable back to its source files, and so the room outlives the chat.
 
 Compute the zip's identity in the sandbox, then call with:
-- `label` — short human name (deal/teaser title; refine later if needed).
+- `label` — short human name. A placeholder is fine and expected (this tool
+  runs before anything in the zip is read, so you usually don't know the
+  deal title yet); the persist step automatically refines the room's label
+  from the extraction's label.
 - `sha256` — hex digest of the zip file.
 - `size_bytes` — the zip's byte count.
 

@@ -123,6 +123,8 @@ class Interest(EntityBase):
     lessor: str | None = None
     lessee: str | None = None
     owner: str | None = None
+    entity: str | None = None        # owning vehicle when the deal splits interests
+                                     # across entities (e.g. "TEP I" vs "TEP II")
 
 
 class ProductionPoint(EntityBase):
@@ -138,9 +140,11 @@ class ProductionPoint(EntityBase):
 class RevenuePoint(EntityBase):
     """One row per (well, prod_date, product, check_date).
 
-    Line-item taxes and deducts are SUMMED into `taxes` and `deductions`.
-    Operators report categories inconsistently; the sanity check on each row is
-    `gross_revenue - taxes - deductions ~= net_revenue`.
+    Line-item taxes and deducts are SUMMED into `taxes` and `deductions`,
+    and stored as POSITIVE magnitudes — source reports usually print them
+    negative; flip the sign on ingest. The sanity check on each row is
+    `gross_revenue - taxes - deductions ~= net_revenue` (which only holds
+    under the positive convention — two runs must never diverge on this).
     """
     well_api: str | None = None
     well_identifier: str | None = None
@@ -171,7 +175,15 @@ class ExpensePoint(EntityBase):
     scope: str | None = None             # well / lease / deal
     category: str | None = None          # opex / capex / workover / facility / water / other
     label_raw: str | None = None         # operator's line-item label, verbatim
-    period: str | None = None            # YYYY-MM if a single month
+    period: str | None = None            # YYYY-MM: the single month, or the
+                                         # first month of a range (see period_end)
+    period_end: str | None = None        # YYYY-MM: last month (inclusive) when
+                                         # the document states a multi-month
+                                         # total (e.g. a 6-month LOS). Persist
+                                         # the range and the stated total —
+                                         # NEVER divide it into a monthly rate
+                                         # yourself; that arithmetic belongs to
+                                         # the valuation engine, not the model.
     amount_usd: float | None = None      # total $ for the period, if stated
     opex_per_bbl_usd: float | None = None
     opex_per_well_per_month_usd: float | None = None

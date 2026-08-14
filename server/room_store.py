@@ -47,6 +47,25 @@ class RoomStore:
         )
         return room_id
 
+    def refine_label(self, room_id: str, label: str, *, user_id: int) -> bool:
+        """Replace the registration-time placeholder label with the real deal
+        title once extraction knows it (open_dataroom must be called before
+        anything in the zip is read, so the good label arrives late). Scoped
+        to the original uploader — rooms are global rows, and another
+        holder's kit save must never rename someone else's room."""
+        if not label.strip():
+            return False
+        rows = _query(
+            """
+            UPDATE platform.dataroom_rooms
+            SET label = %s
+            WHERE room_id = %s AND uploaded_by_user_id = %s
+            RETURNING room_id
+            """,
+            params=[label.strip(), room_id, user_id],
+        )
+        return bool(rows)
+
     def mark_complete(self, room_id: str, *, storage_key: str) -> str:
         """Flip a pending row to complete. On a same-hash race (two users
         uploading the identical room concurrently) the partial unique index

@@ -140,6 +140,15 @@ def register_upload_routes(mcp, *, tokens, extraction_store,
             _log.error("upload_kit store failed: %s", e)
             return _reject(500, str(e))
 
+        if room_id and room_store is not None and label:
+            # The room registered under a placeholder (open_dataroom runs
+            # before anything in the zip is read); the kit's label is the
+            # real deal title. Uploader-scoped inside the store.
+            try:
+                room_store.refine_label(room_id, label, user_id=grant.user_id)
+            except Exception as e:  # noqa: BLE001 — label polish never fails a save
+                _log.error("room label refine failed for %s: %s", room_id, e)
+
         if room_id and room_store is not None and not grant.meta.get("extraction_id"):
             # Write-once room snapshot: only a *first* save (not a
             # correction re-save) can become the initial extraction, and

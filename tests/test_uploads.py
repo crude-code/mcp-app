@@ -42,6 +42,11 @@ class FakeRoomStore:
             return {"already": "stamped"}
         return self.snapshots[-1][1] if self.snapshots else None
 
+    def refine_label(self, room_id, label, *, user_id):
+        self.label_refinements = getattr(self, "label_refinements", [])
+        self.label_refinements.append((room_id, label, user_id))
+        return True
+
     def save_initial_extraction(self, room_id, extraction):
         if self.snapshot_taken:
             return False
@@ -350,6 +355,21 @@ def test_correction_resave_never_snapshots(rig):
     assert r.status_code == 200
     assert store.calls[0]["room_id"] == "room-9"
     assert rooms.snapshots == []
+
+
+def test_kit_refines_room_label_uploader_scoped(rig):
+    """open_dataroom registers under a placeholder (it runs pre-triage);
+    the kit save carries the real deal title and back-fills the room row,
+    scoped to the uploader inside the store."""
+    client, tokens, _, rooms, _ = rig
+    token = _kit_token(tokens, room_id="room-9", label="Tonka Energy Partners")
+    assert client.post(f"/upload/kit/{token}", json=_SAMPLE_KIT).status_code == 200
+    assert rooms.label_refinements == [("room-9", "Tonka Energy Partners", 7)]
+    # a correction re-save refreshes the label too — same deal, latest title
+    token2 = _kit_token(tokens, room_id="room-9", extraction_id="abc-id",
+                        label="Tonka Energy Partners I & II")
+    assert client.post(f"/upload/kit/{token2}", json=_SAMPLE_KIT).status_code == 200
+    assert rooms.label_refinements[-1] == ("room-9", "Tonka Energy Partners I & II", 7)
 
 
 def test_kit_without_room_id_skips_snapshot(rig):

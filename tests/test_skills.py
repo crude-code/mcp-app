@@ -43,6 +43,26 @@ def test_load_skill_returns_instructions_and_files():
     assert "ExtractionResult" in bundle["files"]["schema.py"]
 
 
+def test_load_skill_mints_content_addressed_file_urls(monkeypatch):
+    """The fast lane: every text file gets a sha256 of its raw bytes and a
+    published URL named skill-<sha12>-<name> (the deploy scripts publish
+    under exactly that name — drift-pinned in test_template_publish_drift)."""
+    import hashlib
+    import re
+    from server.skills import SKILLS_DIR
+    monkeypatch.delenv("CC_TEMPLATE_BASE_URL", raising=False)
+    bundle = load_skill("dataroom-extract")
+    assert set(bundle["file_urls"]) == set(bundle["files"])
+    assert set(bundle["file_sha256"]) == set(bundle["files"])
+    for fname, url in bundle["file_urls"].items():
+        sha = bundle["file_sha256"][fname]
+        raw = (SKILLS_DIR / "dataroom-extract" / fname).read_bytes()
+        assert sha == hashlib.sha256(raw).hexdigest()
+        assert re.fullmatch(
+            rf"https://crudecode\.dev/templates/skill-[0-9a-f]{{12}}-{re.escape(fname)}",
+            url)
+
+
 def test_load_skill_unknown_raises():
     with pytest.raises(SkillNotFound):
         load_skill("does-not-exist")

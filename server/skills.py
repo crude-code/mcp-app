@@ -6,12 +6,30 @@ module is pure: it only reads static files, with no DB / network / identity,
 so it works even when ``CC_DB_URL`` is unset.
 
 ``list_skills()`` returns the catalog; ``load_skill(name)`` returns the full
-bundle (the SKILL.md text plus every other file in the folder as text).
+bundle (the SKILL.md text plus every other file in the folder as text) —
+plus, per supporting file, a content-addressed public URL and sha256. The
+deploy scripts publish every supporting file as ``skill-<sha12>-<name>`` on
+the apex (same lane and same rationale as the deal-sheet template: a session
+with code execution downloads the frozen file instead of re-emitting it
+token by token, and the inline text stays the universal fallback). Naming is
+pinned against the deploy scripts by tests/test_template_publish_drift.py.
 """
 
+import hashlib
+import os
 from pathlib import Path
 
 SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"
+
+# Same base and env override as the deal-sheet template lane
+# (server/valuation/artifact_payload.py) — apex on purpose: sandbox egress
+# allowlists that cover crudecode.dev don't extend to the mcp subdomains.
+_DEFAULT_TEMPLATE_BASE = "https://crudecode.dev/templates"
+
+
+def _published_file_url(filename: str, sha256_hex: str) -> str:
+    base = os.environ.get("CC_TEMPLATE_BASE_URL", _DEFAULT_TEMPLATE_BASE).rstrip("/")
+    return f"{base}/skill-{sha256_hex[:12]}-{filename}"
 
 
 class SkillNotFound(Exception):
@@ -74,6 +92,8 @@ def load_skill(name: str) -> dict:
     fm = parse_frontmatter(instructions)
 
     files: dict = {}
+    file_urls: dict = {}
+    file_sha256: dict = {}
     skipped: list[str] = []
     for path in sorted(folder.iterdir()):
         if not path.is_file() or path.name == "SKILL.md":
@@ -82,12 +102,20 @@ def load_skill(name: str) -> dict:
             files[path.name] = path.read_text(encoding="utf-8")
         except (UnicodeDecodeError, ValueError):
             skipped.append(path.name)
+            continue
+        # Digest the raw bytes — must equal `sha256sum` on the published
+        # copy so a fetching session can verify before trusting the file.
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        file_sha256[path.name] = digest
+        file_urls[path.name] = _published_file_url(path.name, digest)
 
     bundle = {
         "name": fm.get("name") or name,
         "description": fm.get("description", ""),
         "instructions": instructions,
         "files": files,
+        "file_urls": file_urls,
+        "file_sha256": file_sha256,
     }
     if skipped:
         bundle["skipped_files"] = skipped

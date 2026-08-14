@@ -48,3 +48,15 @@ def test_apex_vhost_serves_the_publish_directory():
     conf = (REPO / "deploy" / "nginx" / "crudecode-site.conf").read_text(encoding="utf-8")
     assert "location /templates/" in conf
     assert "alias /var/www/cc-templates/;" in conf
+
+
+def test_deploy_scripts_publish_skill_files_under_the_server_naming():
+    """The skill fast lane shares the template lane's three-layer split:
+    server/skills.py mints skill-<sha12>-<name> URLs, the deploy scripts
+    publish under that exact name, nginx serves the directory (already
+    pinned above). Pin the naming here."""
+    for script in ("deploy.sh", "deploy-dev.sh"):
+        text = (REPO / script).read_text(encoding="utf-8")
+        assert "find skills -mindepth 2 -maxdepth 2 -type f ! -name 'SKILL.md'" in text, script
+        assert 'sha256sum "$f" | cut -c1-12' in text, script
+        assert 'skill-${SKILL_SHA}-$(basename "$f")' in text, script

@@ -73,6 +73,22 @@ if [ ! -f "$TEMPLATE_DEST" ]; then
     echo "published deal-sheet template ${TEMPLATE_SHA}"
 fi
 
+# --- skill-file publish ------------------------------------------------------
+# Every skill supporting file, content-addressed as skill-<sha12>-<name> in
+# the same apex-served dir — the fast lane get_skill's file_urls point at
+# (server/skills.py; naming pinned by tests/test_template_publish_drift.py).
+# SKILL.md itself is instructions, not a fetched file. Old hashes linger
+# harmlessly, same as the deal-sheet template.
+sudo mkdir -p "$TEMPLATE_DIR"
+find skills -mindepth 2 -maxdepth 2 -type f ! -name 'SKILL.md' | while read -r f; do
+    SKILL_SHA=$(sha256sum "$f" | cut -c1-12)
+    SKILL_DEST="${TEMPLATE_DIR}/skill-${SKILL_SHA}-$(basename "$f")"
+    if [ ! -f "$SKILL_DEST" ]; then
+        sudo install -m 644 "$f" "$SKILL_DEST"
+        echo "published skill file $(basename "$f") ${SKILL_SHA}"
+    fi
+done
+
 # --- python + renderer + mcp server ---------------------------------------
 # Always reinstall + rebuild — these are cheap, idempotent, and skipping
 # them risks an inconsistent on-disk state if a later restart fires.

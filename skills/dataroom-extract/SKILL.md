@@ -143,9 +143,34 @@ You are NOT writing a report or running a valuation. You are extracting **facts,
 | `Engineering`, `Aries`, `economics`, `reserves` | reserves & assumptions (read for context) |
 | `Overview`, `teaser`, `CIM`, `summary` | `deal` |
 
-**Check stubs → `revenue_observations`.** One row per **(well, prod_date, product, check_date)**. Operators report tax and deduction line-items inconsistently, so **SUM all taxes into `taxes` and all deductions into `deductions`** — do not invent per-category fields. Sanity-check each row: `gross_revenue − taxes − deductions ≈ net_revenue` (within a cent). If a stub splits one production month across several interest decimals, collapse to a single row and sum.
+**Check stubs → `revenue_observations`.** One row per **(well, prod_date, product, check_date)**. Operators report tax and deduction line-items inconsistently, so **SUM all taxes into `taxes` and all deductions into `deductions`** — do not invent per-category fields. Store taxes and deductions as **positive magnitudes** (source reports usually print them negative; flip on ingest). Sanity-check each row: `gross_revenue − taxes − deductions ≈ net_revenue` (within a cent). If a stub splits one production month across several interest decimals, collapse to a single row and sum.
 
-**LOS / AFE → `expenses`.** From the operating statement, capture operating cost as a rate (`opex_per_bbl_usd` or `opex_per_well_per_month_usd`); from AFEs, `capex_per_well_usd`. Fill whichever the document states; leave the rest null. Keep the operator's `label_raw` verbatim.
+**Parsing stub workbooks — traps that have shipped bad rows:**
+- **Locate headers by NAME, scanning the first ~6 rows of every sheet; never
+  by position.** Real rooms mix cover sheets, reordered columns, and
+  multi-tab trackers within one uniform-looking family.
+- **A per-check field blank on the data tab often lives on a
+  Parameters/cover tab** (check number, payee entity, accounting month).
+  Prefer that tab as the primary source for check-level metadata — keying
+  dedupe on a half-populated data-tab column silently collapses checks.
+- **Filter grand-total rows** (no property and no product) before any
+  tie-out — they double revenue quietly if they slip through.
+- **Tie out the parse against any seller-prepared by-well rollup** in the
+  room. When a curated LOS is better-built than the raw stubs, stubs stay
+  the primary source; use the rollup to find what your parse missed and to
+  fill checks whose stubs are absent (note the fill in `extraction_notes`).
+
+**Identifier traps.** State regulatory file numbers (NDIC etc.) look enough
+like APIs to be dangerous — a "State ID" column may be a file number for one
+state's wells and a real API for another's **in the same well list**. Never
+fabricate an API from a state ID; resolve through a second source (a
+production report, a stub property list) or leave the API null with a note.
+Production-report headers may repeat a well's short suffix (`… 4H 4H`) —
+normalize before name-joins. Before packing, **print every well that still
+lacks an API as a build assertion**; silent name-join misses are the
+costliest error in this workflow.
+
+**LOS / AFE → `expenses`.** From the operating statement, capture operating cost as a rate (`opex_per_bbl_usd` or `opex_per_well_per_month_usd`); from AFEs, `capex_per_well_usd`. Fill whichever the document states; leave the rest null. Keep the operator's `label_raw` verbatim. **When the document states a multi-month total** (a 6-month LOS), persist it as stated: `amount_usd` + `period`/`period_end` for the range. Do NOT divide it into a monthly rate yourself — deriving economics inputs is the valuation engine's arithmetic, not yours.
 
 **Provenance is required on every record.** `source_file` = the relative path inside the room. `source_locator` by convention: Excel `"sheet:Name;row:N"` (1-based, header = row 1), PDF `"page:N"`. Use `notes` only when you *inferred* a value rather than read it.
 

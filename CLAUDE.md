@@ -105,7 +105,13 @@ Tools (all return JSON strings):
 - **get_skill** — Takes an optional skill `name`. With no/unknown name,
   returns the catalog (`{available_skills: [{name, description}, ...]}`).
   With a valid name, returns the full bundle (`{name, description,
-  instructions, files}`) via `server/skills.py`. Pure/static — no DB, no
+  instructions, files, file_urls, file_sha256}`) via `server/skills.py`.
+  `file_urls`/`file_sha256` are the fast lane — every supporting file is
+  also published content-addressed (`skill-<sha12>-<name>`) on the apex
+  `crudecode.dev/templates/` by the deploy scripts, so a session with code
+  execution curls the frozen files instead of re-typing ~45 KB from the
+  response (inline `files` stays the fallback; naming pinned by
+  `tests/test_template_publish_drift.py`). Pure/static — no DB, no
   network (fetches are still `trace`-logged, slug read straight from the
   routing header). See `server/skills.py` and `skills/`.
 - **open_dataroom** — Capture-first registration of a dataroom zip, called
@@ -408,8 +414,9 @@ accepted) and `SUPABASE_DATABASE_URL`.
 - **`deploy.sh`** / **`deploy-dev.sh`** — idempotent scripts run on the host by
   GitHub Actions (`.github/workflows/deploy.yml` / `deploy-dev.yml`) on push to
   `main` / `dev`. Pull, sync the nginx config, publish the deal-sheet
-  template (content-addressed into `/var/www/cc-templates/`, served by the
-  apex vhost at `crudecode.dev/templates/` — both scripts publish into the
+  template and every skill supporting file (content-addressed into
+  `/var/www/cc-templates/`, served by the apex vhost at
+  `crudecode.dev/templates/` — both scripts publish into the
   same dir; only the prod deploy syncs the apex vhost config), rebuild the
   renderer, and restart the MCP server only when a path it actually loaded
   into memory changed since the last successful deploy (tracked in

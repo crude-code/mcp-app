@@ -18,7 +18,7 @@ deterministically, so no rollup is ever model-arithmetic:
   - WI/NRI/RI per well: summed across that well's interest rows (a split
     interest sums; the normal case is one row per well), shown as percent.
   - Manifest groups: wells by `well_type` (PDP / SI / DUC / PUD / PA).
-  - Document folders: files grouped by parent directory name.
+  - Document folders: files grouped by their last two path segments.
 
 Rows join revenue to wells by API, falling back to a case-insensitive match
 of `well_identifier` against the well name when either side lacks an API.
@@ -187,11 +187,16 @@ def build_tracts(tracts):
 
 
 def build_documents(documents):
-    """Files grouped by parent directory name, largest folder first."""
+    """Files grouped by their last TWO path segments, largest folder first.
+    One segment loses the context in nested rooms — operator/year/month
+    trees collapse into folders literally named "2025"."""
     groups = {}
     for d in documents:
         parent = posixpath.dirname(d.get("path") or "")
-        folder = posixpath.basename(parent) or "(root)"
+        grandparent = posixpath.basename(posixpath.dirname(parent))
+        base = posixpath.basename(parent)
+        folder = (f"{grandparent}/{base}" if grandparent and base
+                  else base or "(root)")
         g = groups.setdefault(folder, {"files": [], "categories": []})
         g["files"].append(posixpath.basename(d.get("path") or "") or d.get("path"))
         cat = d.get("category")

@@ -141,7 +141,7 @@ def test_tracts_spine():
     assert p["stats"]["tract_count"] == 1
 
 
-def test_documents_grouped_by_parent_folder():
+def test_documents_grouped_by_last_two_segments():
     docs = [
         {"provenance": _prov(), "path": "Room158/Check Stubs/a.pdf", "category": "financial"},
         {"provenance": _prov(), "path": "Room158/Check Stubs/b.pdf", "category": "financial"},
@@ -150,9 +150,22 @@ def test_documents_grouped_by_parent_folder():
     ]
     groups = vp.build_payload({"documents": docs})["documents"]
     assert [(g["folder"], g["count"]) for g in groups] == [
-        ("Check Stubs", 2), ("(root)", 1), ("Title", 1)]
+        ("Room158/Check Stubs", 2), ("(root)", 1), ("Room158/Title", 1)]
     assert groups[0]["files"] == ["a.pdf", "b.pdf"]
     assert groups[2]["categories"] == "title"
+
+
+def test_documents_nested_folders_keep_operator_context():
+    """operator/year/month trees must not collapse into folders named
+    after bare years — the failure the Tonka room surfaced."""
+    docs = [
+        {"provenance": _prov(), "path": "Check Stubs/Kraken/2025/1-2025.pdf",
+         "category": "financial"},
+        {"provenance": _prov(), "path": "Check Stubs/Murex/2025/1-2025.pdf",
+         "category": "financial"},
+    ]
+    groups = vp.build_payload({"documents": docs})["documents"]
+    assert sorted(g["folder"] for g in groups) == ["Kraken/2025", "Murex/2025"]
 
 
 def test_flags_passthrough_and_default():

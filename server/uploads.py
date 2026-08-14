@@ -25,6 +25,12 @@ Routes:
   {bytes_received, sha256}. Validates (but never consumes) a token, so the
   sandbox-proxy size ceiling can be measured against a real deployment
   without an open bandwidth sink.
+- GET /export/{token}/{filename} — the download lane: assembles a CSV from
+  the run record (server/exports.py) and serves it as a file attachment.
+  Unlike every route above it, the client is a *browser* — a person clicking
+  a link Claude printed — so it never consumes the token and its grant
+  carries a longer TTL. Lives under /export/ rather than /upload/ because
+  the URL is user-visible.
 """
 
 import asyncio
@@ -37,10 +43,11 @@ import tempfile
 from urllib.parse import urlparse
 
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, PlainTextResponse
 
 from fastmcp.server.dependencies import get_http_request
 
+from server import exports
 from server.extraction_store import STORAGE_KEY_FIELD
 from server.extraction_transport import TransportError, entity_counts, unpack_extraction
 
@@ -86,7 +93,7 @@ def _reject(status: int, message: str) -> JSONResponse:
 
 
 def register_upload_routes(mcp, *, tokens, extraction_store,
-                           room_store=None, blob_store=None) -> None:
+                           room_store=None, blob_store=None, run_store=None) -> None:
     @mcp.custom_route("/upload/kit/{token}", methods=["POST"])
     async def upload_kit(request: Request) -> JSONResponse:
         token = request.path_params["token"]
@@ -269,3 +276,43 @@ def register_upload_routes(mcp, *, tokens, extraction_store,
             digest.update(chunk)
             received += len(chunk)
         return JSONResponse({"bytes_received": received, "sha256": digest.hexdigest()})
+
+    @mcp.custom_route("/export/{token}/{filename}", methods=["GET"])
+    async def download_export(request: Request):
+        token = request.path_params["token"]
+        grant = tokens.claim(token, purpose="export")
+        if grant is None:
+            return _reject(410, "this download link has expired — ask Claude to "
+                                "export again to mint a fresh one")
+
+        kind = grant.meta.get("kind", "")
+        try:
+            # Assembly can hit the database (run record, or a re-run query), so
+            # it goes to a thread: this route shares an event loop with the MCP
+            # endpoint and a 30s query must not stall other sessions.
+            body, rows = await asyncio.to_thread(
+                exports.assemble, kind, grant.meta, run_store=run_store,
+            )
+        except exports.ExportError as e:
+            return _reject(422, str(e))
+        except Exception as e:  # noqa: BLE001
+            _log.error("export assembly failed kind=%s: %s", kind, e)
+            return _reject(500, str(e))
+
+        # The filename rides in the path (so a browser saves something
+        # recognisable) but it lands in a response header, so it is rebuilt
+        # from an allowlist rather than trusted.
+        raw = request.path_params["filename"] or ""
+        filename = "".join(c for c in raw if c.isalnum() or c in "-_.") or "export.csv"
+        _log.info("export served user=%s kind=%s rows=%d bytes=%d",
+                  grant.user_slug, kind, rows, len(body))
+        return PlainTextResponse(
+            body,
+            media_type="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                # A capability URL is not a cacheable public resource.
+                "Cache-Control": "no-store",
+                "X-Export-Rows": str(rows),
+            },
+        )

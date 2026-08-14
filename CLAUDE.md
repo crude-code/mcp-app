@@ -411,6 +411,12 @@ accepted) and `SUPABASE_DATABASE_URL`.
 
 ## Deploy
 
+- **Releases.** A `dev` → `main` merge is a release: bump `__version__`
+  (`server/mcp_server.py`) and `renderer/package.json`'s version together in
+  the last dev commit (`npm --prefix renderer version X.Y.Z
+  --no-git-tag-version` updates package + lock; lockstep pinned by
+  `tests/test_version_drift.py`), then tag `vX.Y.Z` on `main` after the
+  merge. The server logs its version at startup (`logs/cc.log`).
 - **`deploy.sh`** / **`deploy-dev.sh`** — idempotent scripts run on the host by
   GitHub Actions (`.github/workflows/deploy.yml` / `deploy-dev.yml`) on push to
   `main` / `dev`. Pull, sync the nginx config, publish the deal-sheet

@@ -4,7 +4,11 @@ Synchronous tool registry — run_sql, forecast_wells, run_valuation, map, get_s
 plus the renderer-only read tool (get_map_full). No inner agents.
 """
 
-__version__ = "0.1.0"
+# Release version. A dev → main merge is a release: bump this and the
+# renderer's package.json version (kept in lockstep by
+# tests/test_version_drift.py) in the last dev commit, then tag vX.Y.Z on
+# main after the merge.
+__version__ = "0.2.0"
 
 import json as _json
 import logging as _logging
@@ -525,4 +529,6 @@ if __name__ == "__main__":
     import os as _os
 
     _port = int(_os.environ.get("MCP_PORT", "9000"))
+    _logging.getLogger("cc.server").info(
+        "Crude Code MCP v%s starting on port %d", __version__, _port)
     mcp.run(transport="http", host="0.0.0.0", port=_port, uvicorn_config={"timeout_graceful_shutdown": 10})

@@ -56,6 +56,19 @@ You are NOT writing a report or running a valuation. You are extracting **facts,
    It writes `room/_triage/manifest.json` (every file: path, size, type, sha256) and `room/_triage/triage.md` (readable inventory), and dumps each spreadsheet to `room/_triage/xlsx/<name>.json` and each text-PDF to `room/_triage/pdf/<name>.txt`. **Read those dumps** instead of opening binaries by hand.
 3. **Orient.** Read `triage.md`, then the overview/teaser document if there is one (most rooms have a one-pager naming the operator, basin, county, well count, and asset type).
 4. **Scope.** Decide which entities this room actually supports. Extract what's there; skip what isn't. A room with no LOS has no `expenses`; a working-interest package usually has no `tracts`.
+   **Read frugally — these three rules are mandatory, not advice:**
+   - **Deep-read only economics-bearing files** (teaser, well list, LOS,
+     AFEs, a few exemplar stubs, title *summaries*). Everything else —
+     plats, surveys, W-9s, title exhibits — gets its manifest line in
+     `documents` and is never opened.
+   - **For any uniform file family (check stubs, monthly statements,
+     per-pad production reports): read 2–3 exemplars to learn the format,
+     then write ONE script that parses the whole family.** Never read a
+     family file-by-file — a 227-stub folder is one parser, not 227 reads.
+   - **Batch sandbox work.** Every command is a tool call against the
+     turn's budget; a session that burns calls on per-file passes stalls
+     at the tool-use limit mid-extraction. One script over a folder beats
+     ten small passes.
 5. **Extract** into the schema (see *What matters* and *Conventions*).
 6. **Write `extraction.json`** — one `ExtractionResult`.
 7. **Persist it** — every run, right after the file is written, even for a

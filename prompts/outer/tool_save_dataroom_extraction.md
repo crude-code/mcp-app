@@ -26,8 +26,10 @@ Arguments:
   never the room snapshot.
 
 Failure handling:
-- The URL expires in ~15 minutes and dies when used — a stale or spent URL
-  is fixed by calling this tool again (cheap).
+- The URL expires in ~15 minutes and dies only when an upload *succeeds* —
+  a rejected upload (bad size, bad shape) can retry the SAME URL within the
+  TTL; don't re-mint after a rejection unless the clock has run out. A
+  stale or spent URL is fixed by calling this tool again (cheap).
 - `verified: false` in the verdict: mint a fresh URL with the returned
   extraction_id and re-upload.
 - A **connection error** from the script means the sandbox cannot reach

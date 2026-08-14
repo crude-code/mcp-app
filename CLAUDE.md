@@ -151,7 +151,13 @@ Tools (all return JSON strings):
   API). The packer verifies the response's `stored` counts against its own
   `expected_stored` and prints a one-line verdict — the only thing that
   enters chat. Backed by `platform.dataroom_extractions` via
-  `server/extraction_store.py` (`ExtractionStore`). 2 MB expanded-row cap.
+  `server/extraction_store.py` (`ExtractionStore`): in blob mode
+  (production) the payload rests in Supabase Storage as
+  `extractions/<id>.json` and the row holds a pointer stub — rows stay
+  row-sized at any package scale, so a full 227-stub room persists whole
+  (50 MB sanity ceiling; the old 2 MB row cap was an inline-tool-era
+  relic). Upload URLs are single-use on *success* — a rejected upload
+  retries the same URL inside the ~15-min TTL.
   A sandbox connection failure = the user's network egress allowlist is
   missing the upload host (incomplete setup — surfaced to the user, no
   inline fallback). `/upload/echo/{token}` is a token-gated probe endpoint

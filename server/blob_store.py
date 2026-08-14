@@ -61,3 +61,31 @@ class SupabaseBlobStore:
             )
         if resp.status_code not in (200, 201):
             raise BlobStoreError(f"blob put failed ({resp.status_code}): {resp.text[:300]}")
+
+    def put_bytes(self, key: str, data: bytes, *, content_type: str = "application/json") -> None:
+        """Write an in-memory payload into the bucket under `key` (upsert)."""
+        if not self.configured():
+            raise BlobStoreError("SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY not set")
+        self.ensure_bucket()
+        resp = httpx.post(
+            f"{self._base}/storage/v1/object/{self.bucket}/{key}",
+            headers={**self._headers(), "Content-Type": content_type,
+                     "x-upsert": "true"},
+            content=data,
+            timeout=httpx.Timeout(30.0, write=600.0),
+        )
+        if resp.status_code not in (200, 201):
+            raise BlobStoreError(f"blob put failed ({resp.status_code}): {resp.text[:300]}")
+
+    def get_bytes(self, key: str) -> bytes:
+        """Fetch an object's bytes from the bucket."""
+        if not self.configured():
+            raise BlobStoreError("SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY not set")
+        resp = httpx.get(
+            f"{self._base}/storage/v1/object/{self.bucket}/{key}",
+            headers=self._headers(),
+            timeout=httpx.Timeout(30.0, read=600.0),
+        )
+        if resp.status_code != 200:
+            raise BlobStoreError(f"blob get failed ({resp.status_code}): {resp.text[:300]}")
+        return resp.content

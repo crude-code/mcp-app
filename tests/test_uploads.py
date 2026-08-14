@@ -37,6 +37,11 @@ class FakeRoomStore:
         self.completed.append((room_id, storage_key))
         return room_id
 
+    def get_initial_extraction(self, room_id):
+        if self.snapshot_taken:
+            return {"already": "stamped"}
+        return self.snapshots[-1][1] if self.snapshots else None
+
     def save_initial_extraction(self, room_id, extraction):
         if self.snapshot_taken:
             return False
@@ -47,13 +52,27 @@ class FakeRoomStore:
 class FakeBlobStore:
     def __init__(self):
         self.puts = []
+        self.objects = {}
         self.raise_exc = None
+        self.is_configured = False   # kit snapshot path checks configured()
+
+    def configured(self):
+        return self.is_configured
 
     def put_file(self, key, path, **kw):
         if self.raise_exc is not None:
             raise self.raise_exc
         with open(path, "rb") as fh:
             self.puts.append((key, len(fh.read())))
+
+    def put_bytes(self, key, data, **kw):
+        if self.raise_exc is not None:
+            raise self.raise_exc
+        self.objects[key] = data
+        self.puts.append((key, len(data)))
+
+    def get_bytes(self, key):
+        return self.objects[key]
 
 
 @pytest.fixture
@@ -205,7 +224,7 @@ def test_echo_requires_valid_token(rig):
 def test_extraction_download_serves_and_consumes(rig):
     client, tokens, store, _, _ = rig
     stored = {"deal": {"name": "Hilltop"}, "wells": [{"api": "05-1"}]}
-    store.get = lambda eid: {"extraction_id": eid, "extraction": stored}
+    store.get_payload = lambda eid: stored
     token = tokens.mint(user_id=7, user_slug="acme", purpose="extraction",
                         meta={"extraction_id": "eid-1"})
     r = client.get(f"/upload/extraction/{token}")
@@ -216,12 +235,12 @@ def test_extraction_download_serves_and_consumes(rig):
 
 def test_extraction_download_missing_row_is_404_token_survives(rig):
     client, tokens, store, _, _ = rig
-    store.get = lambda eid: None
+    store.get_payload = lambda eid: None
     token = tokens.mint(user_id=7, user_slug="acme", purpose="extraction",
                         meta={"extraction_id": "eid-1"})
     assert client.get(f"/upload/extraction/{token}").status_code == 404
     stored = {"deal": {"name": "x"}}
-    store.get = lambda eid: {"extraction": stored}
+    store.get_payload = lambda eid: stored
     assert client.get(f"/upload/extraction/{token}").json() == stored
 
 
@@ -305,6 +324,23 @@ def test_kit_with_room_id_links_and_snapshots(rig):
     assert r.status_code == 200
     assert store.calls[0]["room_id"] == "room-9"
     assert rooms.snapshots == [("room-9", _SAMPLE_KIT["extraction"])]
+
+
+def test_kit_snapshot_is_own_storage_object_when_blob_configured(rig):
+    """Blob mode: the room snapshot gets a room+eid-keyed object of its own,
+    so the saver's later correction re-saves (which overwrite
+    extractions/<eid>.json) can never mutate the room's write-once copy."""
+    client, tokens, store, rooms, blobs = rig
+    blobs.is_configured = True
+    token = _kit_token(tokens, room_id="room-9")
+    r = client.post(f"/upload/kit/{token}", json=_SAMPLE_KIT)
+    assert r.status_code == 200
+    eid = r.json()["extraction_id"]
+    (rid, snap), = rooms.snapshots
+    assert rid == "room-9"
+    key = f"extractions/room-room-9-{eid}.json"
+    assert snap["_storage_key"] == key
+    assert json.loads(blobs.objects[key]) == _SAMPLE_KIT["extraction"]
 
 
 def test_correction_resave_never_snapshots(rig):

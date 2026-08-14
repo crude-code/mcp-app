@@ -41,14 +41,19 @@ from starlette.responses import JSONResponse
 
 from fastmcp.server.dependencies import get_http_request
 
+from server.extraction_store import STORAGE_KEY_FIELD
 from server.extraction_transport import TransportError, entity_counts, unpack_extraction
 
 _log = logging.getLogger("cc.uploads")
 
-# At-rest cap on the expanded ExtractionResult row (same number the inline
-# tool enforced) and a pre-parse guard on the raw kit body above it.
-MAX_EXTRACTION_BYTES = 2_000_000
-MAX_KIT_BODY_BYTES = 8_000_000
+# Sanity ceilings only. The old 2 MB figure was the inline-tool era's cap,
+# sized for extractions that traveled through the model's context; now that
+# extractions rest in Supabase Storage (pointer rows — see extraction_store),
+# the caps exist to stop abuse, not to bound a Postgres row. A real room
+# (47 wells / 227 stubs) expands to ~7 MB and must fit whole: the skill's
+# "never persist an abbreviated copy" rule is load-bearing.
+MAX_EXTRACTION_BYTES = 50_000_000
+MAX_KIT_BODY_BYTES = 64_000_000
 
 # Room zips: nginx enforces 600m at the edge; this is the in-app backstop.
 MAX_ROOM_BYTES = 600_000_000
@@ -118,25 +123,43 @@ def register_upload_routes(mcp, *, tokens, extraction_store,
         label = (grant.meta.get("label") or "").strip()
         room_id = grant.meta.get("room_id") or None
         try:
-            eid = extraction_store.save(
-                user_id=grant.user_id,
-                extraction=full,
-                label=label,
-                extraction_id=grant.meta.get("extraction_id") or None,
-                room_id=room_id,
-            )
+            # save() pushes the payload to Storage and writes a pointer row
+            # (inline row without a blob store) — run off the event loop;
+            # a multi-MB blob push must not block the MCP endpoint.
+            eid = await asyncio.to_thread(
+                lambda: extraction_store.save(
+                    user_id=grant.user_id,
+                    extraction=full,
+                    label=label,
+                    extraction_id=grant.meta.get("extraction_id") or None,
+                    room_id=room_id,
+                ))
         except (ValueError, LookupError) as e:
             return _reject(409, str(e))
-        except Exception as e:  # noqa: BLE001 — DB failures land here
+        except Exception as e:  # noqa: BLE001 — DB/Storage failures land here
             _log.error("upload_kit store failed: %s", e)
             return _reject(500, str(e))
 
         if room_id and room_store is not None and not grant.meta.get("extraction_id"):
             # Write-once room snapshot: only a *first* save (not a
             # correction re-save) can become the initial extraction, and
-            # the store refuses if a snapshot already exists.
+            # the store refuses if a snapshot already exists. In blob mode
+            # the snapshot gets its OWN object (keyed by room + eid, so a
+            # racing first-saver can never repoint an already-stamped row):
+            # the saver's extractions/<eid>.json may be overwritten by their
+            # later corrections, and the room snapshot must stay immutable.
             try:
-                room_store.save_initial_extraction(room_id, full)
+                if room_store.get_initial_extraction(room_id) is None:
+                    snap = full
+                    if blob_store is not None and blob_store.configured():
+                        skey = f"extractions/room-{room_id}-{eid}.json"
+                        await asyncio.to_thread(
+                            blob_store.put_bytes, skey,
+                            json.dumps(full).encode(),
+                            content_type="application/json")
+                        snap = {STORAGE_KEY_FIELD: skey,
+                                "_entity_counts": entity_counts(full)}
+                    room_store.save_initial_extraction(room_id, snap)
             except Exception as e:  # noqa: BLE001 — snapshot must never fail the save
                 _log.error("initial-extraction snapshot failed for %s: %s", room_id, e)
 
@@ -211,16 +234,19 @@ def register_upload_routes(mcp, *, tokens, extraction_store,
             return _reject(410, "unknown, expired, or already-used download URL — "
                                 "mint a fresh one with open_dataroom")
         try:
-            rec = extraction_store.get(grant.meta["extraction_id"])
+            # get_payload resolves a pointer row through Storage; blob fetch
+            # runs off the event loop like every other Storage call here.
+            payload = await asyncio.to_thread(
+                extraction_store.get_payload, grant.meta["extraction_id"])
         except Exception as e:  # noqa: BLE001
             _log.error("download_extraction failed: %s", e)
             return _reject(500, str(e))
-        if rec is None or not rec.get("extraction"):
+        if payload is None:
             return _reject(404, "extraction not found")
         tokens.consume(token)
         _log.info("extraction served user=%s id=%s", grant.user_slug,
                   grant.meta["extraction_id"])
-        return JSONResponse(rec["extraction"])
+        return JSONResponse(payload)
 
     @mcp.custom_route("/upload/echo/{token}", methods=["POST"])
     async def upload_echo(request: Request) -> JSONResponse:

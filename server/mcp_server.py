@@ -57,9 +57,11 @@ from server.uploads import public_base_url, public_host, register_upload_routes
 from server.team_messages import CATEGORIES as MESSAGE_CATEGORIES, TeamMessageStore
 from utils.ses import send_notification
 
-_extraction_store = ExtractionStore()
-_room_store = RoomStore()
 _blob_store = SupabaseBlobStore()
+# Blob-backed: extraction payloads rest in Storage as pointer rows when the
+# blob store is configured; inline rows otherwise (local dev, tests).
+_extraction_store = ExtractionStore(_blob_store)
+_room_store = RoomStore()
 _upload_tokens = UploadTokenStore()
 _team_messages = TeamMessageStore()
 

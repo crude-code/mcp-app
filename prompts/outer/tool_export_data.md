@@ -1,10 +1,17 @@
-Hand the user a CSV file of work you've already done. Returns a download
-link — print it in chat and let them click it. Never fetch the link
-yourself: the whole point is that the bytes go to the user's disk instead of
-your context window.
+Hand the user a file of work you've already done — a CSV, or a zip of several.
+Returns a download link — print it in chat and let them click it. Never fetch
+the link yourself: the whole point is that the bytes go to the user's disk
+instead of your context window.
 
 **kind** — what to export:
 
+- `bundle` — the generous default for a finished valuation: a zip carrying
+  `wells_monthly.csv` (one row per well per month with volumes *and* every
+  cashflow line item — gross_rev, net_rev, sev_tax, gpt, capex, opex,
+  net_cashflow), `parameters.csv`, and a README explaining both. Offer this
+  when the user wants the deal's numbers rather than one specific slice —
+  they can keep whichever columns they need. Needs `run_id`; the run must
+  have been through `run_valuation`.
 - `volumes` — monthly oil and gas by well, over the run's full economic
   horizon (360 months by default). Gross physical volumes (`oil_bbl`,
   `gas_mcf`, before any interest) plus net volumes scaled by each well's

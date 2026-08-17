@@ -90,15 +90,21 @@ Tools (all return JSON strings):
   artifact itself by filling `data` into the template, per the guardrail
   in `prompts/outer/tool_run_valuation.md` — no MCP-app render. See
   `server/valuation/`.
-- **export_data** — The download lane: hands the user a CSV of work the
-  session already did, as a file instead of a chat payload. Takes a `kind`
-  (`volumes` — monthly gross + net oil/gas per well over the run's full
-  horizon; `parameters` — the committed decline curves per well per stream,
-  committed *and* asserted qi, Di, b, terminal switch, anchor, rationale;
-  `query` — a `run_sql` SELECT re-run at export scale, 100k rows against the
-  200-row chat cap) and returns `{download_url, filename, kind,
-  expires_in_hours}` — a few hundred bytes of context no matter how large the
-  file. Bytes are assembled at *fetch* time by `server/exports.py` straight
+- **export_data** — The download lane: hands the user a file of work the
+  session already did, instead of a chat payload. Takes a `kind`
+  (`bundle` — a zip of `wells_monthly.csv` (the whole schedule: volumes *and*
+  every cashflow line item, `net_cashflow = net_rev − sev_tax − gpt − capex −
+  opex` row by row), `parameters.csv`, and a generated README; the generous
+  default for a finished valuation, since the user keeps whichever columns
+  they need rather than naming them up front. `volumes` — monthly gross + net
+  oil/gas per well over the run's full horizon; `parameters` — the committed
+  decline curves per well per stream, committed *and* asserted qi, Di, b,
+  terminal switch, anchor, rationale; `query` — a `run_sql` SELECT re-run at
+  export scale, 100k rows against the 200-row chat cap) and returns
+  `{download_url, filename, kind, expires_in_hours}` — a few hundred bytes of
+  context no matter how large the file. The narrow CSV kinds stay for when
+  someone wants one slice; `bundle` is the one to offer when they just want
+  the deal's numbers. Bytes are assembled at *fetch* time by `server/exports.py` straight
   from the run record and streamed down `GET /export/{token}/{filename}`
   (`server/uploads.py`), so nothing sits at rest and an expired link costs one
   re-mint, never a recomputation. The mirror of the upload lane, with two
@@ -475,8 +481,10 @@ Run: `.venv/bin/pytest -q`.
   `test_extraction_transport.py`, `test_persist_pack.py`), the dataroom
   viewer payload — derived rollups plus the payload ⇄ frozen-template drift
   pin (`test_dataroom_viewer_payload.py`), the export lane
-  (`test_exports.py` — CSV assembly, the browser-facing download semantics,
-  and a drift guard tying the volume columns to the orchestrator's schedule),
+  (`test_exports.py` — CSV assembly, zip assembly and a round-trip that
+  unzips what the route actually served, the browser-facing download
+  semantics, and two drift guards tying the volume columns and the bundle's
+  full column set to the orchestrator's schedule),
   team messages
   (`test_team_messages_store.py`, `test_tools_message_team.py`), and schema
   drift.

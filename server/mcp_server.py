@@ -542,9 +542,9 @@ _EXPORT_TTL_HOURS = 24
 @mcp.tool(description=_load_prompt("outer/tool_export_data.md"))
 def export_data(kind: str, run_id: str = "", sql: str = "",
                 schema: str = "public", label: str = "") -> str:
-    """Mint a browser-clickable CSV download URL. The bytes are assembled at
-    fetch time (server/exports.py) and never transit the model's context; this
-    call returns only a link and a filename."""
+    """Mint a browser-clickable download URL — a CSV, or a zip for `bundle`.
+    The bytes are assembled at fetch time (server/exports.py) and never transit
+    the model's context; this call returns only a link and a filename."""
     identity = get_current_identity()
     if not identity:
         return _json.dumps({"error": "Could not identify user"})
@@ -554,7 +554,7 @@ def export_data(kind: str, run_id: str = "", sql: str = "",
             return _json.dumps({
                 "error": f"unknown kind {kind!r}; expected one of {list(_exports.KINDS)}"
             })
-        if kind in ("volumes", "parameters") and not run_id.strip():
+        if kind in ("volumes", "parameters", "bundle") and not run_id.strip():
             return _json.dumps({"error": f"kind {kind!r} needs a run_id"})
         if kind == "query" and not sql.strip():
             return _json.dumps({"error": "kind 'query' needs a sql SELECT"})

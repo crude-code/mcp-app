@@ -43,7 +43,7 @@ import tempfile
 from urllib.parse import urlparse
 
 from starlette.requests import Request
-from starlette.responses import JSONResponse, PlainTextResponse
+from starlette.responses import JSONResponse, PlainTextResponse, Response
 
 from fastmcp.server.dependencies import get_http_request
 
@@ -303,12 +303,15 @@ def register_upload_routes(mcp, *, tokens, extraction_store,
         # recognisable) but it lands in a response header, so it is rebuilt
         # from an allowlist rather than trusted.
         raw = request.path_params["filename"] or ""
-        filename = "".join(c for c in raw if c.isalnum() or c in "-_.") or "export.csv"
+        default = "export.zip" if kind == "bundle" else "export.csv"
+        filename = "".join(c for c in raw if c.isalnum() or c in "-_.") or default
         _log.info("export served user=%s kind=%s rows=%d bytes=%d",
                   grant.user_slug, kind, rows, len(body))
-        return PlainTextResponse(
+        # A bundle is bytes, the CSV kinds are text; Response takes both, and
+        # media_type is what tells the browser which it just got.
+        return Response(
             body,
-            media_type="text/csv; charset=utf-8",
+            media_type=exports.media_type_for(kind),
             headers={
                 "Content-Disposition": f'attachment; filename="{filename}"',
                 # A capability URL is not a cacheable public resource.

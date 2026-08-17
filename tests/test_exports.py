@@ -9,6 +9,7 @@ a link whose grant has gone.
 """
 import csv
 import io
+import zipfile
 
 import pytest
 from fastmcp import FastMCP
@@ -31,9 +32,19 @@ _ECONOMICS = {
         "months": ["2026-08-01", "2026-09-01"],
         "by_well": {
             "33-007-01662": {"oil_bbl": [1000.0, 950.0], "gas_mcf": [2000.0, 1900.0],
-                             "net_oil": [200.0, 190.0], "net_gas": [400.0, 380.0]},
+                             "net_oil": [200.0, 190.0], "net_gas": [400.0, 380.0],
+                             "gross_rev": [95000.0, 90000.0],
+                             "net_rev": [19000.0, 18000.0],
+                             "sev_tax": [1425.0, 1350.0], "gpt": [800.0, 760.0],
+                             "capex": [0.0, 0.0], "opex": [3000.0, 3000.0],
+                             "net_cashflow": [13775.0, 12890.0]},
             "33-007-00001": {"oil_bbl": [0.0, 500.0], "gas_mcf": [0.0, 800.0],
-                             "net_oil": [0.0, 100.0], "net_gas": [0.0, 160.0]},
+                             "net_oil": [0.0, 100.0], "net_gas": [0.0, 160.0],
+                             "gross_rev": [0.0, 48000.0],
+                             "net_rev": [0.0, 9600.0],
+                             "sev_tax": [0.0, 720.0], "gpt": [0.0, 400.0],
+                             "capex": [0.0, 0.0], "opex": [0.0, 2500.0],
+                             "net_cashflow": [0.0, 5980.0]},
         },
     }
 }
@@ -173,6 +184,66 @@ def test_volume_columns_track_the_schedule():
     assert set(exports._VOLUME_COLS) <= set(_SCHEDULE_COLS)
 
 
+# ── the bundle ──────────────────────────────────────────────────────────────
+
+def test_cashflow_carries_every_line_item():
+    """Where `volumes` is deliberately narrow, the bundle's table is the whole
+    schedule — and the cashflow identity has to survive the trip to CSV."""
+    text, n = exports.build_cashflow_csv(_ECONOMICS)
+    rows = _rows(text)
+    assert n == 4
+    subject = [r for r in rows if r["well_api"] == "33-007-01662"][0]
+    assert set(subject) == {"well_api", "month", "month_index", *exports._CASHFLOW_COLS}
+    got = (float(subject["net_rev"]) - float(subject["sev_tax"])
+           - float(subject["gpt"]) - float(subject["capex"]) - float(subject["opex"]))
+    assert got == pytest.approx(float(subject["net_cashflow"]))
+
+
+def test_cashflow_columns_track_the_schedule():
+    """Tighter than the volumes guard: the bundle claims to carry *everything*
+    the orchestrator computes, so a new column there must appear here too."""
+    from server.valuation.orchestrator import _SCHEDULE_COLS
+    assert exports._CASHFLOW_COLS == _SCHEDULE_COLS
+
+
+def _members(blob):
+    with zipfile.ZipFile(io.BytesIO(blob)) as z:
+        return {n: z.read(n).decode() for n in z.namelist()}
+
+
+def test_bundle_packs_the_tables_and_a_readme():
+    blob, rows = exports.build_bundle_zip(_ECONOMICS, _FORECAST, run_id="run-1")
+    files = _members(blob)
+    assert set(files) == {"wells_monthly.csv", "parameters.csv", "README.txt"}
+    assert rows == 6                               # 4 well-months + 2 curve rows
+    assert files["wells_monthly.csv"].splitlines()[0].endswith("net_cashflow")
+    readme = files["README.txt"]
+    assert "run-1" in readme
+    assert "parameters.csv" in readme              # documented because present
+    assert "net_cashflow = net_rev - sev_tax - gpt - capex - opex" in readme
+
+
+def test_bundle_without_a_forecast_stage_still_builds():
+    """Parameters ride along when they can be read; losing them costs the file,
+    not the bundle — and the README stops advertising what isn't inside."""
+    blob, rows = exports.build_bundle_zip(_ECONOMICS, None, run_id="run-1")
+    files = _members(blob)
+    assert set(files) == {"wells_monthly.csv", "README.txt"}
+    assert rows == 4
+    assert "parameters.csv" not in files["README.txt"]
+
+
+def test_bundle_needs_the_economics_stage():
+    with pytest.raises(exports.ExportError, match="run_valuation"):
+        exports.build_bundle_zip({}, _FORECAST, run_id="run-1")
+
+
+def test_bundle_filename_is_a_zip():
+    assert exports.filename_for("bundle", run_id="abc123def").endswith(".zip")
+    assert exports.filename_for("volumes", run_id="abc123def").endswith(".csv")
+    assert exports.media_type_for("bundle") == "application/zip"
+
+
 # ── the route ───────────────────────────────────────────────────────────────
 
 def test_download_serves_a_csv_attachment(rig):
@@ -213,6 +284,18 @@ def test_parameters_kind_routes_to_the_forecast_stage(rig):
     r = client.get(f"/export/{_token(tokens, kind='parameters')}/p.csv")
     assert r.status_code == 200
     assert r.text.splitlines()[0].startswith("well_api,stream,qi_committed,qi_asserted")
+
+
+def test_download_serves_a_zip_that_actually_unzips(rig):
+    """The one thing the CSV kinds never proved: bytes survive the route."""
+    client, tokens, _ = rig
+    r = client.get(f"/export/{_token(tokens, kind='bundle')}/crudecode-bundle.zip")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/zip"
+    assert r.headers["content-disposition"] == 'attachment; filename="crudecode-bundle.zip"'
+    with zipfile.ZipFile(io.BytesIO(r.content)) as z:
+        assert z.testzip() is None
+        assert "wells_monthly.csv" in z.namelist()
 
 
 def test_missing_stage_is_422_not_500(rig):

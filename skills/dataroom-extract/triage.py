@@ -8,7 +8,15 @@ so you read structured content instead of opening binaries by hand.
 
     python3 triage.py <dataroom_dir>
 
-Writes, under <dataroom_dir>/_triage/:
+Most VDR exports zip everything under a single top-level folder, so unzipping
+into `room/` leaves the actual room at `room/<Deal Name>/`. The walker
+descends past such wrapper directories (see `room_root`), because every `path`
+it records — and therefore every `provenance.source_file` and
+`documents[].path` in the extraction — is relative to the root it picks.
+Passing the unzip destination is correct; the printed "room root" line tells
+you where it landed.
+
+Writes, under <room_root>/_triage/ (printed on exit):
     manifest.json        one entry per file (path, size, type, sha256, artifacts)
     triage.md            human-readable inventory
     xlsx/<name>.json     each workbook: sheet names, columns, sample rows
@@ -45,6 +53,41 @@ def sha256_file(p: Path) -> str:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def is_noise(p: Path) -> bool:
+    """Zip/OS cruft that must not count as room content: macOS resource forks
+    and `__MACOSX`, dotfiles, and our own `_triage` output on a re-run."""
+    return (p.name in (".DS_Store", "__MACOSX", TRIAGE_DIR)
+            or p.name.startswith("._") or p.name.startswith("."))
+
+
+def subdirs(p: Path) -> list[Path]:
+    return [c for c in p.iterdir() if c.is_dir() and not is_noise(c)]
+
+
+def room_root(start: Path) -> Path:
+    """The real room root at or below `start`.
+
+    A zip that packs its contents under one top-level folder would otherwise
+    contribute that folder as segment 1 of every recorded path — which leaks
+    into `documents[].path` and `provenance.source_file`, breaking the
+    room-relative contract (folders render as "Asset 53622 - .../01~ Overview"
+    and two runs of the same room disagree on provenance).
+
+    Descend while the directory holds nothing but a single subdirectory *that
+    itself holds subdirectories*. That last condition is what separates a
+    wrapper from content: a wrapper wraps the room's structure, so it contains
+    folders, while a lone `Check Stubs/` full of PDFs is the room's only real
+    folder and must keep its name. Depth-capped, and safe to re-run since
+    `_triage` counts as noise rather than content."""
+    cur = start
+    for _ in range(4):
+        entries = [p for p in cur.iterdir() if not is_noise(p)]
+        if len(entries) != 1 or not entries[0].is_dir() or not subdirs(entries[0]):
+            break
+        cur = entries[0]
+    return cur
 
 
 def walk(root: Path):
@@ -117,9 +160,10 @@ def dump_pdf(src: Path, out: Path):
 def main() -> None:
     if len(sys.argv) != 2:
         sys.exit("usage: python3 triage.py <dataroom_dir>")
-    root = Path(sys.argv[1]).resolve()
-    if not root.is_dir():
-        sys.exit(f"not a directory: {root}")
+    start = Path(sys.argv[1]).resolve()
+    if not start.is_dir():
+        sys.exit(f"not a directory: {start}")
+    root = room_root(start)
     triage = root / TRIAGE_DIR
 
     entries = []
@@ -168,6 +212,10 @@ def main() -> None:
         lines.append(f"- `{e['path']}` [{e['file_type']}, {e['size_bytes']:,}B] {' '.join(flags)}")
     (triage / "triage.md").write_text("\n".join(lines))
 
+    if root != start:
+        print(f"room root: {root.relative_to(start).as_posix()}/ "
+              "(descended past the zip's wrapper folder; recorded paths are "
+              "relative to it)")
     print(f"triaged {len(entries)} files -> {triage}/manifest.json")
     print("by type:", ", ".join(f"{t}={c}" for t, c in sorted(by_type.items(), key=lambda kv: -kv[1])))
 

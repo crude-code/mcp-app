@@ -15,8 +15,10 @@ deterministically, so no rollup is ever model-arithmetic:
     `revenue_observations` over the trailing 12 months ending at the latest
     prod month present. Pre-opex, net to the extracted interest.
   - Revenue share: well LTM / package LTM.
-  - WI/NRI/RI per well: summed across that well's interest rows (a split
-    interest sums; the normal case is one row per well), shown as percent.
+  - WI/NRI/RI/NPRI/ORRI per well or tract: summed across that record's
+    interest rows (a split interest sums; the normal case is one row each),
+    shown as percent at full stated precision — royalty decimals are only
+    ever rounded for display, in the viewer.
   - Manifest groups: wells by `well_type` (PDP / SI / DUC / PUD / PA).
   - Document folders: files grouped by their last two path segments.
 
@@ -62,14 +64,29 @@ def _round(value, digits=2):
 
 
 def _pct(decimal):
-    """Interest decimal -> percent, rounded to 4 (0.0059439 -> 0.5944)."""
-    return None if decimal is None else round(decimal * 100, 4)
+    """Interest decimal -> percent, rounded to 8 decimals of the underlying
+    decimal (0.0059439 -> 0.59439). The rounding exists only to suppress
+    float-summation noise (0.15 + 0.06 -> 21.000000000000004); it must stay
+    well past any stated decimal, because a royalty decimal's trailing digits
+    are load-bearing — round percent to 4 and 0.00170514 becomes 0.001705."""
+    return None if decimal is None else round(decimal * 100, 6)
 
 
 def _well_key(api, name):
     if api:
         return ("api", api)
     return ("name", (name or "").casefold()) if name else None
+
+
+def _tract_key(name):
+    return ("tract", name.casefold()) if name else None
+
+
+def _interest_key(interest):
+    """Interests hang off a well API or, in minerals/royalty rooms, a tract
+    name. Keying on the API alone drops every tract-keyed row on the floor."""
+    return (_well_key(interest.get("well_api"), None)
+            or _tract_key(interest.get("tract_name")))
 
 
 def _ltm_by_well(revenue_rows):
@@ -96,22 +113,31 @@ def _ltm_by_well(revenue_rows):
     return per_well, {"start": start, "end": end}
 
 
+INTEREST_FIELDS = (("wi_decimal", "wi"), ("nri_decimal", "nri"),
+                   ("ri_decimal", "ri"), ("npri_decimal", "npri"),
+                   ("orri_decimal", "orri"))
+
+
 def _interest_totals(interests):
-    """Per-well summed interest decimals + the reversion/caveat notes that
-    ride on interest rows (e.g. a payout reversion)."""
-    by_well = {}
+    """Summed interest decimals per well API *or* tract name, keyed by
+    `_interest_key`, plus the reversion/caveat notes that ride on interest
+    rows (e.g. a payout reversion). All five decimals are summed — an
+    ORRI/NPRI package's economics live in the fields the WI/NRI/RI trio
+    doesn't cover."""
+    by_key = {}
     for i in interests:
-        key = _well_key(i.get("well_api"), None)
+        key = _interest_key(i)
         if key is None:
             continue
-        slot = by_well.setdefault(key, {"wi": None, "nri": None, "ri": None, "notes": []})
-        for field, out in (("wi_decimal", "wi"), ("nri_decimal", "nri"), ("ri_decimal", "ri")):
+        slot = by_key.setdefault(key, {out: None for _, out in INTEREST_FIELDS})
+        slot.setdefault("notes", [])
+        for field, out in INTEREST_FIELDS:
             if i.get(field) is not None:
                 slot[out] = (slot[out] or 0.0) + i[field]
         note = (i.get("provenance") or {}).get("notes")
         if note and note not in slot["notes"]:
             slot["notes"].append(note)
-    return by_well
+    return by_key
 
 
 def _lookup(per_well, api, name):
@@ -121,15 +147,14 @@ def _lookup(per_well, api, name):
     return None
 
 
-def build_manifest(wells, interests, revenue_rows):
+def build_manifest(wells, interest_by_key, revenue_rows):
     """Wells spine: manifest groups by well_type, rows sorted by LTM desc."""
     ltm, window = _ltm_by_well(revenue_rows)
-    interest_by_well = _interest_totals(interests)
     package_ltm = sum(ltm.values()) or None
 
     rows_by_status = {}
     for w in wells:
-        ints = _lookup(interest_by_well, w.get("api"), None) or {}
+        ints = _lookup(interest_by_key, w.get("api"), None) or {}
         well_ltm = _lookup(ltm, w.get("api"), w.get("name"))
         share = (well_ltm / package_ltm * 100) if well_ltm is not None and package_ltm else None
         status = w.get("well_type") or "UNKNOWN"
@@ -144,6 +169,8 @@ def build_manifest(wells, interests, revenue_rows):
             "wi_pct": _pct(ints.get("wi")),
             "nri_pct": _pct(ints.get("nri")),
             "ri_pct": _pct(ints.get("ri")),
+            "npri_pct": _pct(ints.get("npri")),
+            "orri_pct": _pct(ints.get("orri")),
             "lateral_ft": w.get("lateral_length_ft"),
             "first_prod": w.get("first_prod_date"),
             "ltm_net_revenue": _round(well_ltm),
@@ -167,10 +194,16 @@ def build_manifest(wells, interests, revenue_rows):
     return groups, window, _round(package_ltm)
 
 
-def build_tracts(tracts):
-    """Tracts spine (minerals/royalty rooms): one flat table."""
+def build_tracts(tracts, interest_by_key):
+    """Tracts spine (minerals/royalty rooms): one flat table.
+
+    `royalty_pct` is the lease's royalty rate; the `*_pct` columns are the
+    owner's own decimals, summed from the interest rows that name this tract.
+    Without that join a minerals room whose interests are tract-keyed shows no
+    interest anywhere in the viewer — and the interest *is* the deal."""
     out = []
     for t in tracts:
+        ints = interest_by_key.get(_tract_key(t.get("name"))) or {}
         out.append({
             "name": t.get("name"),
             "legal_description": t.get("legal_description"),
@@ -180,6 +213,10 @@ def build_tracts(tracts):
             "nma": t.get("nma"),
             "nra": t.get("nra"),
             "royalty_pct": _pct(t.get("royalty_decimal")),
+            "ri_pct": _pct(ints.get("ri")),
+            "nri_pct": _pct(ints.get("nri")),
+            "npri_pct": _pct(ints.get("npri")),
+            "orri_pct": _pct(ints.get("orri")),
             "operator": t.get("operator"),
             "lessee": t.get("lessee"),
         })
@@ -222,7 +259,8 @@ def build_payload(ext):
     documents = ext.get("documents") or []
     tracts = ext.get("tracts") or []
 
-    manifest, window, package_ltm = build_manifest(wells, interests, revenue)
+    interest_by_key = _interest_totals(interests)
+    manifest, window, package_ltm = build_manifest(wells, interest_by_key, revenue)
 
     wi_values = [r["wi_pct"] for g in manifest for r in g["wells"] if r["wi_pct"] is not None]
     stats = {
@@ -245,7 +283,7 @@ def build_payload(ext):
         "notes": ext.get("extraction_notes"),
         "ltm_window": window,
         "manifest": manifest,
-        "tracts": build_tracts(tracts),
+        "tracts": build_tracts(tracts, interest_by_key),
         "documents": build_documents(documents),
     }
 

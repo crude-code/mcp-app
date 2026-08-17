@@ -202,7 +202,13 @@ class DivisionOrder(EntityBase):
 
 
 class Document(EntityBase):
-    path: str
+    path: str = Field(
+        ...,
+        description="Relative path within the dataroom root, same convention as "
+                    "provenance.source_file (e.g. '01~ Overview/Teaser.pdf'). Never "
+                    "include the room's own top-level folder — triage.py's manifest "
+                    "paths are already relative to it; lift them verbatim.",
+    )
     category: str | None = None     # engineering / title / financial / legal / regulatory / marketing / other
     file_type: str | None = None
     size_bytes: int | None = None

@@ -100,6 +100,56 @@ def test_interest_sums_percent_conversion_and_notes():
     assert row["note"] == note
 
 
+def test_royalty_decimal_keeps_every_stated_digit():
+    """A royalty decimal's trailing digits are the multiplier on every dollar
+    in the deal — the payload must not quietly shorten 0.00170514 to 0.001705
+    while revenue rows keep the full owner_decimal."""
+    ext = {
+        "wells": [_well("05-123-45678", "Drake 01N")],
+        "interests": [{"provenance": _prov(), "well_api": "05-123-45678",
+                       "interest_type": "RI", "ri_decimal": 0.00170514}],
+        "revenue_observations": [],
+    }
+    row = vp.build_payload(ext)["manifest"][0]["wells"][0]
+    assert row["ri_pct"] == 0.170514
+    assert row["ri_pct"] / 100 == 0.00170514
+    # float-summation noise is still suppressed
+    assert vp._pct(0.15 + 0.06) == 21.0
+
+
+def test_npri_and_orri_decimals_reach_the_payload():
+    ext = {
+        "wells": [_well("42-1", "Alpha")],
+        "interests": [{"provenance": _prov(), "well_api": "42-1",
+                       "interest_type": "ORRI", "orri_decimal": 0.0125,
+                       "npri_decimal": 0.00625}],
+        "revenue_observations": [],
+    }
+    row = vp.build_payload(ext)["manifest"][0]["wells"][0]
+    assert (row["orri_pct"], row["npri_pct"]) == (1.25, 0.625)
+
+
+def test_tract_keyed_interests_land_on_the_tract_row():
+    """Minerals rooms key interests by tract name, not well API. Those rows
+    used to be dropped outright, leaving the viewer with no interest at all."""
+    ext = {
+        "wells": [],
+        "tracts": [{"provenance": _prov(), "name": "Hen Pad Tract",
+                    "royalty_decimal": 0.1875, "nra": 51.43}],
+        "interests": [
+            {"provenance": _prov(), "tract_name": "Hen Pad Tract",
+             "interest_type": "RI", "ri_decimal": 0.00085257},
+            {"provenance": _prov(), "tract_name": "hen pad tract",  # case-insensitive
+             "interest_type": "RI", "ri_decimal": 0.00085257},
+        ],
+        "revenue_observations": [],
+    }
+    tract = vp.build_payload(ext)["tracts"][0]
+    assert tract["ri_pct"] == 0.170514           # the two halves sum
+    assert tract["royalty_pct"] == 18.75         # lease rate stays distinct
+    assert tract["npri_pct"] is None
+
+
 def test_stats_wi_spread():
     ext = {
         "wells": [_well("42-1", "A"), _well("42-2", "B")],
@@ -142,15 +192,18 @@ def test_tracts_spine():
 
 
 def test_documents_grouped_by_last_two_segments():
+    """Paths are room-relative (triage.py's contract), so a depth-1 folder
+    labels as itself — it must never pull the room's own directory in as a
+    grandparent the way `Asset 53622 - .../01~ Overview` did."""
     docs = [
-        {"provenance": _prov(), "path": "Room158/Check Stubs/a.pdf", "category": "financial"},
-        {"provenance": _prov(), "path": "Room158/Check Stubs/b.pdf", "category": "financial"},
-        {"provenance": _prov(), "path": "Room158/Title/do.pdf", "category": "title"},
+        {"provenance": _prov(), "path": "Check Stubs/a.pdf", "category": "financial"},
+        {"provenance": _prov(), "path": "Check Stubs/b.pdf", "category": "financial"},
+        {"provenance": _prov(), "path": "Title/do.pdf", "category": "title"},
         {"provenance": _prov(), "path": "teaser.pdf", "category": "marketing"},
     ]
     groups = vp.build_payload({"documents": docs})["documents"]
     assert [(g["folder"], g["count"]) for g in groups] == [
-        ("Room158/Check Stubs", 2), ("(root)", 1), ("Room158/Title", 1)]
+        ("Check Stubs", 2), ("(root)", 1), ("Title", 1)]
     assert groups[0]["files"] == ["a.pdf", "b.pdf"]
     assert groups[2]["categories"] == "title"
 
@@ -203,7 +256,8 @@ STATS_KEYS = {"well_count", "tract_count", "doc_count", "net_boed",
               "seller_pv10_mm", "ltm_net_revenue", "ltm_net_revenue_mo",
               "avg_wi_pct", "wi_min_pct", "wi_max_pct"}
 ROW_KEYS = {"api", "name", "operator", "formation", "basin", "county", "state",
-            "wi_pct", "nri_pct", "ri_pct", "lateral_ft", "first_prod",
+            "wi_pct", "nri_pct", "ri_pct", "npri_pct", "orri_pct",
+            "lateral_ft", "first_prod",
             "ltm_net_revenue", "revenue_share_pct", "note"}
 GROUP_KEYS = {"status", "label", "well_count", "ltm_net_revenue", "wells"}
 DOC_KEYS = {"folder", "count", "categories", "files"}
@@ -217,9 +271,11 @@ TEMPLATE_ACCESSORS = [
     "stats.wi_max_pct", "stats.doc_count",
     "group.status", "group.label", "group.well_count", "group.ltm_net_revenue",
     "group.wells", "group.folder", "group.count", "group.categories", "group.files",
-    "r.wi_pct", "r.nri_pct", "r.ri_pct", "r.lateral_ft", "r.first_prod",
+    "r.wi_pct", "r.nri_pct", "r.ri_pct", "r.npri_pct", "r.orri_pct",
+    "r.lateral_ft", "r.first_prod",
     "r.ltm_net_revenue", "r.revenue_share_pct", "r.note",
     "t.royalty_pct", "t.gross_acres", "t.nma", "t.nra", "t.legal_description",
+    "t.ri_pct", "t.nri_pct", "t.npri_pct", "t.orri_pct",
 ]
 FILL_MARKERS = ['const DATA = null;', 'const TITLE = "";', 'const TLDR = "";']
 

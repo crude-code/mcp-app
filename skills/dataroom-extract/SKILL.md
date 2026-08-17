@@ -53,7 +53,8 @@ You are NOT writing a report or running a valuation. You are extracting **facts,
    ```bash
    unzip -q "<upload>.zip" -d room && python3 triage.py room
    ```
-   It writes `room/_triage/manifest.json` (every file: path, size, type, sha256) and `room/_triage/triage.md` (readable inventory), and dumps each spreadsheet to `room/_triage/xlsx/<name>.json` and each text-PDF to `room/_triage/pdf/<name>.txt`. **Read those dumps** instead of opening binaries by hand.
+   It writes `_triage/manifest.json` (every file: path, size, type, sha256) and `_triage/triage.md` (readable inventory), and dumps each spreadsheet to `_triage/xlsx/<name>.json` and each text-PDF to `_triage/pdf/<name>.txt`. **Read those dumps** instead of opening binaries by hand.
+   Most rooms zip their contents under one top-level folder, so the walker descends past it and prints where the room root and `_triage/` actually landed (`room/<Deal Name>/_triage/…`) — read the manifest at the printed path. Every path it records is **relative to that root**, which is exactly the convention `documents[].path` and `provenance.source_file` require: lift manifest paths verbatim and never prepend the room's own folder name.
 3. **Orient.** Read `triage.md`, then the overview/teaser document if there is one (most rooms have a one-pager naming the operator, basin, county, well count, and asset type).
 4. **Scope.** Decide which entities this room actually supports. Extract what's there; skip what isn't. A room with no LOS has no `expenses`; a working-interest package usually has no `tracts`.
    **Read frugally — these three rules are mandatory, not advice:**
@@ -159,6 +160,16 @@ You are NOT writing a report or running a valuation. You are extracting **facts,
   room. When a curated LOS is better-built than the raw stubs, stubs stay
   the primary source; use the rollup to find what your parse missed and to
   fill checks whose stubs are absent (note the fill in `extraction_notes`).
+
+**Interest decimals are copied, never rounded.** Write `wi_decimal` /
+`nri_decimal` / `ri_decimal` / `npri_decimal` / `orri_decimal` and
+`owner_decimal` with **every digit the document states** — a royalty decimal
+quoted as `0.00170514` is stored as `0.00170514`, not `0.001705`. Trailing
+digits are load-bearing here: they are the multiplier on every dollar in the
+deal, they are how a stub's `owner_decimal` is tied out against the division
+order, and a decimal silently rounded in one place while another field keeps
+full precision makes one extraction disagree with itself. Rounding for
+*display* is the viewer's job, and it is already handled.
 
 **Identifier traps.** State regulatory file numbers (NDIC etc.) look enough
 like APIs to be dangerous — a "State ID" column may be a file number for one

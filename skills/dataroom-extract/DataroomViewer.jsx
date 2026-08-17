@@ -45,7 +45,17 @@ const fmtCompact = (v) => {
   return `${sign}$${Math.round(a)}`;
 };
 const fmtInt = (v) => (v == null ? "—" : Math.round(v).toLocaleString("en-US"));
-const fmtPct = (v) => (v == null ? "—" : v.toFixed(3).replace(/\.?0+$/, "") + "%");
+// Six significant digits, not three decimals: a royalty decimal of 0.00170514
+// is 0.170514% and toFixed(3) would print it as 0.171% — three sig figs on the
+// multiplier the whole deal turns on — while anything under 0.0005% rendered as
+// a flat "0%". Trim trailing zeros only past a decimal point (naive trimming
+// turns "100000" into "1").
+const fmtPct = (v) => {
+  if (v == null) return "—";
+  let s = v.toPrecision(6);
+  if (s.includes(".") && !s.includes("e")) s = s.replace(/0+$/, "").replace(/\.$/, "");
+  return s + "%";
+};
 const fmtMonth = (d) => (d ? String(d).slice(0, 7) : "—");
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const fmtDay = (d) => {
@@ -109,6 +119,8 @@ function ManifestGroup({ group, packageLtm, defaultOpen }) {
     has("wi_pct") && { k: "wi_pct", h: "WI %", f: (r) => fmtPct(r.wi_pct) },
     has("nri_pct") && { k: "nri_pct", h: "NRI %", f: (r) => fmtPct(r.nri_pct) },
     has("ri_pct") && { k: "ri_pct", h: "RI %", f: (r) => fmtPct(r.ri_pct) },
+    has("npri_pct") && { k: "npri_pct", h: "NPRI %", f: (r) => fmtPct(r.npri_pct) },
+    has("orri_pct") && { k: "orri_pct", h: "ORRI %", f: (r) => fmtPct(r.orri_pct) },
     has("lateral_ft") && { k: "lateral_ft", h: "Lat ft", f: (r) => fmtInt(r.lateral_ft) },
     has("first_prod") && { k: "first_prod", h: "First prod", f: (r) => fmtMonth(r.first_prod) },
     has("ltm_net_revenue") && { k: "ltm", h: "LTM net rev", f: (r) => (r.ltm_net_revenue == null ? "—" : fmtUSD(r.ltm_net_revenue)) },
@@ -189,6 +201,12 @@ function TractsTable({ tracts }) {
     has("nma") && { k: "nma", h: "NMA", f: (t) => (t.nma == null ? "—" : t.nma.toLocaleString("en-US")) },
     has("nra") && { k: "nra", h: "NRA", f: (t) => (t.nra == null ? "—" : t.nra.toLocaleString("en-US")) },
     has("royalty_pct") && { k: "royalty_pct", h: "Royalty %", f: (t) => fmtPct(t.royalty_pct) },
+    // The owner's own decimals on this tract — distinct from the lease royalty
+    // rate above, and the only place a tract-keyed interest ever shows up.
+    has("ri_pct") && { k: "ri_pct", h: "Owner RI %", f: (t) => fmtPct(t.ri_pct) },
+    has("nri_pct") && { k: "nri_pct", h: "NRI %", f: (t) => fmtPct(t.nri_pct) },
+    has("npri_pct") && { k: "npri_pct", h: "NPRI %", f: (t) => fmtPct(t.npri_pct) },
+    has("orri_pct") && { k: "orri_pct", h: "ORRI %", f: (t) => fmtPct(t.orri_pct) },
     has("operator") && { k: "operator", h: "Operator", align: "left", f: (t) => t.operator },
     has("lessee") && { k: "lessee", h: "Lessee", align: "left", f: (t) => t.lessee },
   ].filter(Boolean);

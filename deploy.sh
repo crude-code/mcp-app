@@ -73,6 +73,15 @@ if [ ! -f "$TEMPLATE_DEST" ]; then
     echo "published deal-sheet template ${TEMPLATE_SHA}"
 fi
 
+RESERVE_TEMPLATE_SRC=server/valuation/viewer/ReserveReport.jsx
+RESERVE_TEMPLATE_SHA=$(sha256sum "$RESERVE_TEMPLATE_SRC" | cut -c1-12)
+RESERVE_TEMPLATE_DEST="${TEMPLATE_DIR}/reserve-report-${RESERVE_TEMPLATE_SHA}.jsx"
+if [ ! -f "$RESERVE_TEMPLATE_DEST" ]; then
+    sudo mkdir -p "$TEMPLATE_DIR"
+    sudo install -m 644 "$RESERVE_TEMPLATE_SRC" "$RESERVE_TEMPLATE_DEST"
+    echo "published reserve-report template ${RESERVE_TEMPLATE_SHA}"
+fi
+
 # --- skill-file publish ------------------------------------------------------
 # Every skill supporting file, content-addressed as skill-<sha12>-<name> in
 # the same apex-served dir — the fast lane get_skill's file_urls point at

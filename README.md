@@ -28,6 +28,8 @@ See [`CLAUDE.md`](./CLAUDE.md) for the full architecture reference.
 
 - **`run_sql`** — guarded, SELECT-only, capped exploration query
 - **`forecast_wells`** / **`run_valuation`** — accept asserted decline parameters (Claude is the reservoir engineer; the server is the calculator), echo their consequences, and run economics — returning the data behind a claude.ai deal-sheet artifact
+- **`reserve_report`** — turns that completed valuation into a shareable remaining-forecast-volume artifact without refitting or re-running economics
+- **`export_data`** — mints a one-time ZIP download for a persisted dataroom extraction or valuation run; bulk bytes stay out of model context
 - **`map`** — a MapLibre GL well/unit/PLSS map
 - **`get_skill`** — fetches a packaged, occasional-use procedure (e.g. dataroom extraction)
 - **`save_dataroom_extraction`** — persists a dataroom extraction so the deal record outlives the chat
@@ -69,10 +71,12 @@ the corresponding environment variable is unset.
 
 ## Maintenance & contributions
 
-This is a working platform maintained by one person alongside a full-time job.
-It's open-sourced for transparency and as a reference for building real systems
-on MCP + skills. Issues and PRs are welcome, but responses are best-effort —
-please set expectations accordingly.
+This working tree includes operational deployment material and must not be
+published verbatim. The intended public application boundary is documented in
+[`REPO_BOUNDARY.md`](./REPO_BOUNDARY.md); use
+[`PUBLIC_RELEASE_CHECKLIST.md`](./PUBLIC_RELEASE_CHECKLIST.md) when producing a
+public snapshot. Contribution and vulnerability-reporting guidance lives in
+[`CONTRIBUTING.md`](./CONTRIBUTING.md) and [`SECURITY.md`](./SECURITY.md).
 
 ## License
 

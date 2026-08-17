@@ -18,7 +18,10 @@ everything through a handful of MCP tools:
   authoring or render step for this path anymore.
 - For deals it calls `forecast_wells` → `run_valuation` → gets a slim payload
   plus the frozen `DealSheet.jsx` template in the same response, and builds
-  the deal-sheet artifact from them directly.
+  the deal-sheet artifact from them directly. `reserve_report` can then render
+  the same committed forecast as a remaining-volume artifact; it never refits.
+- `export_data` mints one-time ZIP downloads for persisted dataroom or valuation
+  records so bulk exports stay outside model context.
 - For geography it calls `map`.
 - For a one-off packaged procedure (e.g. extracting a dataroom upload) it
   calls `get_skill(name)` to fetch the instructions and follows them directly.
@@ -90,31 +93,13 @@ Tools (all return JSON strings):
   artifact itself by filling `data` into the template, per the guardrail
   in `prompts/outer/tool_run_valuation.md` — no MCP-app render. See
   `server/valuation/`.
-- **export_data** — The download lane: hands the user a file of work the
-  session already did, instead of a chat payload. Takes a `kind`
-  (`bundle` — a zip of `wells_monthly.csv` (the whole schedule: volumes *and*
-  every cashflow line item, `net_cashflow = net_rev − sev_tax − gpt − capex −
-  opex` row by row), `parameters.csv`, and a generated README; the generous
-  default for a finished valuation, since the user keeps whichever columns
-  they need rather than naming them up front. `volumes` — monthly gross + net
-  oil/gas per well over the run's full horizon; `parameters` — the committed
-  decline curves per well per stream, committed *and* asserted qi, Di, b,
-  terminal switch, anchor, rationale; `query` — a `run_sql` SELECT re-run at
-  export scale, 100k rows against the 200-row chat cap) and returns
-  `{download_url, filename, kind, expires_in_hours}` — a few hundred bytes of
-  context no matter how large the file. The narrow CSV kinds stay for when
-  someone wants one slice; `bundle` is the one to offer when they just want
-  the deal's numbers. Bytes are assembled at *fetch* time by `server/exports.py` straight
-  from the run record and streamed down `GET /export/{token}/{filename}`
-  (`server/uploads.py`), so nothing sits at rest and an expired link costs one
-  re-mint, never a recomputation. The mirror of the upload lane, with two
-  differences that follow from the client being a browser rather than the
-  sandbox: the token is never consumed (browsers retry, people double-click)
-  and its grant carries a 24-hour TTL instead of the 15-minute upload default.
-  A `query` export is dry-run at mint time so a bad SELECT fails in the
-  conversation, not behind a link the user already clicked. Deliberately not a
-  data feed: the link expires, re-minting needs a live session, and the caps
-  are finite — see `prompts/outer/tool_export_data.md`.
+- **reserve_report** — Owner-scoped read of a completed valuation. Returns a
+  frozen React artifact template plus server-computed remaining oil/gas/BOE
+  through the valuation horizon, grouped by the same operational PDP/DUC/PUD
+  buckets. It explicitly does not claim SEC/SPE reserves classification.
+- **export_data** — Owner-scoped export mint. Returns a short-lived one-time
+  `/upload/export/<token>` URL; the HTTP lane builds a ZIP from the persisted
+  dataroom extraction or valuation record and streams it outside model context.
 - **message_team** — Files a user message (bug / feedback / feature_request /
   data_request / other) to the Crude Code team. Table-first: inserts into
   `platform.team_messages` (`server/team_messages.py`, the durable record),
@@ -385,7 +370,8 @@ LLM-facing text, loaded via `utils/prompts.py` (`load("outer/...")`).
   statement_timeout_ms?)` returns list of dicts, coerces Decimal → float.
 - **sql_guard.py** — Shared SELECT validator + `run_guarded` executor +
   `dry_run`. Validates structure (SELECT/WITH only, single statement, no
-  DML/DDL/smuggling/dangerous functions) and schema (defaults to
+  DML/DDL/smuggling/dangerous functions, including SQL-executing XML helper
+  functions whose query text would otherwise hide inside string literals) and schema (defaults to
   `WIDGET_SCHEMAS`; exploration passes `EXPLORATION_SCHEMAS`), then runs with
   `statement_timeout` and row/JSON-size caps.
 - **briefing_handle_store.py** — In-memory per-user `BriefingHandleStore`
@@ -461,6 +447,10 @@ accepted) and `SUPABASE_DATABASE_URL`.
 
 ## Testing
 
+GitHub Actions runs the Python suite plus renderer build/lint on pull requests.
+Both production and dev deployment workflows call that same reusable CI workflow
+and will not enter the deploy job unless it passes.
+
 ### Pytest suite (`tests/`)
 Run: `.venv/bin/pytest -q`.
 - `tests/conftest.py` — adds repo root to `sys.path`, exposes `fake_identity`,
@@ -480,11 +470,14 @@ Run: `.venv/bin/pytest -q`.
   `test_upload_tokens.py`, `test_uploads.py`, `test_room_store.py`,
   `test_extraction_transport.py`, `test_persist_pack.py`), the dataroom
   viewer payload — derived rollups plus the payload ⇄ frozen-template drift
-  pin (`test_dataroom_viewer_payload.py`), the export lane
-  (`test_exports.py` — CSV assembly, zip assembly and a round-trip that
-  unzips what the route actually served, the browser-facing download
-  semantics, and two drift guards tying the volume columns and the bundle's
-  full column set to the orchestrator's schedule),
-  team messages
+  pin (`test_dataroom_viewer_payload.py`), team messages
   (`test_team_messages_store.py`, `test_tools_message_team.py`), and schema
   drift.
+
+## Public release boundary
+
+This full working tree is **not** the public-release artifact because it carries
+host/deployment material. `REPO_BOUNDARY.md` is the source of truth for what may
+ship publicly; `PUBLIC_RELEASE_CHECKLIST.md` is the release gate. Never publish
+`.env`, runtime logs, customer/dataroom material, licensed data, private pipeline
+code, or host-specific deployment/provisioning files.

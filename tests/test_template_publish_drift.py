@@ -7,11 +7,32 @@ directory. Pin the shared naming so no layer drifts alone.
 """
 import hashlib
 import re
+import shutil
+import subprocess
 from pathlib import Path
+
+import pytest
 
 from server.valuation import artifact_payload as ap
 
 REPO = Path(__file__).resolve().parents[1]
+
+
+def test_the_frozen_template_parses():
+    """Nothing else compiles this file. The renderer build never touches it —
+    it ships to Claude as text and is first parsed inside the artifact sandbox,
+    so a syntax error here surfaces to a user, not to CI. esbuild is present as
+    a vite dependency; skip rather than fail where node_modules isn't
+    installed."""
+    npx = shutil.which("npx")
+    if npx is None or not (REPO / "renderer" / "node_modules").is_dir():
+        pytest.skip("renderer/node_modules not installed")
+    proc = subprocess.run(
+        [npx, "--no-install", "esbuild", "--loader=jsx"],
+        input=ap._VIEWER_PATH.read_bytes(),
+        capture_output=True, cwd=REPO,
+    )
+    assert proc.returncode == 0, proc.stderr.decode()
 
 
 def test_viewer_sha_is_the_file_bytes_digest():

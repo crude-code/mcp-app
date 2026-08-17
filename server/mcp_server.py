@@ -8,7 +8,7 @@ plus the renderer-only read tool (get_map_full). No inner agents.
 # renderer's package.json version (kept in lockstep by
 # tests/test_version_drift.py) in the last dev commit, then tag vX.Y.Z on
 # main after the merge.
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 import json as _json
 import logging as _logging
@@ -59,6 +59,7 @@ from server.room_store import RoomStore
 from server.upload_tokens import UploadTokenStore
 from server.uploads import public_base_url, public_host, register_upload_routes
 from server.valuation.run_record import ValuationRunStore
+from server import export_tokens as _export_tokens
 from server import exports as _exports
 from server.team_messages import CATEGORIES as MESSAGE_CATEGORIES, TeamMessageStore
 from utils.ses import send_notification
@@ -517,18 +518,21 @@ def run_valuation(run_id: str, params: dict) -> str:
         try:
             run_valuation_for_run(run_id=run_id, params=params)
             data = compose_artifact_payload_for_run(run_id)
-            # The sheet's download row. Minting is a dict write, so it costs
+            # The sheet's download row. Minting is arithmetic, so it costs
             # nothing to always offer one — no extra tool call, no guessing at
-            # valuation time whether the user will want the data. EXPERIMENTAL
-            # (dev only): the grant is the same in-memory 24h ticket the chat
-            # lane uses, so this link dies on TTL or on the next restart. It is
-            # here to answer one question — whether a click inside the artifact
-            # sandbox downloads at all — before the signed-token work that would
-            # make it durable. Do not ship to main in this state.
-            bundle_url, _fn = _mint_export_url(
+            # valuation time whether the user will want the data.
+            #
+            # Offered only when the link is *durable*. A deal sheet outlives its
+            # session, gets reopened, gets forwarded; an in-memory ticket would
+            # leave a button that works today and 404s next week, and a dead
+            # button inside a deliverable is worse than no button. With no
+            # CC_EXPORT_SECRET configured the row simply doesn't render and the
+            # chat lane carries on unchanged.
+            bundle_url, _fn, durable = _mint_export_url(
                 identity, kind="bundle", run_id=run_id,
                 label=(data.get("facts") or {}).get("area") or "")
-            data["export"] = {"bundle_url": bundle_url}
+            if durable:
+                data["export"] = {"bundle_url": bundle_url}
             return _json.dumps({
                 "surface": "deal_sheet_artifact",
                 "run_id": run_id,
@@ -552,25 +556,37 @@ _EXPORT_TTL_HOURS = 24
 
 
 def _mint_export_url(identity, *, kind: str, run_id: str = "", sql: str = "",
-                     schema: str = "public", label: str = "") -> tuple[str, str]:
-    """Grant → `(download_url, filename)`.
+                     schema: str = "public", label: str = "") -> tuple[str, str, bool]:
+    """Grant → `(download_url, filename, durable)`.
 
     Shared by `export_data` and the deal sheet's download row so both mint on
-    identical terms — same purpose, same TTL, same filename convention. Called
-    above its definition by `run_valuation`; module-level names resolve at call
-    time, and the export lane's constants belong here with the rest of it.
+    identical terms. A run-scoped kind gets a signed, self-describing token
+    that survives restarts; `query` — and everything, when no signing secret is
+    configured — falls back to the in-memory ticket. `durable` says which,
+    because it changes what the caller can honestly promise. Called above its
+    definition by `run_valuation`; module-level names resolve at call time, and
+    the export lane's constants belong here with the rest of it.
     """
-    token = _upload_tokens.mint(
-        user_id=identity["user_id"],
-        user_slug=identity["user_slug"],
-        purpose="export",
-        meta={"kind": kind, "run_id": run_id.strip() or None,
-              "sql": sql.strip() or None, "schema": schema},
-        ttl_seconds=_EXPORT_TTL_HOURS * 3600,
-    )
-    filename = _exports.filename_for(kind, run_id=run_id.strip(), label=label)
-    _export_log.info("minted export kind=%s run=%s", kind, run_id.strip() or "-")
-    return f"{public_base_url()}/export/{token}/{filename}", filename
+    run_id = run_id.strip()
+    durable = False
+    if kind in _export_tokens.SIGNABLE_KINDS and _export_tokens.secret() is not None:
+        token = _export_tokens.mint(kind=kind, run_id=run_id,
+                                    user_id=identity["user_id"],
+                                    user_slug=identity["user_slug"])
+        durable = True
+    else:
+        token = _upload_tokens.mint(
+            user_id=identity["user_id"],
+            user_slug=identity["user_slug"],
+            purpose="export",
+            meta={"kind": kind, "run_id": run_id or None,
+                  "sql": sql.strip() or None, "schema": schema},
+            ttl_seconds=_EXPORT_TTL_HOURS * 3600,
+        )
+    filename = _exports.filename_for(kind, run_id=run_id, label=label)
+    _export_log.info("minted export kind=%s run=%s durable=%s",
+                     kind, run_id or "-", durable)
+    return f"{public_base_url()}/export/{token}/{filename}", filename, durable
 
 
 @mcp.tool(description=_load_prompt("outer/tool_export_data.md"))
@@ -601,13 +617,18 @@ def export_data(kind: str, run_id: str = "", sql: str = "",
             except GuardError as e:
                 return _json.dumps({"error": str(e)})
 
-        url, filename = _mint_export_url(identity, kind=kind, run_id=run_id,
-                                         sql=sql, schema=schema, label=label)
+        url, filename, durable = _mint_export_url(
+            identity, kind=kind, run_id=run_id, sql=sql, schema=schema, label=label)
         return _json.dumps({
             "download_url": url,
             "filename": filename,
             "kind": kind,
-            "expires_in_hours": _EXPORT_TTL_HOURS,
+            # A signed run-scoped link outlives the session; a query link is an
+            # in-memory ticket. Reported honestly so Claude tells the user which
+            # one they are holding.
+            "expires_in_hours": (_export_tokens.DEFAULT_TTL_SECONDS // 3600
+                                 if durable else _EXPORT_TTL_HOURS),
+            "durable": durable,
         })
 
 

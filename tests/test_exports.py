@@ -16,7 +16,7 @@ from fastmcp import FastMCP
 from starlette.testclient import TestClient
 
 import server.uploads as uploads
-from server import exports
+from server import export_tokens, exports
 from server.upload_tokens import UploadTokenStore
 
 
@@ -129,7 +129,7 @@ def test_volumes_without_by_well_explains_itself():
         exports.build_volumes_csv(
             {"schedule": {"months": [], "by_well_omitted": "900 wells exceeds the 200-well audit cap"}}
         )
-    with pytest.raises(exports.ExportError, match="run_valuation"):
+    with pytest.raises(exports.ExportError, match="no economics stage"):
         exports.build_volumes_csv({})
 
 
@@ -234,7 +234,7 @@ def test_bundle_without_a_forecast_stage_still_builds():
 
 
 def test_bundle_needs_the_economics_stage():
-    with pytest.raises(exports.ExportError, match="run_valuation"):
+    with pytest.raises(exports.ExportError, match="no economics stage"):
         exports.build_bundle_zip({}, _FORECAST, run_id="run-1")
 
 
@@ -270,7 +270,19 @@ def test_expired_or_unknown_link_is_410(rig):
     client, _, _ = rig
     r = client.get("/export/not-a-real-token/x.csv")
     assert r.status_code == 410
-    assert "export again" in r.json()["error"]
+    assert "expired" in r.text
+
+
+def test_failures_render_as_a_page_not_json(rig):
+    """This route's client is a browser — often opened from a deal sheet weeks
+    after the session. A JSON blob reads as broken; a sentence reads as
+    expired, which is usually what happened."""
+    client, _, _ = rig
+    r = client.get("/export/not-a-real-token/x.csv")
+    assert r.headers["content-type"].startswith("text/html")
+    assert r.headers["cache-control"] == "no-store"
+    assert "<title>" in r.text and "export the run again" in r.text
+    assert "{message}" not in r.text                  # template actually filled
 
 
 def test_upload_token_cannot_be_redeemed_as_an_export(rig):
@@ -307,7 +319,7 @@ def test_missing_stage_is_422_not_500(rig):
     c = TestClient(mcp.http_app())
     r = c.get(f"/export/{_token(tokens)}/x.csv")
     assert r.status_code == 422
-    assert "nothing to export" in r.json()["error"]
+    assert "nothing to export" in r.text
 
 
 def test_filename_from_the_url_cannot_inject_a_header(rig):
@@ -317,24 +329,120 @@ def test_filename_from_the_url_cannot_inject_a_header(rig):
     assert r.headers["content-disposition"] == 'attachment; filename="ebildrop.csv"'
 
 
-# ── the deal sheet's download row (dev experiment) ──────────────────────────
+# ── signed grants ───────────────────────────────────────────────────────────
 
-def test_mint_export_url_is_redeemable_by_the_route():
-    """`run_valuation` and `export_data` mint through the same helper, so the
-    URL the sheet embeds has to be a URL the download route honours."""
+_KEY = b"test-signing-key"
+
+
+def test_signed_token_round_trips_its_facts():
+    tok = export_tokens.mint(kind="bundle", run_id="run-1", user_id=7,
+                             user_slug="acme", key=_KEY)
+    claims = export_tokens.verify(tok, key=_KEY)
+    assert claims["kind"] == "bundle"
+    assert claims["run_id"] == "run-1"
+    assert claims["user_id"] == 7 and claims["user_slug"] == "acme"
+
+
+def test_signed_token_needs_no_server_memory():
+    """The whole point: a fresh process with only the secret can still honour a
+    link minted before it started. Nothing is looked up."""
+    tok = export_tokens.mint(kind="volumes", run_id="run-1", user_id=7,
+                             user_slug="acme", key=_KEY)
+    assert export_tokens.verify(tok, key=b"test-signing-key")["run_id"] == "run-1"
+
+
+@pytest.mark.parametrize("mangle", [
+    lambda t: t[:-2] + ("aa" if not t.endswith("aa") else "bb"),   # bad signature
+    lambda t: t.replace(".", "", 1),                                # no separator
+    lambda t: "@@@." + t.split(".", 1)[1],                          # unbase64able head
+])
+def test_tampered_tokens_are_refused(mangle):
+    tok = export_tokens.mint(kind="bundle", run_id="run-1", user_id=7,
+                             user_slug="acme", key=_KEY)
+    with pytest.raises(export_tokens.ExportTokenError):
+        export_tokens.verify(mangle(tok), key=_KEY)
+
+
+def test_a_forged_payload_does_not_verify():
+    """Swapping the run id for someone else's without the key must fail."""
+    import base64 as _b64, json as _json
+    head, _, sig = export_tokens.mint(kind="bundle", run_id="run-1", user_id=7,
+                                      user_slug="acme", key=_KEY).partition(".")
+    claims = _json.loads(export_tokens._unb64(head))
+    claims["r"] = "someone-elses-run"
+    forged = _b64.urlsafe_b64encode(
+        _json.dumps(claims, separators=(",", ":"), sort_keys=True).encode()
+    ).decode().rstrip("=")
+    with pytest.raises(export_tokens.ExportTokenError, match="signature"):
+        export_tokens.verify(f"{forged}.{sig}", key=_KEY)
+
+
+def test_expired_signed_token_says_so():
+    tok = export_tokens.mint(kind="bundle", run_id="run-1", user_id=7,
+                             user_slug="acme", ttl_seconds=-1, key=_KEY)
+    with pytest.raises(export_tokens.ExportTokenError, match="expired"):
+        export_tokens.verify(tok, key=_KEY)
+
+
+def test_query_is_not_signable():
+    """A SELECT is too large for a URL and not a thing to publish in one, so
+    `query` keeps the in-memory ticket rather than getting a weaker signature."""
+    assert "query" not in export_tokens.SIGNABLE_KINDS
+    with pytest.raises(export_tokens.ExportTokenError, match="not signable"):
+        export_tokens.mint(kind="query", run_id="", user_id=7,
+                           user_slug="acme", key=_KEY)
+
+
+def test_no_secret_means_no_signing(monkeypatch):
+    monkeypatch.delenv("CC_EXPORT_SECRET", raising=False)
+    assert export_tokens.secret() is None
+    monkeypatch.setenv("CC_EXPORT_SECRET", "  ")
+    assert export_tokens.secret() is None
+    monkeypatch.setenv("CC_EXPORT_SECRET", "hunter2")
+    assert export_tokens.secret() == b"hunter2"
+
+
+def test_signed_link_is_honoured_by_the_route(rig, monkeypatch):
+    """End to end: a token the store has never heard of still downloads."""
+    client, tokens, _ = rig
+    monkeypatch.setenv("CC_EXPORT_SECRET", "test-signing-key")
+    tok = export_tokens.mint(kind="bundle", run_id="run-1", user_id=7,
+                             user_slug="acme")
+    assert tokens.claim(tok, purpose="export") is None      # not in memory
+    r = client.get(f"/export/{tok}/crudecode-bundle.zip")
+    assert r.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(r.content)) as z:
+        assert "wells_monthly.csv" in z.namelist()
+
+
+# ── the deal sheet's download row ───────────────────────────────────────────
+
+def test_run_scoped_mint_is_durable_when_a_secret_exists(monkeypatch):
     import server.mcp_server as srv
-
-    url, filename = srv._mint_export_url(
+    monkeypatch.setenv("CC_EXPORT_SECRET", "test-signing-key")
+    url, filename, durable = srv._mint_export_url(
         {"user_id": 9999, "user_slug": "test-user"},
         kind="bundle", run_id="run-1", label="Tonka Package")
-    assert filename.endswith(".zip")
-    assert "tonka-package" in filename
+    assert durable is True
+    assert filename.endswith(".zip") and "tonka-package" in filename
     token = url.split("/export/")[1].split("/")[0]
+    assert export_tokens.verify(token)["run_id"] == "run-1"
 
-    grant = srv._upload_tokens.claim(token, purpose="export")
-    assert grant is not None
-    assert grant.meta["kind"] == "bundle" and grant.meta["run_id"] == "run-1"
-    assert grant.ttl_seconds == srv._EXPORT_TTL_HOURS * 3600
+
+def test_query_and_secretless_mints_fall_back_to_the_ticket(monkeypatch):
+    import server.mcp_server as srv
+    monkeypatch.setenv("CC_EXPORT_SECRET", "test-signing-key")
+    _url, _fn, durable = srv._mint_export_url(
+        {"user_id": 9999, "user_slug": "test-user"},
+        kind="query", sql="SELECT 1")
+    assert durable is False                     # signable kinds only
+
+    monkeypatch.delenv("CC_EXPORT_SECRET", raising=False)
+    url, _fn, durable = srv._mint_export_url(
+        {"user_id": 9999, "user_slug": "test-user"}, kind="bundle", run_id="run-1")
+    assert durable is False                     # no secret, no durable link
+    token = url.split("/export/")[1].split("/")[0]
+    assert srv._upload_tokens.claim(token, purpose="export") is not None
 
 
 def test_deal_sheet_reads_the_field_the_server_writes():

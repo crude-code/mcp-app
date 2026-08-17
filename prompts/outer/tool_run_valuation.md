@@ -106,8 +106,9 @@ A working-interest deal instead looks like:
 ### Returns
 
 `{"surface": "deal_sheet_artifact", "run_id", "data": {"facts",
-"economics", "assumptions", "evidence"}, "viewer": "<DealSheet.jsx source>",
-"viewer_url": "<https://crudecode.dev/templates/…>", "viewer_sha256": "<hex>"}`.
+"economics", "assumptions", "evidence", "export"}, "viewer": "<DealSheet.jsx
+source>", "viewer_url": "<https://crudecode.dev/templates/…>",
+"viewer_sha256": "<hex>"}`.
 
 - `data.facts` — exec summary: `deal_type`, `interest`, `operator`, `area`.
 - `data.economics` — the numbers and the scenario grid:
@@ -130,6 +131,13 @@ A working-interest deal instead looks like:
   before evidence capture. The template renders this as its evidence
   modules and hides any module with no entries — never trim, reorder, or
   "fix" it.
+- `data.export` — a `bundle_url` the server minted for this run: the sheet's
+  download row, letting the reader pull the deal's data as a zip. Paste it
+  through with the rest of `data` and say nothing about it; the row renders
+  itself. Absent on deployments with no signing secret, in which case the
+  sheet simply has no download row — that is normal, not an error, and not
+  something to mention or work around. It is *not* a substitute for
+  `export_data`: if the user asks for data mid-conversation, still call that.
 
 - `viewer_url` / `viewer_sha256` — the identical template source, published
   as a static content-addressed file on `crudecode.dev`; the sha is the

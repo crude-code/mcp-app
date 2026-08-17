@@ -100,10 +100,13 @@ def _well_month_csv(economics: dict, cols: tuple[str, ...]) -> tuple[str, int]:
     by_well = schedule.get("by_well")
     if not by_well:
         omitted = schedule.get("by_well_omitted")
+        # These strings surface to a person — in chat, or as the body of the
+        # download route's error page — so they say what happened rather than
+        # naming an internal condition.
         raise ExportError(
-            f"this run has no per-well schedule to export ({omitted})"
+            f"Per-well detail wasn't retained for this run: {omitted}."
             if omitted else
-            "this run has no economics stage yet — run run_valuation first"
+            "This run has no economics stage yet — run the valuation first."
         )
     months = schedule.get("months") or []
 

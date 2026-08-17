@@ -38,7 +38,19 @@ bigger export — it's a different product, and the honest answer is that the
 engineering has to happen per run. Say so plainly rather than working around
 it.
 
-Returns `{download_url, filename, kind, expires_in_hours}`. Give the user the
-URL and tell them what's in the file and roughly how big it is. If the run
-isn't far enough along to export (no forecast, no economics), the tool says
-so — run the missing step first.
+Returns `{download_url, filename, kind, expires_in_hours, durable}`. Give the
+user the URL and tell them what's in the file and roughly how big it is. If
+the run isn't far enough along to export (no forecast, no economics), the tool
+says so — run the missing step first.
+
+**How long the link lasts** depends on the kind, and `durable` says which you
+got. A run-scoped export (`bundle`, `volumes`, `parameters`) carries a signed
+link that keeps working for as long as the run does — safe to hand over,
+survives a restart. A `query` export is a short-lived ticket measured in hours,
+because its grant is the SELECT itself and that can't ride in a URL. Don't
+promise a query link will still work tomorrow.
+
+**Who can use the link.** Anyone holding it — there's no separate login on the
+download. That's usually fine, since the recipient is someone the user chose to
+send the data to. Worth a word only if the user is about to post it somewhere
+public.

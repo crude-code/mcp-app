@@ -25,12 +25,17 @@ Routes:
   {bytes_received, sha256}. Validates (but never consumes) a token, so the
   sandbox-proxy size ceiling can be measured against a real deployment
   without an open bandwidth sink.
-- GET /export/{token}/{filename} — the download lane: assembles a CSV from
-  the run record (server/exports.py) and serves it as a file attachment.
-  Unlike every route above it, the client is a *browser* — a person clicking
-  a link Claude printed — so it never consumes the token and its grant
-  carries a longer TTL. Lives under /export/ rather than /upload/ because
-  the URL is user-visible.
+- GET /export/{token}/{filename} — the download lane: assembles a CSV or a
+  zip from the run record (server/exports.py) and serves it as a file
+  attachment. Unlike every route above it, the client is a *browser* — a
+  person clicking a link Claude printed, or a button on a deal sheet — so it
+  never consumes the token and takes two token forms: a signed, self-
+  describing grant (server/export_tokens.py) for the run-scoped kinds, and
+  the in-memory ticket for `query`, whose grant is too large to sign into a
+  URL. Failures render as HTML, not JSON: the reader may be looking at a
+  document weeks after the session that produced it, with no chat to explain
+  what went wrong. Lives under /export/ rather than /upload/ because the URL
+  is user-visible.
 """
 
 import asyncio
@@ -43,11 +48,11 @@ import tempfile
 from urllib.parse import urlparse
 
 from starlette.requests import Request
-from starlette.responses import JSONResponse, PlainTextResponse, Response
+from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 
 from fastmcp.server.dependencies import get_http_request
 
-from server import exports
+from server import export_tokens, exports
 from server.extraction_store import STORAGE_KEY_FIELD
 from server.extraction_transport import TransportError, entity_counts, unpack_extraction
 
@@ -90,6 +95,45 @@ def public_host() -> str:
 
 def _reject(status: int, message: str) -> JSONResponse:
     return JSONResponse({"error": message}, status_code=status)
+
+
+# A download link is clicked outside any conversation — from a deal sheet
+# forwarded to a partner, or a chat scrolled past weeks ago. Raw JSON in a
+# browser tab reads as "broken"; a sentence reads as "expired", which is
+# usually what actually happened and is something a person can act on.
+_EXPORT_ERROR_PAGE = """<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Export unavailable — Crude Code</title>
+<style>
+  :root {{ color-scheme: light dark; }}
+  body {{ margin:0; min-height:100vh; display:flex; align-items:center;
+         justify-content:center; padding:24px;
+         font:15px/1.55 ui-sans-serif,-apple-system,"Segoe UI",sans-serif;
+         background:#fbfbfa; color:#1f2937; }}
+  main {{ max-width:30rem; }}
+  h1 {{ font-size:15px; font-weight:600; margin:0 0 10px; }}
+  p {{ margin:0 0 10px; color:#4b5563; }}
+  .hint {{ font-size:13px; color:#6b7280; }}
+  @media (prefers-color-scheme: dark) {{
+    body {{ background:#111315; color:#e7e7e6; }}
+    p {{ color:#a3a7ad; }} .hint {{ color:#8a9099; }}
+  }}
+</style>
+<main>
+  <h1>This export isn't available</h1>
+  <p>{message}</p>
+  <p class="hint">Exports are rebuilt on demand from the run they came from,
+  so nothing is lost — ask Claude to export the run again and you'll get a
+  fresh link.</p>
+</main>
+"""
+
+
+def _reject_download(status: int, message: str) -> HTMLResponse:
+    """Browser-facing refusal. Same statuses as `_reject`, readable body."""
+    return HTMLResponse(_EXPORT_ERROR_PAGE.format(message=message),
+                        status_code=status, headers={"Cache-Control": "no-store"})
 
 
 def register_upload_routes(mcp, *, tokens, extraction_store,
@@ -280,24 +324,40 @@ def register_upload_routes(mcp, *, tokens, extraction_store,
     @mcp.custom_route("/export/{token}/{filename}", methods=["GET"])
     async def download_export(request: Request):
         token = request.path_params["token"]
-        grant = tokens.claim(token, purpose="export")
-        if grant is None:
-            return _reject(410, "this download link has expired — ask Claude to "
-                                "export again to mint a fresh one")
 
-        kind = grant.meta.get("kind", "")
+        # Two grant forms, told apart by shape. A signed token carries its own
+        # facts and survives restarts (the deal sheet's button depends on
+        # that); an in-memory ticket covers `query`, whose SELECT is too large
+        # to sign into a URL.
+        if export_tokens.looks_signed(token):
+            try:
+                claims = export_tokens.verify(token)
+            except export_tokens.ExportTokenError as e:
+                return _reject_download(410, str(e))
+            kind = claims["kind"]
+            meta = {"kind": kind, "run_id": claims["run_id"]}
+            user_slug = claims["user_slug"]
+        else:
+            grant = tokens.claim(token, purpose="export")
+            if grant is None:
+                return _reject_download(
+                    410, "This download link has expired, or the server has "
+                         "restarted since it was created.")
+            kind, meta, user_slug = grant.meta.get("kind", ""), grant.meta, grant.user_slug
+
         try:
             # Assembly can hit the database (run record, or a re-run query), so
             # it goes to a thread: this route shares an event loop with the MCP
             # endpoint and a 30s query must not stall other sessions.
             body, rows = await asyncio.to_thread(
-                exports.assemble, kind, grant.meta, run_store=run_store,
+                exports.assemble, kind, meta, run_store=run_store,
             )
         except exports.ExportError as e:
-            return _reject(422, str(e))
+            return _reject_download(422, str(e))
         except Exception as e:  # noqa: BLE001
             _log.error("export assembly failed kind=%s: %s", kind, e)
-            return _reject(500, str(e))
+            return _reject_download(
+                500, "Something went wrong assembling this export.")
 
         # The filename rides in the path (so a browser saves something
         # recognisable) but it lands in a response header, so it is rebuilt
@@ -306,7 +366,7 @@ def register_upload_routes(mcp, *, tokens, extraction_store,
         default = "export.zip" if kind == "bundle" else "export.csv"
         filename = "".join(c for c in raw if c.isalnum() or c in "-_.") or default
         _log.info("export served user=%s kind=%s rows=%d bytes=%d",
-                  grant.user_slug, kind, rows, len(body))
+                  user_slug, kind, rows, len(body))
         # A bundle is bytes, the CSV kinds are text; Response takes both, and
         # media_type is what tells the browser which it just got.
         return Response(

@@ -78,7 +78,11 @@ Tools (all return JSON strings):
   the sheet's provenance panel and `evidence` — the per-assertion judgment
   record built by `server/valuation/evidence.py` at valuation time), and
   returns `{surface: "deal_sheet_artifact", run_id, data, viewer,
-  viewer_url, viewer_sha256}` — `viewer` is the frozen `DealSheet.jsx`
+  viewer_url, viewer_sha256}`. `data.export.bundle_url` is minted here — a
+  signed `bundle` link for this run, which is what the template's download
+  row renders; it is omitted (and the row disappears) when no signing secret
+  is configured, since an in-memory ticket would leave a button that dies at
+  the next restart. `viewer` is the frozen `DealSheet.jsx`
   template (`server/valuation/viewer/`), shipped in every response so the
   template always matches the payload contract; `viewer_url` +
   `viewer_sha256` are the fast lane — the same source published as a
@@ -110,7 +114,19 @@ Tools (all return JSON strings):
   re-mint, never a recomputation. The mirror of the upload lane, with two
   differences that follow from the client being a browser rather than the
   sandbox: the token is never consumed (browsers retry, people double-click)
-  and its grant carries a 24-hour TTL instead of the 15-minute upload default.
+  and failures render as an HTML page rather than JSON, since the click can
+  come from a deal sheet weeks after the session that produced it.
+  **Two grant forms.** Run-scoped kinds get a *signed* token
+  (`server/export_tokens.py`) — kind, run id, user and expiry travel inside it
+  under an HMAC the server recomputes, so nothing is stored and a link keeps
+  working across restarts for a year. That durability is what lets a deal
+  sheet carry a download row. `query` keeps the in-memory ticket and its
+  24-hour TTL, because its grant is an arbitrary SELECT: too large for a URL
+  and not a thing to publish in one. Signing needs `CC_EXPORT_SECRET` in the
+  environment; with none set every kind falls back to the ticket and the deal
+  sheet renders no download row (`durable: false` in the tool's response).
+  Revocation is by rotating that secret — there is no per-token kill switch,
+  which is the cost of not keeping a list.
   A `query` export is dry-run at mint time so a bad SELECT fails in the
   conversation, not behind a link the user already clicked. Deliberately not a
   data feed: the link expires, re-minting needs a live session, and the caps
@@ -289,9 +305,15 @@ calculator. Pure, unit-tested modules:
   sensitivity + "what informed the model", then two data-driven evidence
   modules (producing fits with residual strip; type curves with analog
   cohort, kept/excluded tables, schematic map) that render only when the
-  payload carries entries of that kind. Shipped verbatim as `viewer` in
-  every `run_valuation` response; Claude fills `DATA`/`TITLE`/`TLDR` and
-  nothing else.
+  payload carries entries of that kind, and a download row that renders when
+  the payload carries `data.export.bundle_url` (a plain `<a target="_blank">`
+  — the artifact CSP blocks cross-origin `fetch`, and fetching would pull the
+  bytes into the iframe instead of the user's disk). Shipped verbatim as
+  `viewer` in every `run_valuation` response; Claude fills
+  `DATA`/`TITLE`/`TLDR` and nothing else. Nothing in the build compiles this
+  file — it is parsed first inside the artifact sandbox — so
+  `tests/test_template_publish_drift.py` runs it through
+  `esbuild --loader=jsx`.
 - **`wells.py`** — `bulk_load_wells` / `bulk_load_production`: one query each.
 - **`config.py`** — `EconConfig` (`ECON` singleton): the single source for every
   economic parameter (flat oil/gas deck, diffs, tax/GPT, opex/capex, 360-month
@@ -432,7 +454,10 @@ The renderer runs **inside** Claude Desktop, not a browser. To update it:
 Always use `.venv/bin/python`. Never bare `python` / `python3`.
 
 `.env` at repo root needs at least `CC_DB_URL` (legacy name `EI_DB_URL` still
-accepted) and `SUPABASE_DATABASE_URL`.
+accepted) and `SUPABASE_DATABASE_URL`. `CC_EXPORT_SECRET` (any long random
+string) enables signed export links and the deal sheet's download row; without
+it the export lane still works, just with short-lived in-memory tickets and no
+row on the sheet. Rotating it invalidates every outstanding signed link.
 
 ## Deploy
 
@@ -482,9 +507,10 @@ Run: `.venv/bin/pytest -q`.
   viewer payload — derived rollups plus the payload ⇄ frozen-template drift
   pin (`test_dataroom_viewer_payload.py`), the export lane
   (`test_exports.py` — CSV assembly, zip assembly and a round-trip that
-  unzips what the route actually served, the browser-facing download
-  semantics, and two drift guards tying the volume columns and the bundle's
-  full column set to the orchestrator's schedule),
+  unzips what the route actually served, signed-grant round trip plus
+  tamper/forge/expiry refusals, the browser-facing download semantics
+  including the HTML error page, and two drift guards tying the volume
+  columns and the bundle's full column set to the orchestrator's schedule),
   team messages
   (`test_team_messages_store.py`, `test_tools_message_team.py`), and schema
   drift.

@@ -317,6 +317,38 @@ def test_filename_from_the_url_cannot_inject_a_header(rig):
     assert r.headers["content-disposition"] == 'attachment; filename="ebildrop.csv"'
 
 
+# ── the deal sheet's download row (dev experiment) ──────────────────────────
+
+def test_mint_export_url_is_redeemable_by_the_route():
+    """`run_valuation` and `export_data` mint through the same helper, so the
+    URL the sheet embeds has to be a URL the download route honours."""
+    import server.mcp_server as srv
+
+    url, filename = srv._mint_export_url(
+        {"user_id": 9999, "user_slug": "test-user"},
+        kind="bundle", run_id="run-1", label="Tonka Package")
+    assert filename.endswith(".zip")
+    assert "tonka-package" in filename
+    token = url.split("/export/")[1].split("/")[0]
+
+    grant = srv._upload_tokens.claim(token, purpose="export")
+    assert grant is not None
+    assert grant.meta["kind"] == "bundle" and grant.meta["run_id"] == "run-1"
+    assert grant.ttl_seconds == srv._EXPORT_TTL_HOURS * 3600
+
+
+def test_deal_sheet_reads_the_field_the_server_writes():
+    """The download row is the one place the frozen template reaches for a key
+    added after `build_artifact_payload` has run — two files with no import
+    between them, so pin the name from both ends."""
+    from pathlib import Path
+    repo = Path(__file__).resolve().parents[1]
+    template = (repo / "server/valuation/viewer/DealSheet.jsx").read_text(encoding="utf-8")
+    server_src = (repo / "server/mcp_server.py").read_text(encoding="utf-8")
+    assert "data.export?.bundle_url" in template
+    assert 'data["export"] = {"bundle_url": bundle_url}' in server_src
+
+
 def test_export_ttl_outlives_the_upload_default():
     """Uploads are redeemed by a sandbox immediately; an export link waits on
     a human, so its grant carries its own longer lifetime."""

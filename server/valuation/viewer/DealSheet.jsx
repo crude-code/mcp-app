@@ -892,6 +892,18 @@ function DealSheet({ title, tldr, data }) {
           Every number above is computed by the valuation engine from the committed assertions; the modules show each assertion against the data behind it.
         </div>
       ) : null}
+
+      {data.export?.bundle_url ? (
+        <div style={{ padding: "11px 20px", borderTop: `1px solid ${C.borderSubtle}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 10.5, color: C.textDim, lineHeight: 1.45, minWidth: 0 }}>
+            The data behind this sheet — monthly volumes and cashflow per well, the committed curves, and a README.
+          </div>
+          <a href={data.export.bundle_url} target="_blank" rel="noopener noreferrer"
+            style={{ fontSize: 11, fontWeight: 600, color: C.accent, textDecoration: "none", background: C.panelMute, border: `1px solid ${C.border}`, borderRadius: 4, padding: "5px 11px", whiteSpace: "nowrap" }}>
+            Download data package ↓
+          </a>
+        </div>
+      ) : null}
     </div>
   );
 }

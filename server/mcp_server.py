@@ -517,6 +517,18 @@ def run_valuation(run_id: str, params: dict) -> str:
         try:
             run_valuation_for_run(run_id=run_id, params=params)
             data = compose_artifact_payload_for_run(run_id)
+            # The sheet's download row. Minting is a dict write, so it costs
+            # nothing to always offer one — no extra tool call, no guessing at
+            # valuation time whether the user will want the data. EXPERIMENTAL
+            # (dev only): the grant is the same in-memory 24h ticket the chat
+            # lane uses, so this link dies on TTL or on the next restart. It is
+            # here to answer one question — whether a click inside the artifact
+            # sandbox downloads at all — before the signed-token work that would
+            # make it durable. Do not ship to main in this state.
+            bundle_url, _fn = _mint_export_url(
+                identity, kind="bundle", run_id=run_id,
+                label=(data.get("facts") or {}).get("area") or "")
+            data["export"] = {"bundle_url": bundle_url}
             return _json.dumps({
                 "surface": "deal_sheet_artifact",
                 "run_id": run_id,
@@ -537,6 +549,28 @@ _export_log = _logging.getLogger("cc.export")
 # short enough that the link is a session deliverable rather than a standing
 # endpoint. Re-minting is one tool call inside a live session.
 _EXPORT_TTL_HOURS = 24
+
+
+def _mint_export_url(identity, *, kind: str, run_id: str = "", sql: str = "",
+                     schema: str = "public", label: str = "") -> tuple[str, str]:
+    """Grant → `(download_url, filename)`.
+
+    Shared by `export_data` and the deal sheet's download row so both mint on
+    identical terms — same purpose, same TTL, same filename convention. Called
+    above its definition by `run_valuation`; module-level names resolve at call
+    time, and the export lane's constants belong here with the rest of it.
+    """
+    token = _upload_tokens.mint(
+        user_id=identity["user_id"],
+        user_slug=identity["user_slug"],
+        purpose="export",
+        meta={"kind": kind, "run_id": run_id.strip() or None,
+              "sql": sql.strip() or None, "schema": schema},
+        ttl_seconds=_EXPORT_TTL_HOURS * 3600,
+    )
+    filename = _exports.filename_for(kind, run_id=run_id.strip(), label=label)
+    _export_log.info("minted export kind=%s run=%s", kind, run_id.strip() or "-")
+    return f"{public_base_url()}/export/{token}/{filename}", filename
 
 
 @mcp.tool(description=_load_prompt("outer/tool_export_data.md"))
@@ -567,19 +601,10 @@ def export_data(kind: str, run_id: str = "", sql: str = "",
             except GuardError as e:
                 return _json.dumps({"error": str(e)})
 
-        token = _upload_tokens.mint(
-            user_id=identity["user_id"],
-            user_slug=identity["user_slug"],
-            purpose="export",
-            meta={"kind": kind, "run_id": run_id.strip() or None,
-                  "sql": sql.strip() or None, "schema": schema},
-            ttl_seconds=_EXPORT_TTL_HOURS * 3600,
-        )
-        filename = _exports.filename_for(kind, run_id=run_id.strip(), label=label)
-        base = public_base_url()
-        _export_log.info("minted export kind=%s run=%s", kind, run_id.strip() or "-")
+        url, filename = _mint_export_url(identity, kind=kind, run_id=run_id,
+                                         sql=sql, schema=schema, label=label)
         return _json.dumps({
-            "download_url": f"{base}/export/{token}/{filename}",
+            "download_url": url,
             "filename": filename,
             "kind": kind,
             "expires_in_hours": _EXPORT_TTL_HOURS,

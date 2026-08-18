@@ -61,6 +61,15 @@ const LBL = {
 };
 const TILE_K = { ...LBL, fontSize: 8.5 };
 
+// Widest the sheet is allowed to get. Nothing here is width-aware — inline
+// style objects can't carry media queries, so every grid is a fixed fraction
+// and every font a fixed px. Left uncapped, a shared artifact renders at full
+// browser width (~1400px+) instead of the chat panel's ~700, and the two
+// viewBox charts — aspect-locked, `width: 100%` — scale their labels and
+// strokes with the container while the surrounding type does not. The charts
+// race ahead of the text around them. Cap the card and they can't.
+const SHEET_W = 1040;
+
 function Segmented({ options, value, onChange, small }) {
   return (
     <div style={{ display: "inline-flex", border: `1px solid ${C.border}`, borderRadius: 6, overflow: "hidden" }}>
@@ -252,7 +261,9 @@ function WellFitChart({ entry, stream }) {
     });
   }
 
-  return <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", display: "block" }}>{k}</svg>;
+  // Capped at W: past its design width the viewBox stretch inflates every
+  // label and stroke in here while the DOM type around it holds. See SHEET_W.
+  return <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", maxWidth: W, margin: "0 auto", display: "block" }}>{k}</svg>;
 }
 
 const addMonths = (ym, n) => {
@@ -325,7 +336,8 @@ function CohortMap({ tc }) {
 
   // Fixed drawing surface; the data is projected into it. Sizing the viewBox
   // from the data and letting CSS stretch it scales every fixed-size label
-  // with the extent — the giant-text failure mode.
+  // with the extent — the giant-text failure mode. Container width does the
+  // same thing, so the svg is capped at W below; see SHEET_W.
   const W = 640, H = 470, M = 24;
   const lenMi = (w) => (w.lateral_ft || 5280) / 5280;
   // Bounds cover every stick end-to-end (surface point through lateral tip),
@@ -368,7 +380,7 @@ function CohortMap({ tc }) {
   </g>);
   return (
     <div>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", display: "block", background: "#fbfbfc", border: `1px solid ${C.border}`, borderRadius: 6 }}>{k}</svg>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", maxWidth: W, margin: "0 auto", display: "block", background: "#fbfbfc", border: `1px solid ${C.border}`, borderRadius: 6 }}>{k}</svg>
       <div style={{ fontSize: 10.5, color: C.textDim, marginTop: 3 }}>
         Surface position + lateral length, schematic (orientation nominal) ·{" "}
         <span style={{ color: C.accent, fontWeight: 700 }}>‑ ‑</span> subject{" "}
@@ -702,7 +714,7 @@ function DealSheet({ title, tldr, data }) {
   ].filter(Boolean);
 
   return (
-    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden", fontFamily: "Inter, system-ui, sans-serif" }}>
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden", fontFamily: "Inter, system-ui, sans-serif", maxWidth: SHEET_W, margin: "0 auto" }}>
       {/* EXEC SUMMARY */}
       <div style={{ padding: "18px 20px", borderBottom: `1px solid ${C.border}`, background: C.panelMute }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>

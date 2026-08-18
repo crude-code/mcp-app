@@ -437,9 +437,15 @@ The platform reads commodity prices from `market.spot_prices` (daily close,
 WTI / Brent / Henry Hub) and related `market.*` / `public.*` / `shapes.*` /
 `financials.*` tables. Populating those tables (primary-source ingestion) is out
 of scope for this repo — point `CC_DB_URL` at a Postgres database whose schema
-matches `utils/schemas.py` and `prompts/outer/shared_schema.md`. State well-data
-ingestion lives in the **private** sibling repo `data-pipeline` (in the
-crudecode-workbench); never copy its connector code into this public repo.
+matches `utils/schemas.py` and `prompts/outer/shared_schema.md`. All ingestion —
+state well data *and* the non-state market/financial sources behind `market.*`
+and `financials.*` — lives in the **private** sibling repo `data-pipeline` (in
+the crudecode-workbench); never copy its connector code into this public repo.
+
+The `market.*` and `financials.*` tables this server reads are a *consumer
+surface*: the pipeline lands each source in its own schema and projects onto
+these typed tables. Those landing schemas are deliberately outside
+`EXPLORATION_SCHEMAS` — `run_sql` sees the projected tables only.
 
 ## Running Locally
 

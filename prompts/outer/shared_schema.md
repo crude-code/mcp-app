@@ -29,6 +29,9 @@ formation: text            -- Target formation
 section: text
 township: text
 range: text
+block: text                -- TX land description; ~33% populated (TX rows)
+abstract: text             -- TX abstract number; ~50% populated
+survey: text               -- TX original survey/grantee (e.g. "T&P RR CO"); ~47% populated
 spud_date: date
 completion_date: date
 first_prod_date: date
@@ -180,36 +183,54 @@ product_supplied_mbpd: numeric -- Petroleum products supplied
 ```
 
 ## market.steo_forecasts
-EIA Short-Term Energy Outlook forecasts.
+EIA Short-Term Energy Outlook forecasts. A forecast, so `period` runs into the
+future (currently through 2027).
 ```
-period: date PK
-series_id: text PK         -- e.g. COPR_US, BREPUUS, WTIPUUS, NGHHUUS, PAPR_WORLD, PATC_WORLD, COPS_OPEC
+period: date PK            -- first of the forecast month
+series_id: text PK         -- one of exactly nine: BREPUUS, COPRPUS, COPS_OPEC, NGHHUUS,
+                           --   NGMPPUS, NGPRPUS, PAPR_WORLD, PATC_WORLD, WTIPUUS
 value: numeric
-unit: text
+unit: text                 -- e.g. 'dollars per barrel'
+updated_at: timestamptz    -- when this row was last refreshed from EIA
 ```
+EIA republishes the whole period grid each month with revised numbers, so a
+value is the **latest vintage**, not the original forecast. `updated_at` tells
+you how current that vintage is.
 
 ## market.news_feed
-Curated oil & gas news with AI-generated insights.
+Oil & gas trade-press headlines, one row per article. Loaded as published —
+nothing ranks, scores, tags, or summarizes them.
 ```
 id: integer PK
-category: text             -- 'news', 'sec', 'public_data'
-source: text               -- oilprice, rigzone, eia, worldoil, shalemag, boereport
+source: text               -- oilprice, eia, worldoil, shalemag, boereport, ogj, offshoremag, ngi, rigzone
 title: text
-url: text UNIQUE
-summary: text
-published_at: timestamptz
-rank: integer              -- 1-5 (top curated stories), NULL if not ranked
-insight: text              -- AI-generated one-liner
-tags: text[]               -- topic tags
-fetched_at: timestamptz
+url: text UNIQUE           -- the article link; this is the dedupe key
+summary: text              -- the feed's own excerpt, verbatim; may be NULL
+published_at: timestamptz  -- NULL when the publisher omits a date (worldoil does)
+fetched_at: timestamptz    -- when we captured it
+rank: integer              -- LEGACY. ~20 rows from a retired curation pass; NULL on everything since.
+insight: text              -- LEGACY. Same ~20 rows, NULL since.
+tags: text[]               -- LEGACY. Same ~20 rows, NULL since.
 ```
+**Do not filter or sort on `rank`/`insight`/`tags`** — they are dead columns
+kept only so the old rows aren't lost, and almost every row is NULL. Order by
+`published_at DESC NULLS LAST, fetched_at DESC`.
+
+`rigzone` articles stop in May 2026 — that publisher now blocks automated
+access, so its rows are historical only. Coverage is a rolling capture of each
+feed, not an exhaustive archive of everything published.
 
 ## financials.operators
-Public-company operators tracked from SEC filings. ~70 rows (E&P, midstream, oilfield services).
+Public-company operators tracked from SEC filings. **34 rows** (E&P, midstream,
+oilfield services) — a curated subset, not every public operator. If a company
+isn't here, we have no financials for it; say so rather than implying it filed
+nothing.
 ```
 cik: text PK              -- SEC Central Index Key
 ticker: text              -- Stock ticker (e.g. EOG, FANG, COP)
 entity_name: text         -- Filed legal entity name
+sic_code: text            -- SEC SIC code (1311 E&P, 1381/1382/1389 services, 2911 refining)
+last_filing_date: date    -- Most recent filing seen for this CIK
 ```
 Join to all other `financials.*` tables on `cik`. Most analyst questions are framed by ticker — join through this table to translate.
 

@@ -18,10 +18,7 @@ everything through a handful of MCP tools:
   authoring or render step for this path anymore.
 - For deals it calls `forecast_wells` → `run_valuation` → gets a slim payload
   plus the frozen `DealSheet.jsx` template in the same response, and builds
-  the deal-sheet artifact from them directly. `reserve_report` can then render
-  the same committed forecast as a remaining-volume artifact; it never refits.
-- `export_data` mints one-time ZIP downloads for persisted dataroom or valuation
-  records so bulk exports stay outside model context.
+  the deal-sheet artifact from them directly.
 - For geography it calls `map`.
 - For a one-off packaged procedure (e.g. extracting a dataroom upload) it
   calls `get_skill(name)` to fetch the instructions and follows them directly.
@@ -73,15 +70,22 @@ Tools (all return JSON strings):
   timing cadence).
 - **run_valuation** — Takes `run_id` (from `forecast_wells`) and `params`
   (interest type + blanket numbers, optional `by_api` per-well overrides,
-  optional `economics_overrides`). Runs econ on the forecast stage in the run
+  optional `economics_overrides`, optional `input_evidence` source metadata for
+  material numeric inputs). Runs econ on the forecast stage in the run
   record, assembles the artifact payload (`build_artifact_payload` in
   `server/valuation/artifact_payload.py` — exec facts, `economics` carrying
   `npv_at_centers`, the full deck×status×rate `cube`, `decks`,
   `default_deck`, `default_rates`, and `statuses`, plus `assumptions` for
-  the sheet's provenance panel and `evidence` — the per-assertion judgment
-  record built by `server/valuation/evidence.py` at valuation time), and
+  the sheet's provenance panel, `evidence` — the per-assertion judgment
+  record built by `server/valuation/evidence.py` at valuation time — and
+  `trust`, the server-derived evidence-strength × economic-materiality record
+  from `server/valuation/trust.py`), and
   returns `{surface: "deal_sheet_artifact", run_id, data, viewer,
-  viewer_url, viewer_sha256}` — `viewer` is the frozen `DealSheet.jsx`
+  viewer_url, viewer_sha256}`. `data.export.bundle_url` is minted here — a
+  signed `bundle` link for this run, which is what the template's download
+  row renders; it is omitted (and the row disappears) when no signing secret
+  is configured, since an in-memory ticket would leave a button that dies at
+  the next restart. `viewer` is the frozen `DealSheet.jsx`
   template (`server/valuation/viewer/`), shipped in every response so the
   template always matches the payload contract; `viewer_url` +
   `viewer_sha256` are the fast lane — the same source published as a
@@ -93,13 +97,50 @@ Tools (all return JSON strings):
   artifact itself by filling `data` into the template, per the guardrail
   in `prompts/outer/tool_run_valuation.md` — no MCP-app render. See
   `server/valuation/`.
-- **reserve_report** — Owner-scoped read of a completed valuation. Returns a
-  frozen React artifact template plus server-computed remaining oil/gas/BOE
-  through the valuation horizon, grouped by the same operational PDP/DUC/PUD
-  buckets. It explicitly does not claim SEC/SPE reserves classification.
-- **export_data** — Owner-scoped export mint. Returns a short-lived one-time
-  `/upload/export/<token>` URL; the HTTP lane builds a ZIP from the persisted
-  dataroom extraction or valuation record and streams it outside model context.
+- **export_data** — The download lane: hands the user a file of work the
+  session already did, instead of a chat payload. Takes a `kind`
+  (`bundle` — a zip of `wells_monthly.csv` (the whole schedule: volumes *and*
+  every cashflow line item, `net_cashflow = net_rev − sev_tax − gpt − capex −
+  opex` row by row), `parameters.csv`, and a generated README; the generous
+  default for a finished valuation, since the user keeps whichever columns
+  they need rather than naming them up front. `volumes` — monthly gross + net
+  oil/gas per well over the run's full horizon; `parameters` — the committed
+  decline curves per well per stream, committed *and* asserted qi, Di, b,
+  terminal switch, anchor, rationale; `query` — a `run_sql` SELECT re-run at
+  export scale, 100k rows against the 200-row chat cap) and returns
+  `{download_url, filename, kind, expires_in_hours}` — a few hundred bytes of
+  context no matter how large the file. The narrow CSV kinds stay for when
+  someone wants one slice; `bundle` is the one to offer when they just want
+  the deal's numbers. Bytes are assembled at *fetch* time by `server/exports.py` straight
+  from the run record and streamed down `GET /export/{token}/{filename}`
+  (`server/uploads.py`), so nothing sits at rest and an expired link costs one
+  re-mint, never a recomputation. The mirror of the upload lane, with two
+  differences that follow from the client being a browser rather than the
+  sandbox: the token is never consumed (browsers retry, people double-click)
+  and failures render as an HTML page rather than JSON, since the click can
+  come from a deal sheet weeks after the session that produced it.
+  **Two grant forms.** Run-scoped kinds get a *signed* token
+  (`server/export_tokens.py`) — kind, run id, user and expiry travel inside it
+  under an HMAC the server recomputes, so nothing is stored and a link keeps
+  working across restarts for a year. That durability is what lets a deal
+  sheet carry a download row. `query` keeps the in-memory ticket and its
+  24-hour TTL, because its grant is an arbitrary SELECT: too large for a URL
+  and not a thing to publish in one. Signing needs `CC_EXPORT_SECRET` in the
+  environment; with none set every kind falls back to the ticket and the deal
+  sheet renders no download row (`durable: false` in the tool's response).
+  Revocation is by rotating that secret — there is no per-token kill switch,
+  which is the cost of not keeping a list.
+  A `query` export is dry-run at mint time so a bad SELECT fails in the
+  conversation, not behind a link the user already clicked. Deliberately not a
+  data feed: the link expires, re-minting needs a live session, and the caps
+  are finite — see `prompts/outer/tool_export_data.md`.
+- **reserve_report** — Builds a shareable remaining-volume/PV artifact from a
+  completed valuation run. It reuses the valuation's committed forecast and
+  economics; there is no second decline-curve or economics engine. The report
+  groups gross/net oil, gas, BOE and PV by PDP/DUC/PUD plus per-well detail.
+  Those are Crude Code operational forecast buckets, **not** SEC proved-reserve
+  or SPE-PRMS classifications. The frozen `ReserveReport.jsx` template is
+  published content-addressed alongside the deal sheet.
 - **message_team** — Files a user message (bug / feedback / feature_request /
   data_request / other) to the Crude Code team. Table-first: inserts into
   `platform.team_messages` (`server/team_messages.py`, the durable record),
@@ -250,14 +291,20 @@ calculator. Pure, unit-tested modules:
 - **`artifact_payload.py`** — `build_artifact_payload`: assembles the
   payload `run_valuation` returns (`facts`, `economics` —
   `npv_at_centers`, the full deck×status×rate `cube`, `decks`,
-  `default_deck`, `default_rates`, `statuses` — plus `assumptions` and the
-  `evidence` passthrough) from a run's `wells` + `economics` stages,
+  `default_deck`, `default_rates`, `statuses` — plus `assumptions`, `evidence`,
+  and `trust` passthrough) from a run's `wells` + `economics` stages,
   reusing `deal_sheet.py`'s helpers. Also `load_viewer` (reads the frozen
   artifact template), `viewer_sha256` (digest of the template file bytes),
   and `viewer_url` (the published content-addressed URL;
   `CC_TEMPLATE_BASE_URL` overrides the apex base for local testing) —
   naming pinned against the deploy scripts and nginx by
   `tests/test_template_publish_drift.py`.
+- **`trust.py`** — material-input trust layer. Claude carries source facts
+  (`deal_document`, `market`, `public_regulatory`, `user`, `house_default`,
+  etc. plus file/locator/date/conflict metadata); the server derives evidence
+  strength and pairs it with disclosed valuation stress tests computed from the
+  already-projected physical schedule. It emits concrete verification priority,
+  not a single confidence percentage, and never changes cashflow math.
 - **`evidence.py`** — evidence assembly, pure (DB loads passed in by the
   orchestrator): groups the forecast stage back into assertion entries
   (`entry_id`; same-`curve_label` analog entries merge), hydrates reported
@@ -271,12 +318,18 @@ calculator. Pure, unit-tested modules:
 - **`viewer/DealSheet.jsx`** — the frozen deal-sheet artifact template
   (react + recharts only; no host APIs, no CSS vars — it runs in the
   claude.ai artifact sandbox). V3 layout: exec header + PV-by-status +
-  sensitivity + "what informed the model", then two data-driven evidence
-  modules (producing fits with residual strip; type curves with analog
+  sensitivity + a material-input evidence/value-at-risk panel + "what informed
+  the model", then two data-driven evidence modules (producing fits with residual strip; type curves with analog
   cohort, kept/excluded tables, schematic map) that render only when the
-  payload carries entries of that kind. Shipped verbatim as `viewer` in
-  every `run_valuation` response; Claude fills `DATA`/`TITLE`/`TLDR` and
-  nothing else.
+  payload carries entries of that kind, and a download row that renders when
+  the payload carries `data.export.bundle_url` (a plain `<a target="_blank">`
+  — the artifact CSP blocks cross-origin `fetch`, and fetching would pull the
+  bytes into the iframe instead of the user's disk). Shipped verbatim as
+  `viewer` in every `run_valuation` response; Claude fills
+  `DATA`/`TITLE`/`TLDR` and nothing else. Nothing in the build compiles this
+  file — it is parsed first inside the artifact sandbox — so
+  `tests/test_template_publish_drift.py` runs it through
+  `esbuild --loader=jsx`.
 - **`wells.py`** — `bulk_load_wells` / `bulk_load_production`: one query each.
 - **`config.py`** — `EconConfig` (`ECON` singleton): the single source for every
   economic parameter (flat oil/gas deck, diffs, tax/GPT, opex/capex, 360-month
@@ -370,8 +423,7 @@ LLM-facing text, loaded via `utils/prompts.py` (`load("outer/...")`).
   statement_timeout_ms?)` returns list of dicts, coerces Decimal → float.
 - **sql_guard.py** — Shared SELECT validator + `run_guarded` executor +
   `dry_run`. Validates structure (SELECT/WITH only, single statement, no
-  DML/DDL/smuggling/dangerous functions, including SQL-executing XML helper
-  functions whose query text would otherwise hide inside string literals) and schema (defaults to
+  DML/DDL/smuggling/dangerous functions) and schema (defaults to
   `WIDGET_SCHEMAS`; exploration passes `EXPLORATION_SCHEMAS`), then runs with
   `statement_timeout` and row/JSON-size caps.
 - **briefing_handle_store.py** — In-memory per-user `BriefingHandleStore`
@@ -401,9 +453,15 @@ The platform reads commodity prices from `market.spot_prices` (daily close,
 WTI / Brent / Henry Hub) and related `market.*` / `public.*` / `shapes.*` /
 `financials.*` tables. Populating those tables (primary-source ingestion) is out
 of scope for this repo — point `CC_DB_URL` at a Postgres database whose schema
-matches `utils/schemas.py` and `prompts/outer/shared_schema.md`. State well-data
-ingestion lives in the **private** sibling repo `data-pipeline` (in the
-crudecode-workbench); never copy its connector code into this public repo.
+matches `utils/schemas.py` and `prompts/outer/shared_schema.md`. All ingestion —
+state well data *and* the non-state market/financial sources behind `market.*`
+and `financials.*` — lives in the **private** sibling repo `data-pipeline` (in
+the crudecode-workbench); never copy its connector code into this public repo.
+
+The `market.*` and `financials.*` tables this server reads are a *consumer
+surface*: the pipeline lands each source in its own schema and projects onto
+these typed tables. Those landing schemas are deliberately outside
+`EXPLORATION_SCHEMAS` — `run_sql` sees the projected tables only.
 
 ## Running Locally
 
@@ -418,7 +476,10 @@ The renderer runs **inside** Claude Desktop, not a browser. To update it:
 Always use `.venv/bin/python`. Never bare `python` / `python3`.
 
 `.env` at repo root needs at least `CC_DB_URL` (legacy name `EI_DB_URL` still
-accepted) and `SUPABASE_DATABASE_URL`.
+accepted) and `SUPABASE_DATABASE_URL`. `CC_EXPORT_SECRET` (any long random
+string) enables signed export links and the deal sheet's download row; without
+it the export lane still works, just with short-lived in-memory tickets and no
+row on the sheet. Rotating it invalidates every outstanding signed link.
 
 ## Deploy
 
@@ -447,10 +508,6 @@ accepted) and `SUPABASE_DATABASE_URL`.
 
 ## Testing
 
-GitHub Actions runs the Python suite plus renderer build/lint on pull requests.
-Both production and dev deployment workflows call that same reusable CI workflow
-and will not enter the deploy job unless it passes.
-
 ### Pytest suite (`tests/`)
 Run: `.venv/bin/pytest -q`.
 - `tests/conftest.py` — adds repo root to `sys.path`, exposes `fake_identity`,
@@ -470,14 +527,12 @@ Run: `.venv/bin/pytest -q`.
   `test_upload_tokens.py`, `test_uploads.py`, `test_room_store.py`,
   `test_extraction_transport.py`, `test_persist_pack.py`), the dataroom
   viewer payload — derived rollups plus the payload ⇄ frozen-template drift
-  pin (`test_dataroom_viewer_payload.py`), team messages
+  pin (`test_dataroom_viewer_payload.py`), the export lane
+  (`test_exports.py` — CSV assembly, zip assembly and a round-trip that
+  unzips what the route actually served, signed-grant round trip plus
+  tamper/forge/expiry refusals, the browser-facing download semantics
+  including the HTML error page, and two drift guards tying the volume
+  columns and the bundle's full column set to the orchestrator's schedule),
+  team messages
   (`test_team_messages_store.py`, `test_tools_message_team.py`), and schema
   drift.
-
-## Public release boundary
-
-This full working tree is **not** the public-release artifact because it carries
-host/deployment material. `REPO_BOUNDARY.md` is the source of truth for what may
-ship publicly; `PUBLIC_RELEASE_CHECKLIST.md` is the release gate. Never publish
-`.env`, runtime logs, customer/dataroom material, licensed data, private pipeline
-code, or host-specific deployment/provisioning files.

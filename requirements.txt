@@ -72,8 +72,8 @@ Pygments==2.19.2
 PyJWT==2.12.1
 pyperclip==1.11.0
 python-dotenv==1.2.2
-python-dateutil==2.9.0.post0
 python-multipart==0.0.22
+python-dateutil==2.9.0.post0
 PyYAML==6.0.3
 referencing==0.37.0
 rich==14.3.3

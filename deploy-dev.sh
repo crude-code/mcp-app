@@ -56,6 +56,7 @@ if [ ! -f "$TEMPLATE_DEST" ]; then
     echo "published deal-sheet template ${TEMPLATE_SHA}"
 fi
 
+# --- reserve-report template publish ---------------------------------------
 RESERVE_TEMPLATE_SRC=server/valuation/viewer/ReserveReport.jsx
 RESERVE_TEMPLATE_SHA=$(sha256sum "$RESERVE_TEMPLATE_SRC" | cut -c1-12)
 RESERVE_TEMPLATE_DEST="${TEMPLATE_DIR}/reserve-report-${RESERVE_TEMPLATE_SHA}.jsx"

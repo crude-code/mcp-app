@@ -27,12 +27,12 @@ See [`CLAUDE.md`](./CLAUDE.md) for the full architecture reference.
 ## The tools
 
 - **`run_sql`** — guarded, SELECT-only, capped exploration query
-- **`forecast_wells`** / **`run_valuation`** — accept asserted decline parameters (Claude is the reservoir engineer; the server is the calculator), echo their consequences, and run economics — returning the data behind a claude.ai deal-sheet artifact
-- **`reserve_report`** — turns that completed valuation into a shareable remaining-forecast-volume artifact without refitting or re-running economics
-- **`export_data`** — mints a one-time ZIP download for a persisted dataroom extraction or valuation run; bulk bytes stay out of model context
+- **`forecast_wells`** / **`run_valuation`** — accept asserted decline parameters (Claude is the reservoir engineer; the server is the calculator), echo their consequences, and run economics — returning the data behind a claude.ai deal-sheet artifact. Material inputs can carry source provenance; the server pairs evidence strength with deterministic dollar sensitivity so weak, high-impact assumptions rise to the top without inventing a confidence percentage
 - **`map`** — a MapLibre GL well/unit/PLSS map
 - **`get_skill`** — fetches a packaged, occasional-use procedure (e.g. dataroom extraction)
 - **`save_dataroom_extraction`** — persists a dataroom extraction so the deal record outlives the chat
+- **`export_data`** — returns short-lived or signed download links for valuation CSV/ZIP exports and large query exports without pushing rows through model context
+- **`reserve_report`** — turns an existing valuation into a shareable remaining-volume/PV artifact; operational PDP/DUC/PUD reporting, not a formal SEC/SPE reserves booking
 - **`message_team`** — files bugs, feedback, and data requests to the team (durable row + best-effort email)
 
 ## Requirements
@@ -71,12 +71,10 @@ the corresponding environment variable is unset.
 
 ## Maintenance & contributions
 
-This working tree includes operational deployment material and must not be
-published verbatim. The intended public application boundary is documented in
-[`REPO_BOUNDARY.md`](./REPO_BOUNDARY.md); use
-[`PUBLIC_RELEASE_CHECKLIST.md`](./PUBLIC_RELEASE_CHECKLIST.md) when producing a
-public snapshot. Contribution and vulnerability-reporting guidance lives in
-[`CONTRIBUTING.md`](./CONTRIBUTING.md) and [`SECURITY.md`](./SECURITY.md).
+This is a working platform maintained by one person alongside a full-time job.
+It's open-sourced for transparency and as a reference for building real systems
+on MCP + skills. Issues and PRs are welcome, but responses are best-effort —
+please set expectations accordingly.
 
 ## License
 

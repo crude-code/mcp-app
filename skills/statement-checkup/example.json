@@ -1,0 +1,67 @@
+{
+ "statement": {
+  "kind": "revenue_statement",
+  "platform": "EnergyLink",
+  "operator": "EXAMPLE OPERATING LLC",
+  "owner_name": "JANE Q. OWNER",
+  "owner_number": "1234",
+  "check_number": "100001",
+  "check_date": "2026-01-15",
+  "check_amount": 147.29,
+  "interest_type_guess": "ROYALTY INTEREST",
+  "units_note": "Gas = MCF, Oil = BBL"
+ },
+ "summary": {
+  "gross": 187.50,
+  "taxes": -9.71,
+  "deductions": -30.50,
+  "non_revenue_deductions": 0,
+  "net": 147.29
+ },
+ "properties": [
+  {
+   "property_id": "TX0001",
+   "well_name": "EXAMPLE UNIT 1H",
+   "state": "TX",
+   "county": "REEVES",
+   "stated_total": 147.29,
+   "products": [
+    {
+     "product": "OIL",
+     "prod_month": "2025-11",
+     "unit": "BBL",
+     "price": 60.00,
+     "property_volume": 1000.00,
+     "property_value": 60000.00,
+     "owner_interest": 0.0025,
+     "distribution_interest": 0.0025,
+     "owner_volume": 2.50,
+     "revenue": 150.00,
+     "stated_net": 140.10,
+     "lines": [
+      {"label": "SEVERANCE TAX", "amount": -6.90},
+      {"label": "TRANSPORTATION", "amount": -3.00}
+     ]
+    },
+    {
+     "product": "GAS",
+     "prod_month": "2025-11",
+     "unit": "MCF",
+     "price": 3.00,
+     "property_volume": 5000.00,
+     "property_value": 15000.00,
+     "owner_interest": 0.0025,
+     "distribution_interest": 0.0025,
+     "owner_volume": 12.50,
+     "revenue": 37.50,
+     "stated_net": 7.19,
+     "lines": [
+      {"label": "SEVERANCE TAX", "amount": -2.81},
+      {"label": "GATHERING", "amount": -20.00},
+      {"label": "PROCESSING FEE", "amount": -7.50}
+     ]
+    }
+   ]
+  }
+ ]
+}

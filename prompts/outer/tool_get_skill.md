@@ -31,6 +31,15 @@ Available skills:
   AFEs, production reports, title, division orders, a teaser/overview) and
   wants it turned into structured data for deal valuation, call
   `get_skill("dataroom-extract")` and follow the returned instructions.
+- **statement-checkup** — when an individual mineral or royalty owner
+  uploads a revenue statement (a royalty check stub / check detail) and
+  wants help understanding it — "I'm a mineral owner and I need some help
+  understanding my revenue statement" — call `get_skill("statement-checkup")`
+  and follow the returned instructions: a plain-English health check of one
+  check (which wells, statement volumes vs publicly reported production,
+  where the money went, questions worth asking the operator). One owner's
+  check → this skill; an acquisition package headed for a bid or valuation →
+  `dataroom-extract` instead.
 - **well-forecasting** — before forecasting any wells for a deal or
   valuation (`forecast_wells`), call `get_skill("well-forecasting")` and
   follow the returned procedure: how to read production history, judge the

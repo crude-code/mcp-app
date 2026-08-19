@@ -35,6 +35,23 @@ def test_the_frozen_template_parses():
     assert proc.returncode == 0, proc.stderr.decode()
 
 
+def test_frozen_skill_templates_parse():
+    """Same rationale as the deal-sheet check: skill-bundled .jsx templates
+    (DataroomViewer, StatementCheckup, ...) ship as text and are first parsed
+    inside the artifact sandbox — a syntax error surfaces to a user, not CI."""
+    npx = shutil.which("npx")
+    if npx is None or not (REPO / "renderer" / "node_modules").is_dir():
+        pytest.skip("renderer/node_modules not installed")
+    templates = sorted((REPO / "skills").glob("*/*.jsx"))
+    assert templates, "no skill templates found"
+    for tpl in templates:
+        proc = subprocess.run(
+            [npx, "--no-install", "esbuild", "--loader=jsx"],
+            input=tpl.read_bytes(), capture_output=True, cwd=REPO,
+        )
+        assert proc.returncode == 0, f"{tpl.name}: {proc.stderr.decode()}"
+
+
 def test_viewer_sha_is_the_file_bytes_digest():
     assert ap.viewer_sha256() == hashlib.sha256(ap._VIEWER_PATH.read_bytes()).hexdigest()
 

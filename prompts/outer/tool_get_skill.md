@@ -1,5 +1,8 @@
-Fetch a packaged Crude Code skill — a set of instructions plus the files that
-skill needs — so you can follow it directly in your work.
+Fetch a packaged Crude Code skill — the procedure for extracting an uploaded
+dataroom, health-checking a mineral or royalty owner's revenue statement
+(royalty check stub), or forecasting wells for a deal valuation — as
+instructions plus the files that skill needs, so you can follow it directly
+in your work.
 
 Call `get_skill(name)` with the skill name to get back a bundle:
 `{name, description, instructions, files, file_urls, file_sha256}`.

@@ -394,10 +394,21 @@ LLM-facing text, loaded via `utils/prompts.py` (`load("outer/...")`).
 - **`outer/shared_schema.md`** — the DB schema reference, kept in sync with
   `utils/schemas.py` by `tests/test_schema_drift.py`. It is appended to the
   **`run_sql` tool description** (`compose_run_sql_doc()`), NOT to the server
-  instructions: clients truncate MCP instructions (observed ~2.3 KB on
-  claude.ai), while tool descriptions arrive intact. All SQL guidance —
-  tables, columns, join keys, unit caveats — lives in that one docstring;
-  other tool docs point to it rather than repeating any of it.
+  instructions. All SQL guidance — tables, columns, join keys, unit caveats —
+  lives in that one docstring; other tool docs point to it rather than
+  repeating any of it.
+
+**Prompt delivery channels** (what actually reaches the model — verified
+Aug 2026): the MCP *instructions* channel (server system prompt) is
+unreliable — claude.ai was observed truncating it at ~2.3 KB (July 2026)
+and external reports (anthropics/claude-ai-mcp#131) say claude.ai may drop
+it entirely — so nothing load-bearing may live only there, and
+`system_prompt.md` keeps its skill-routing section inside the first ~2 KB
+as insurance. *Tool descriptions* arrive intact (verified to ~18 KB on a
+live client), but tool-search clients defer them: pre-load the model sees
+only each description's **first sentence** (search matches full
+descriptions, names, and arg docs). Rule: every tool doc's opening
+sentence must carry the routing keywords a user's ask would match.
 
 ### Shared Utilities (`utils/`)
 - **schemas.py** — Single source of truth for queryable DB schemas.
@@ -417,7 +428,8 @@ LLM-facing text, loaded via `utils/prompts.py` (`load("outer/...")`).
   (name kept for history, from when it also backed briefings).
 - **prompts.py** — Loads `prompts/` files. `compose_outer_system_prompt()`
   assembles `outer/system_prompt.md` + a live skills catalog (no schema —
-  instructions get truncated by clients). `compose_run_sql_doc()` assembles
+  the instructions channel is unreliable; see **Prompt delivery channels**
+  under Prompts). `compose_run_sql_doc()` assembles
   `outer/tool_run_sql.md` + `outer/shared_schema.md` for the `run_sql`
   tool description.
 - **platform.py** — user identity via Supabase (`users`): `resolve_identity`

@@ -43,11 +43,18 @@ def compose_outer_system_prompt() -> str:
     """Outer Claude's system prompt + skills catalog.
 
     The outer prompt frames the artifact-first workflow; the skills catalog is
-    inline so packaged playbooks are discoverable up front. The DB schema is
-    deliberately NOT here: clients truncate MCP server instructions (observed
-    at ~2.3 KB on claude.ai), so anything appended after the opening sections
-    never reaches the model. The schema rides in the `run_sql` tool
-    description instead (`compose_run_sql_doc`), which arrives intact.
+    inline so packaged playbooks are discoverable up front. Treat this whole
+    channel as unreliable: we observed claude.ai truncating server
+    instructions at ~2.3 KB (July 2026), and external reports
+    (anthropics/claude-ai-mcp#131) say claude.ai may drop the instructions
+    field entirely. Hence system_prompt.md keeps its skill-routing section
+    inside the first ~2 KB (insurance against the truncate case), the DB
+    schema is deliberately NOT here, and nothing load-bearing may live only
+    in this channel. Tool descriptions are the reliable surface — verified
+    arriving intact to ~18 KB (Aug 2026) — but tool-search clients defer
+    them, showing only each description's FIRST SENTENCE until the model
+    loads the tool (search matches full descriptions), so every tool doc's
+    opening sentence must carry its routing keywords.
     """
     outer = load("outer/system_prompt.md").rstrip()
     skills = _skills_section()

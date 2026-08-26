@@ -479,6 +479,15 @@ row on the sheet. Rotating it invalidates every outstanding signed link.
 
 ## Deploy
 
+- **Branching.** All work enters through `dev`; `main` only ever receives
+  `dev` → `main` merges. Push to `dev` = dev server deploy
+  (`mcp-dev.crudecode.dev`); push to `main` = prod deploy. Verify a change
+  on the dev server before merging it to `main`. Invariant: everything on
+  `main` is also on `dev` — `dev` may run ahead, never behind. The one
+  exception: prod is broken *and* `dev` holds unshippable work → fix on
+  `main` directly, then merge `main` back into `dev` the same day. Both
+  deploy workflows post their outcome to the crude-code Slack channel
+  (Notify Slack step; `SLACK_WEBHOOK_URL` repo secret).
 - **Releases.** A `dev` → `main` merge is a release: bump `__version__`
   (`server/mcp_server.py`) and `renderer/package.json`'s version together in
   the last dev commit (`npm --prefix renderer version X.Y.Z

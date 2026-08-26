@@ -68,3 +68,20 @@ jobs:
 
           echo "Final SSM status: $STATUS"
           [ "$STATUS" = "Success" ]
+
+      # Post the outcome to the crude-code Slack channel (SLACK_WEBHOOK_URL
+      # repo secret). always() so failed deploys ping too.
+      - name: Notify Slack
+        if: always()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          JOB_STATUS: ${{ job.status }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          EMOJI="✅"; [ "$JOB_STATUS" = "success" ] || EMOJI="❌"
+          TEXT="$EMOJI *dev* deploy \`${GITHUB_SHA::7}\` — $JOB_STATUS"
+          [ -n "$COMMIT_MSG" ] && TEXT="$TEXT"$'\n'"${COMMIT_MSG%%$'\n'*}"
+          TEXT="$TEXT"$'\n'"<$RUN_URL|view run>"
+          jq -n --arg text "$TEXT" '{text: $text}' \
+            | curl -s -X POST -H 'Content-type: application/json' -d @- "$SLACK_WEBHOOK_URL"

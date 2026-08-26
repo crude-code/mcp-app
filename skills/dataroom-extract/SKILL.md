@@ -263,6 +263,8 @@ extra to skip when the goal is downstream.
   extraction data ever transits the chat.
 - **Never guess an API.** Name-only well → `api: null`.
 - **No OCR.** Image-only PDFs are flagged by triage (`pdf_extractable: false`) — note them in `extraction_notes`; don't invent their contents.
-- **No `.accdb` (Aries) parsing** — note and move on.
+- **No `.accdb` (Aries) parsing here** — note and move on; if the user wants
+  the ARIES database itself read, that is `get_skill("aries-explorer")`, a
+  separate flow run after this one.
 - **The dataroom is read-only.**
 - **Partial-and-honest beats complete-and-invented.** Low on budget? Write what you have with honest `extraction_notes`.

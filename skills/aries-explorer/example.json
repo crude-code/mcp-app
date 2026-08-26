@@ -1,0 +1,443 @@
+{
+ "database": {
+  "file": "hawkville_divest_2026.accdb",
+  "size_bytes": 18874368,
+  "backend": "mdb-tools",
+  "schema_version": "5.2",
+  "table_count": 19,
+  "property_count": 5,
+  "projects": [
+   "HAWKVILLE DIVEST 2026"
+  ]
+ },
+ "scenarios": {
+  "chosen": "BASE",
+  "qualifiers": [
+   {
+    "name": "BASE",
+    "lines": 53,
+    "properties": 5
+   },
+   {
+    "name": "STRIP",
+    "lines": 4,
+    "properties": 2
+   }
+  ]
+ },
+ "rescat_rollup": [
+  {
+   "rescat": "PDP",
+   "count": 2,
+   "with_production": 2,
+   "with_forecast": 2
+  },
+  {
+   "rescat": "PDNP",
+   "count": 1,
+   "with_production": 1,
+   "with_forecast": 1
+  },
+  {
+   "rescat": "PUD",
+   "count": 2,
+   "with_production": 0,
+   "with_forecast": 2
+  }
+ ],
+ "forecast_mix": [
+  {
+   "source": "type curve TC_PROD",
+   "count": 3
+  },
+  {
+   "source": "decline segments (2)",
+   "count": 2
+  }
+ ],
+ "coverage": {
+  "properties_with_production": 3,
+  "first": "2023-02",
+  "last": "2025-11",
+  "history_rows": 96
+ },
+ "properties": [
+  {
+   "propnum": "P001",
+   "name": "HAWKVILLE UNIT 1H",
+   "rescat": "PDP",
+   "major": "GAS",
+   "state": "TX",
+   "county": "PANOLA",
+   "operator": "CRESTONE",
+   "api": "42-365-38101",
+   "lateral_ft": 7480,
+   "wi": 1.0,
+   "nri": 0.75,
+   "prod_months": 34,
+   "last_prod": "2025-11",
+   "cum_oil": 0,
+   "cum_gas": 4823400,
+   "econ_lines": 9,
+   "forecast": "decline segments (2)"
+  },
+  {
+   "propnum": "P002",
+   "name": "HAWKVILLE UNIT 2H",
+   "rescat": "PDP",
+   "major": "GAS",
+   "state": "TX",
+   "county": "PANOLA",
+   "operator": "CRESTONE",
+   "api": "42-365-38102",
+   "lateral_ft": 9820,
+   "wi": 1.0,
+   "nri": 0.75,
+   "prod_months": 28,
+   "last_prod": "2025-11",
+   "cum_oil": 0,
+   "cum_gas": 5109800,
+   "econ_lines": 9,
+   "forecast": "decline segments (2)"
+  },
+  {
+   "propnum": "P003",
+   "name": "HAWKVILLE UNIT 3H",
+   "rescat": "PDNP",
+   "major": "GAS",
+   "state": "TX",
+   "county": "PANOLA",
+   "operator": "CRESTONE",
+   "api": "42-365-38103",
+   "lateral_ft": 7510,
+   "wi": 1.0,
+   "nri": 0.75,
+   "prod_months": 18,
+   "last_prod": "2025-06",
+   "cum_oil": 0,
+   "cum_gas": 1204600,
+   "econ_lines": 11,
+   "forecast": "type curve TC_PROD"
+  },
+  {
+   "propnum": "P004",
+   "name": "HV LOC 12-01H",
+   "rescat": "PUD",
+   "major": "GAS",
+   "state": "TX",
+   "county": "PANOLA",
+   "operator": "CRESTONE",
+   "api": null,
+   "lateral_ft": 10050,
+   "wi": 1.0,
+   "nri": 0.75,
+   "prod_months": 0,
+   "last_prod": null,
+   "cum_oil": null,
+   "cum_gas": null,
+   "econ_lines": 12,
+   "forecast": "type curve TC_PROD"
+  },
+  {
+   "propnum": "P005",
+   "name": "HV LOC 12-02H",
+   "rescat": "PUD",
+   "major": "GAS",
+   "state": "TX",
+   "county": "PANOLA",
+   "operator": "CRESTONE",
+   "api": null,
+   "lateral_ft": 10050,
+   "wi": 1.0,
+   "nri": 0.75,
+   "prod_months": 0,
+   "last_prod": null,
+   "cum_oil": null,
+   "cum_gas": null,
+   "econ_lines": 12,
+   "forecast": "type curve TC_PROD"
+  }
+ ],
+ "properties_truncated": null,
+ "assumptions": [
+  {
+   "section": 2,
+   "section_name": "Input settings",
+   "keyword": "BTU",
+   "label": "BTU factor",
+   "expression": "1.05 X FRAC TO LIFE",
+   "properties": 5
+  },
+  {
+   "section": 2,
+   "section_name": "Input settings",
+   "keyword": "SHRINK",
+   "label": "Gas shrinkage",
+   "expression": "0.82 X FRAC TO LIFE",
+   "properties": 5
+  },
+  {
+   "section": 4,
+   "section_name": "Production & forecasts",
+   "keyword": "START",
+   "label": "Forecast start",
+   "expression": "07/2026",
+   "properties": 2
+  },
+  {
+   "section": 4,
+   "section_name": "Production & forecasts",
+   "keyword": "START",
+   "label": "Forecast start",
+   "expression": "10/2026",
+   "properties": 1
+  },
+  {
+   "section": 5,
+   "section_name": "Prices",
+   "keyword": "PAJ/GAS",
+   "label": "Gas price differential",
+   "expression": "-0.50 X $/M TO LIFE PC 0",
+   "properties": 5
+  },
+  {
+   "section": 5,
+   "section_name": "Prices",
+   "keyword": "PRI/GAS",
+   "label": "Gas price",
+   "expression": "4.00 X $/M TO LIFE PC 0",
+   "properties": 5
+  },
+  {
+   "section": 6,
+   "section_name": "Expenses",
+   "keyword": "ATX",
+   "label": "Ad valorem tax",
+   "expression": "2.1 X % TO LIFE PC 0",
+   "properties": 5
+  },
+  {
+   "section": 6,
+   "section_name": "Expenses",
+   "keyword": "OPC/T",
+   "label": "Fixed operating cost",
+   "expression": "5000 X $/M TO LIFE PC 0",
+   "properties": 5
+  },
+  {
+   "section": 6,
+   "section_name": "Expenses",
+   "keyword": "STX/GAS",
+   "label": "Severance tax (gas)",
+   "expression": "7.5 X % TO LIFE PC 0",
+   "properties": 5
+  },
+  {
+   "section": 7,
+   "section_name": "Ownership",
+   "keyword": "LSE/WI",
+   "label": "Lease working interest",
+   "expression": "1.0000 X FRAC TO LIFE",
+   "properties": 5
+  },
+  {
+   "section": 7,
+   "section_name": "Ownership",
+   "keyword": "NET",
+   "label": "Net revenue interest",
+   "expression": "0.7500",
+   "properties": 5
+  },
+  {
+   "section": 8,
+   "section_name": "Investments",
+   "keyword": "CAPITAL",
+   "label": "Investment",
+   "expression": "DRILL 9500 0 07/2026 ACR2 7",
+   "properties": 2
+  }
+ ],
+ "assumptions_truncated": null,
+ "lookups": [
+  {
+   "name": "TC_PROD",
+   "template": [
+    "GAS @M.LATERAL*1.0 X M/D 1 MO FLAT 0",
+    "\" ? X M/D 6.0 EXP ? ?",
+    "\" X X M/D 50 IYR EXP 6.0"
+   ],
+   "header": [
+    "GEOZONE",
+    "Q1",
+    "B",
+    "DI"
+   ],
+   "rows": [
+    [
+     "HV",
+     "@M.LATERAL*3.6",
+     "B/0.50",
+     "46.0"
+    ],
+    [
+     "MB",
+     "@M.LATERAL*3.0",
+     "B/0.50",
+     "39.0"
+    ]
+   ],
+   "rows_total": 2
+  },
+  {
+   "name": "GASPRICE",
+   "template": [],
+   "header": [
+    "AREA",
+    "2026",
+    "2027",
+    "2028"
+   ],
+   "rows": [
+    [
+     "ETXTYL",
+     "3.85",
+     "3.95",
+     "4.05"
+    ]
+   ],
+   "rows_total": 1
+  }
+ ],
+ "lookups_truncated": null,
+ "integrity": [
+  {
+   "label": "Economics rows all reference a known property",
+   "ok": true,
+   "detail": "every BASE PROPNUM resolves to AC_PROPERTY"
+  },
+  {
+   "label": "Every property has economics lines (BASE)",
+   "ok": true,
+   "detail": "all properties carry economics"
+  },
+  {
+   "label": "Every property has a forecast source",
+   "ok": true,
+   "detail": "all properties have a forecast"
+  },
+  {
+   "label": "PROPNUMs are unique in AC_PROPERTY",
+   "ok": true,
+   "detail": "no duplicates"
+  },
+  {
+   "label": "Production history all maps to known properties",
+   "ok": true,
+   "detail": "every producing PROPNUM resolves"
+  }
+ ],
+ "inventory": [
+  {
+   "name": "AC_PROPERTY",
+   "rows": 5,
+   "role": "core"
+  },
+  {
+   "name": "AC_ECONOMIC",
+   "rows": 57,
+   "role": "core"
+  },
+  {
+   "name": "AC_SCENARIO",
+   "rows": 2,
+   "role": "core"
+  },
+  {
+   "name": "ARLOOKUP",
+   "rows": 8,
+   "role": "core"
+  },
+  {
+   "name": "AC_FCST",
+   "rows": 4,
+   "role": "core"
+  },
+  {
+   "name": "AC_OWNER",
+   "rows": 5,
+   "role": "core"
+  },
+  {
+   "name": "AC_SETUP",
+   "rows": 3,
+   "role": "core"
+  },
+  {
+   "name": "AC_SETUPDATA",
+   "rows": 12,
+   "role": "core"
+  },
+  {
+   "name": "ARSYSTBL",
+   "rows": 22,
+   "role": "core"
+  },
+  {
+   "name": "PROJLIST",
+   "rows": 1,
+   "role": "core"
+  },
+  {
+   "name": "ARIESSCHEMAVERSION",
+   "rows": 1,
+   "role": "core"
+  },
+  {
+   "name": "AC_PRODUCT",
+   "rows": 96,
+   "role": "aggregate"
+  },
+  {
+   "name": "AC_MONTHLY",
+   "rows": 14200,
+   "role": "aggregate"
+  },
+  {
+   "name": "AC_ONELINE",
+   "rows": 5,
+   "role": "core"
+  },
+  {
+   "name": "ARSYSCOL",
+   "rows": 310,
+   "role": "other"
+  },
+  {
+   "name": "ARUNITS",
+   "rows": 44,
+   "role": "other"
+  },
+  {
+   "name": "ARSTREAM",
+   "rows": 1500,
+   "role": "other"
+  },
+  {
+   "name": "GROUPLIST",
+   "rows": 2,
+   "role": "other"
+  },
+  {
+   "name": "DBSLIST",
+   "rows": 1,
+   "role": "other"
+  }
+ ],
+ "notes": [
+  "A small Haynesville gas divestiture package: 5 Panola County, TX cases operated by Crestone \u2014 2 producing (history through 2025-11), 1 shut-in, and 2 undrilled locations riding the TC_PROD type curve.",
+  "Two scenarios exist: BASE (decoded here, all 5 properties) and STRIP, which only reprices gas at $3.45 on the two producers.",
+  "Producing wells carry explicit decline segments (hyperbolic b=0.9 rolling to 6% exponential); the shut-in and both locations forecast from the TC_PROD lookup, scaled by lateral length.",
+  "Every economic line is uniform across the package \u2014 flat $4.00 gas less $0.50 basis, $5,000/month fixed LOE, 7.5% severance \u2014 so the assumptions table reads as one deck, not per-well engineering.",
+  "The two locations have no APIs (undrilled) and the database's own capital line is $9,500M per well starting 07/2026 \u2014 the author's numbers, shown as given."
+ ]
+}

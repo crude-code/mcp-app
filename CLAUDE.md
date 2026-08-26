@@ -352,6 +352,27 @@ plus whatever supporting files it references; `server/skills.py` scans the
 directory (`list_skills`) and loads a bundle (`load_skill`) — pure file I/O,
 no DB/network/identity, so it works with no `CC_DB_URL` set. Drop a new
 subfolder with a `SKILL.md` in to add a skill; nothing else registers it.
+- **`aries-explorer/`** — reads an uploaded ARIES database (`.accdb`/`.mdb`,
+  the Halliburton/Landmark reserves & economics format) and shows the user
+  what's inside — standalone: not the dataroom flow, not a valuation, no
+  persistence lane (nothing uploaded or stored; the file stays in the chat).
+  Bundled `ARIES.md` is the domain reference (table map, the AC_ECONOMIC
+  8-word line grammar, units/escalation codes, stream numbers);
+  `aries_triage.py` opens the binary (mdb-tools if present, else pip
+  `access_parser` — code execution is a hard requirement, no by-hand
+  fallback), inventories every table, dumps the load-bearing ones to CSV and
+  streams AC_PRODUCT into coverage stats (the huge computed tables are never
+  dumped); `aries_payload.py` decodes deterministically — scenario
+  qualifiers (BASE by default), reserve-category rollup, per-property
+  forecast source (segments / type-curve lookup / rate lines), assumption
+  clusters (identical lines counted across properties, unknown keywords
+  passed through verbatim), ARLOOKUP type curves, referential-integrity
+  checks — with a `--facts` digest the model reads before writing
+  `notes.json` (the judgment layer). Claude fills the emitted payload into
+  the frozen `AriesViewer.jsx` as `DATA`/`TITLE`/`TLDR` (`example.json` is
+  generated from a synthetic fixture by the payload script itself, so it
+  can't drift). Doctrine: the database's forecasts and economics are the
+  author's claims — displayed, never adopted into a valuation.
 - **`dataroom-extract/`** — turns an uploaded oil & gas dataroom (LOS, check
   stubs, AFEs, production reports, title, division orders) into a structured
   `extraction.json` (now carrying a `flags` list — the read-before-bidding
@@ -368,6 +389,25 @@ subfolder with a `SKILL.md` in to add a skill; nothing else registers it.
   `extraction_id` after corrections; the raw extraction never gets pasted
   into an artifact). Feeds `forecast_wells` / `run_valuation` when the room
   is headed for a deal.
+- **`statement-checkup/`** — a plain-English health check of one royalty
+  check stub for an individual mineral/royalty owner (explicitly not a
+  valuation and not a dataroom — `dataroom-extract` is for acquisition
+  packages). Claude extracts the statement into `statement.json` (Owner
+  Share vs Property Values columns never mixed, line items signed as
+  printed, interest decimals copied verbatim), resolves wells and pulls
+  state volumes + benchmark prices via `run_sql` into `public.json`, then
+  the bundled `checkup_payload.py` does every rollup — no model
+  arithmetic — and ties the extraction out against the statement's own
+  printed totals (a statement that can't reproduce its own check total is
+  itself a finding). Claude reads the script's `--facts` digest, writes
+  `findings.json` (attention/info/good; every attention finding pairs
+  with a ready-to-send question for the operator — questions, never
+  underpayment claims), and fills the emitted payload into the frozen
+  `StatementCheckup.jsx` viewer (react-only) as `DATA`/`TITLE`/`TLDR`.
+  The doctrine encodes what normal looks like (sales-vs-production
+  timing, plant shrink vs NGL lines, regional basis, per-state tax bands,
+  young-well decline) so normal gaps reassure rather than alarm. No
+  persistence lane — the owner's statement stays in the chat.
 - **`well-forecasting/`** — the reservoir-engineer doctrine behind
   `forecast_wells`: reading production history (contamination signatures,
   strike-vs-average), trust judgment by maturity, qi/anchor + the uptime

@@ -1,8 +1,8 @@
 Fetch a packaged Crude Code skill — the procedure for extracting an uploaded
 dataroom, health-checking a mineral or royalty owner's revenue statement
-(royalty check stub), or forecasting wells for a deal valuation — as
-instructions plus the files that skill needs, so you can follow it directly
-in your work.
+(royalty check stub), reading an uploaded ARIES database (.accdb/.mdb), or
+forecasting wells for a deal valuation — as instructions plus the files that
+skill needs, so you can follow it directly in your work.
 
 Call `get_skill(name)` with the skill name to get back a bundle:
 `{name, description, instructions, files, file_urls, file_sha256}`.
@@ -29,6 +29,15 @@ Call `get_skill()` with no name (or an unknown name) to list what's available:
 `{available_skills: [{name, description}, ...]}`.
 
 Available skills:
+- **aries-explorer** — when the user uploads an ARIES database (a Microsoft
+  Access `.accdb`/`.mdb` file from Halliburton/Landmark's reserves &
+  economics software) or asks what's inside one, call
+  `get_skill("aries-explorer")` and follow the returned instructions: read
+  the binary with the bundled scripts, decode the properties, forecasts,
+  and economic assumptions it carries, and build the explorer viewer. One
+  database read on its own → this skill; a document package headed for a
+  bid → `dataroom-extract`; "what is it worth" → the valuation flow (the
+  database's own forecasts are displayed, never adopted).
 - **dataroom-extract** — when the user uploads an oil & gas dataroom (an
   acquisition/divestiture package: lease operating statements, check stubs,
   AFEs, production reports, title, division orders, a teaser/overview) and

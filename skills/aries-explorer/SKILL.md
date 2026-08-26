@@ -21,7 +21,10 @@ own. The forecasts and economics inside are **the database author's
 claims** — you are displaying them, never adopting them. If the user asks
 what the assets are *worth*, that is the valuation flow
 (`get_skill("well-forecasting")` → `forecast_wells`), which builds its own
-forecasts from public data and never takes ARIES parameters as inputs.
+forecasts from public data. The one sanctioned exception: when the user
+**explicitly asks to value this database's own curves**, that is
+`get_skill("aries-to-valuation")` — a separate skill that translates them
+with full attribution and its own guardrails.
 
 ## What you need
 
@@ -164,4 +167,6 @@ only:
 - **Never adopt the database's forecasts or economics as your own** — not
   into a valuation, not into an answer about what something is worth.
   Offer the valuation flow separately if the user asks; it starts from
-  public data, not from this file.
+  public data, not from this file. Valuing this database's own curves is
+  its own skill with its own guardrails — `aries-to-valuation`, only on
+  the user's explicit request.

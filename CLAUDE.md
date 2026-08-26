@@ -378,7 +378,27 @@ subfolder with a `SKILL.md` in to add a skill; nothing else registers it.
   the frozen `AriesViewer.jsx` as `DATA`/`TITLE`/`TLDR` (`example.json` is
   generated from a synthetic fixture by the payload script itself, so it
   can't drift). Doctrine: the database's forecasts and economics are the
-  author's claims — displayed, never adopted into a valuation.
+  author's claims — displayed, never adopted into a valuation (the one
+  sanctioned exception is `aries-to-valuation`, below, on explicit request).
+- **`aries-to-valuation/`** — lane 1 of the ARIES→valuation integration:
+  when the user explicitly asks to value an ARIES database's own curves,
+  `aries_curves.py` translates the section-4 forecasts into `forecast_wells`
+  assertions — decline conversion per the pinned conventions in the
+  explorer's ARIES.md (effective-annual secant → nominal monthly; verified
+  against a real database's own oneliner to ≤0.013% per stream, 20 wells ×
+  2 streams), anchor = START, rationale carrying the verbatim §4 lines +
+  qualifier + db sha — and the normal `forecast_wells` → `run_valuation`
+  flow runs unchanged (echo, evidence, exports all come free). Only the
+  proven line shape translates (hyperbolic main + terminal ditto); LOOKUP /
+  LIST / multi-segment streams are refused per stream with verbatim reasons
+  in the coverage report, which also carries what the engine doesn't model
+  (NGL yield, shrink, water opex) and the quantified ARIES-tail vs
+  engine-tail delta. Optional `--tieout oneliner.json` reproduces the
+  seller's EURs as a translation-health gate (>0.1% mean = stop). The
+  deliverable is labeled "seller's curves, Crude Code economics" — a third
+  number, never a replay of the seller's model (their prices/costs/life are
+  never used) and never the default valuation. Engine constants are
+  drift-pinned by `tests/test_aries_curves.py`.
 - **`dataroom-extract/`** — turns an uploaded oil & gas dataroom (LOS, check
   stubs, AFEs, production reports, title, division orders) into a structured
   `extraction.json` (now carrying a `flags` list — the read-before-bidding

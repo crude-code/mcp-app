@@ -1,8 +1,9 @@
 Fetch a packaged Crude Code skill — the procedure for extracting an uploaded
 dataroom, health-checking a mineral or royalty owner's revenue statement
-(royalty check stub), reading an uploaded ARIES database (.accdb/.mdb), or
-forecasting wells for a deal valuation — as instructions plus the files that
-skill needs, so you can follow it directly in your work.
+(royalty check stub), reading an uploaded ARIES database (.accdb/.mdb),
+valuing an ARIES database's own curves, or forecasting wells for a deal
+valuation — as instructions plus the files that skill needs, so you can
+follow it directly in your work.
 
 Call `get_skill(name)` with the skill name to get back a bundle:
 `{name, description, instructions, files, file_urls, file_sha256}`.
@@ -38,6 +39,16 @@ Available skills:
   database read on its own → this skill; a document package headed for a
   bid → `dataroom-extract`; "what is it worth" → the valuation flow (the
   database's own forecasts are displayed, never adopted).
+- **aries-to-valuation** — when the user **explicitly asks to value the
+  forecasts inside an ARIES database** ("what do the seller's curves say
+  this is worth", "run their forecasts through our economics"), call
+  `get_skill("aries-to-valuation")` and follow the returned instructions:
+  it translates the section-4 decline curves into `forecast_wells`
+  assertions with full attribution (verbatim ARIES lines in every
+  rationale), then the normal valuation flow runs unchanged. The result is
+  "seller's curves, Crude Code economics" — never presented as a replay of
+  the seller's model, and never the default: an ordinary "what is this
+  worth" still means `well-forecasting`, our independent view.
 - **dataroom-extract** — when the user uploads an oil & gas dataroom (an
   acquisition/divestiture package: lease operating statements, check stubs,
   AFEs, production reports, title, division orders, a teaser/overview) and

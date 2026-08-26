@@ -136,6 +136,21 @@ function Integrity({ checks }) {
 }
 
 // ── The property manifest, grouped by reserve category ──────────────────────
+// An economics run uses the section-7 NET line, not the master WI/NRI
+// columns — so the NET-derived value leads, and a disagreeing master value
+// is shown under it rather than hidden.
+function InterestCell({ master, econ }) {
+  if (econ == null && master == null) return "—";
+  if (econ == null) return fmtDecimal(master);
+  if (master == null || Math.abs(master - econ) <= 1e-6) return fmtDecimal(econ);
+  return (
+    <span>
+      {fmtDecimal(econ)}
+      <span style={{ display: "block", fontSize: 8.5, color: C.flag }}>master {fmtDecimal(master)}</span>
+    </span>
+  );
+}
+
 function PropertyGroups({ properties, truncated }) {
   const groups = [];
   for (const p of properties) {
@@ -181,13 +196,16 @@ function PropertyGroups({ properties, truncated }) {
                         <td style={{ ...TD, textAlign: "left" }}>
                           <span style={{ fontWeight: 550, color: C.textPrimary }}>{p.name}</span>
                           {p.operator ? <span style={{ fontSize: 10, color: C.textDim, marginLeft: 6 }}>{p.operator}</span> : null}
+                          {p.interest_schedule ? (
+                            <span title={`NET-line schedule: ${p.interest_schedule}`} style={{ fontFamily: C.mono, fontSize: 8, letterSpacing: "0.06em", textTransform: "uppercase", color: C.flag, border: `1px solid ${C.flag}`, borderRadius: 4, padding: "1px 4px", marginLeft: 6 }}>reversion</span>
+                          ) : null}
                         </td>
                         <td style={{ ...TD, textAlign: "left", fontFamily: C.mono, fontSize: 10.5, color: p.api ? C.textMuted : C.textDim }}>{p.api || "—"}</td>
                         <td style={{ ...TD, textAlign: "left", color: C.textMuted }}>{[p.county, p.state].filter(Boolean).join(", ") || "—"}</td>
                         <td style={{ ...TD, color: C.textMuted }}>{p.major || "—"}</td>
                         <td style={TD}>{fmtInt(p.lateral_ft)}</td>
-                        <td style={{ ...TD, fontFamily: C.mono, fontSize: 10.5 }}>{fmtDecimal(p.wi)}</td>
-                        <td style={{ ...TD, fontFamily: C.mono, fontSize: 10.5 }}>{fmtDecimal(p.nri)}</td>
+                        <td style={{ ...TD, fontFamily: C.mono, fontSize: 10.5 }}><InterestCell master={p.wi} econ={p.wi_econ} /></td>
+                        <td style={{ ...TD, fontFamily: C.mono, fontSize: 10.5 }}><InterestCell master={p.nri} econ={p.nri_econ} /></td>
                         {hasProd ? <td style={TD}>{p.prod_months ? `${p.prod_months}${p.last_prod ? ` · thru ${p.last_prod}` : ""}` : "—"}</td> : null}
                         {hasProd ? <td style={TD}>{fmtInt(p.cum_oil)}</td> : null}
                         {hasProd ? <td style={TD}>{fmtInt(p.cum_gas)}</td> : null}
@@ -275,7 +293,12 @@ function Lookups({ lookups, truncated }) {
               <div style={{ overflowX: "auto", borderTop: `1px solid ${C.borderSubtle}` }}>
                 <table style={{ borderCollapse: "collapse", fontSize: 10.5, fontFamily: C.mono, minWidth: "50%" }}>
                   {lk.header?.length ? (
-                    <thead><tr>{lk.header.map((h, i) => <th key={i} style={{ ...TH, textAlign: "left" }}>{h}</th>)}</tr></thead>
+                    <thead>
+                      <tr>{lk.header.map((h, i) => <th key={i} style={{ ...TH, textAlign: "left" }}>{h}</th>)}</tr>
+                      {(lk.header_extra || []).map((hx, i) => (
+                        <tr key={`hx${i}`}>{hx.map((v, j) => <th key={j} style={{ ...TH, textAlign: "left", color: C.textDim, fontWeight: 400, fontStyle: "italic", textTransform: "none", letterSpacing: 0 }}>{v}</th>)}</tr>
+                      ))}
+                    </thead>
                   ) : null}
                   <tbody>
                     {lk.rows.map((r, i) => (
@@ -296,6 +319,50 @@ function Lookups({ lookups, truncated }) {
       {truncated ? (
         <div style={{ fontSize: 10.5, color: C.flag, marginTop: 5 }}>
           Showing {fmtInt(truncated.shown)} of {fmtInt(truncated.total)} lookup tables.
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// ── Side files — external econ lines; the price decks usually live here ─────
+function SideFiles({ files, truncated }) {
+  return (
+    <div>
+      <div style={{ ...LBL, marginBottom: 8 }}>Side files · external economic lines (price decks live here)</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {files.map((sf) => (
+          <div key={sf.name} style={{ border: `1px solid ${C.border}`, borderRadius: 7, overflow: "hidden" }}>
+            <div style={{ padding: "6px 10px", background: C.panelMute, display: "flex", gap: 10, alignItems: "baseline" }}>
+              <span style={{ fontFamily: C.mono, fontSize: 11.5, fontWeight: 700, color: C.textPrimary }}>{sf.name}</span>
+              <span style={{ fontSize: 10.5, color: C.textDim }}>
+                {sf.referenced_by ? `referenced by ${fmtInt(sf.referenced_by)} propert${sf.referenced_by === 1 ? "y" : "ies"} · ` : ""}{fmtInt(sf.lines_total)} lines
+              </span>
+            </div>
+            <div style={{ overflowX: "auto", borderTop: `1px solid ${C.borderSubtle}` }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10.5 }}>
+                <tbody>
+                  {sf.lines.map((ln, i) => (
+                    <tr key={i} style={{ borderTop: i ? `1px solid ${C.borderSubtle}` : "none" }}>
+                      <td style={{ padding: "3px 8px", whiteSpace: "nowrap", width: 1 }}>
+                        <span style={{ fontFamily: C.mono, color: C.accent }}>{ln.keyword}</span>
+                        {ln.label && !ln.label.startsWith("″") ? <span style={{ fontSize: 10, color: C.textMuted, marginLeft: 6 }}>{ln.label}</span> : null}
+                      </td>
+                      <td style={{ padding: "3px 8px", fontFamily: C.mono, color: C.textBody, whiteSpace: "pre-wrap" }}>{ln.expression}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {sf.lines_total > sf.lines.length ? (
+                <div style={{ fontSize: 10, color: C.flag, padding: "3px 8px" }}>first {sf.lines.length} of {fmtInt(sf.lines_total)} lines</div>
+              ) : null}
+            </div>
+          </div>
+        ))}
+      </div>
+      {truncated ? (
+        <div style={{ fontSize: 10.5, color: C.flag, marginTop: 5 }}>
+          Showing {fmtInt(truncated.shown)} of {fmtInt(truncated.total)} side files.
         </div>
       ) : null}
     </div>
@@ -381,6 +448,7 @@ function AriesExplorer({ title, tldr, data }) {
         {data.integrity?.length ? <Integrity checks={data.integrity} /> : null}
         {data.properties?.length ? <PropertyGroups properties={data.properties} truncated={data.properties_truncated} /> : null}
         {data.assumptions?.length ? <Assumptions clusters={data.assumptions} truncated={data.assumptions_truncated} /> : null}
+        {data.side_files?.length ? <SideFiles files={data.side_files} truncated={data.side_files_truncated} /> : null}
         {data.lookups?.length ? <Lookups lookups={data.lookups} truncated={data.lookups_truncated} /> : null}
         {data.inventory?.length ? <Inventory tables={data.inventory} /> : null}
       </div>

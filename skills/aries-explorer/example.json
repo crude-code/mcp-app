@@ -4,7 +4,7 @@
   "size_bytes": 18874368,
   "backend": "mdb-tools",
   "schema_version": "5.2",
-  "table_count": 19,
+  "table_count": 20,
   "property_count": 5,
   "projects": [
    "HAWKVILLE DIVEST 2026"
@@ -51,7 +51,7 @@
    "count": 3
   },
   {
-   "source": "decline segments (2)",
+   "source": "decline segments",
    "count": 2
   }
  ],
@@ -79,7 +79,9 @@
    "cum_oil": 0,
    "cum_gas": 4823400,
    "econ_lines": 9,
-   "forecast": "decline segments (2)"
+   "forecast": "decline segments (2)",
+   "wi_econ": 1.0,
+   "nri_econ": 0.75
   },
   {
    "propnum": "P002",
@@ -98,7 +100,9 @@
    "cum_oil": 0,
    "cum_gas": 5109800,
    "econ_lines": 9,
-   "forecast": "decline segments (2)"
+   "forecast": "decline segments (2)",
+   "wi_econ": 1.0,
+   "nri_econ": 0.75
   },
   {
    "propnum": "P003",
@@ -117,7 +121,9 @@
    "cum_oil": 0,
    "cum_gas": 1204600,
    "econ_lines": 11,
-   "forecast": "type curve TC_PROD"
+   "forecast": "type curve TC_PROD",
+   "wi_econ": 1.0,
+   "nri_econ": 0.75
   },
   {
    "propnum": "P004",
@@ -136,7 +142,9 @@
    "cum_oil": null,
    "cum_gas": null,
    "econ_lines": 12,
-   "forecast": "type curve TC_PROD"
+   "forecast": "type curve TC_PROD",
+   "wi_econ": 1.0,
+   "nri_econ": 0.75
   },
   {
    "propnum": "P005",
@@ -155,7 +163,10 @@
    "cum_oil": null,
    "cum_gas": null,
    "econ_lines": 12,
-   "forecast": "type curve TC_PROD"
+   "forecast": "type curve TC_PROD",
+   "wi_econ": 1.0,
+   "nri_econ": 0.75,
+   "interest_schedule": "2500 M$/747"
   }
  ],
  "properties_truncated": null,
@@ -203,9 +214,9 @@
   {
    "section": 5,
    "section_name": "Prices",
-   "keyword": "PRI/GAS",
-   "label": "Gas price",
-   "expression": "4.00 X $/M TO LIFE PC 0",
+   "keyword": "SIDEFILE",
+   "label": "Side file (external econ lines)",
+   "expression": "HH_STRIP_2606",
    "properties": 5
   },
   {
@@ -245,8 +256,24 @@
    "section_name": "Ownership",
    "keyword": "NET",
    "label": "Net revenue interest",
-   "expression": "0.7500",
-   "properties": 5
+   "expression": "1.0000 0.7500 0.7500 0 FRAC PC 0",
+   "properties": 3
+  },
+  {
+   "section": 7,
+   "section_name": "Ownership",
+   "keyword": "NET",
+   "label": "Net revenue interest",
+   "expression": "100 75 75 0 % 2500 M$/747",
+   "properties": 1
+  },
+  {
+   "section": 7,
+   "section_name": "Ownership",
+   "keyword": "NET",
+   "label": "Net revenue interest",
+   "expression": "100 75 75 0 % PC 0",
+   "properties": 1
   },
   {
    "section": 8,
@@ -272,6 +299,7 @@
     "B",
     "DI"
    ],
+   "header_extra": [],
    "rows": [
     [
      "HV",
@@ -297,6 +325,7 @@
     "2027",
     "2028"
    ],
+   "header_extra": [],
    "rows": [
     [
      "ETXTYL",
@@ -309,6 +338,34 @@
   }
  ],
  "lookups_truncated": null,
+ "side_files": [
+  {
+   "name": "HH_STRIP_2606",
+   "referenced_by": 5,
+   "lines_total": 3,
+   "lines": [
+    {
+     "section": 5,
+     "keyword": "PRI/GAS",
+     "label": "Gas price",
+     "expression": "01/2026 3.85 3.95 4.05 4.02 3.98 #"
+    },
+    {
+     "section": 5,
+     "keyword": "\"",
+     "label": "\u2033 continuation of previous line",
+     "expression": "X 3.90 3.88 3.85 3.85 3.85 #"
+    },
+    {
+     "section": 5,
+     "keyword": "\"",
+     "label": "\u2033 continuation of previous line",
+     "expression": "3.80 X $/M TO LIFE PC 0"
+    }
+   ]
+  }
+ ],
+ "side_files_truncated": null,
  "integrity": [
   {
    "label": "Economics rows all reference a known property",
@@ -334,6 +391,16 @@
    "label": "Production history all maps to known properties",
    "ok": true,
    "detail": "every producing PROPNUM resolves"
+  },
+  {
+   "label": "Master WI/NRI agrees with the section-7 NET line",
+   "ok": true,
+   "detail": "master and NET interests match on all 5 comparable properties"
+  },
+  {
+   "label": "No actuals postdate the forecast START",
+   "ok": true,
+   "detail": "history ends at or before the forecast start on all 1 dated property"
   }
  ],
  "inventory": [
@@ -388,6 +455,11 @@
    "role": "core"
   },
   {
+   "name": "AR_SIDEFILE",
+   "rows": 3,
+   "role": "core"
+  },
+  {
    "name": "ARIESSCHEMAVERSION",
    "rows": 1,
    "role": "core"
@@ -436,8 +508,9 @@
  "notes": [
   "A small Haynesville gas divestiture package: 5 Panola County, TX cases operated by Crestone \u2014 2 producing (history through 2025-11), 1 shut-in, and 2 undrilled locations riding the TC_PROD type curve.",
   "Two scenarios exist: BASE (decoded here, all 5 properties) and STRIP, which only reprices gas at $3.45 on the two producers.",
+  "Gas pricing comes from the HH_STRIP_2606 side file \u2014 a monthly strip through mid-2027, then flat $3.80 \u2014 less a $0.50 basis differential.",
   "Producing wells carry explicit decline segments (hyperbolic b=0.9 rolling to 6% exponential); the shut-in and both locations forecast from the TC_PROD lookup, scaled by lateral length.",
-  "Every economic line is uniform across the package \u2014 flat $4.00 gas less $0.50 basis, $5,000/month fixed LOE, 7.5% severance \u2014 so the assumptions table reads as one deck, not per-well engineering.",
-  "The two locations have no APIs (undrilled) and the database's own capital line is $9,500M per well starting 07/2026 \u2014 the author's numbers, shown as given."
+  "HV LOC 12-02H's NET line carries a payout trigger (2500 M$ on stream 747) \u2014 the interest shown reverts after payout; post-payout economics are not modeled here.",
+  "Master WI/NRI and the section-7 NET lines agree on every property, and the forecast START postdates the last actuals everywhere."
  ]
 }

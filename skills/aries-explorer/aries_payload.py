@@ -16,6 +16,7 @@ Usage:
 import argparse
 import csv
 import json
+import re
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -60,6 +61,10 @@ KEYWORD_LABELS = {
 }
 PHASE_KEYWORDS = {"OIL", "GAS", "WTR", "CND", "NGL", "OWG"}
 RESCAT_ORDER = ["PDP", "PDNP", "PDSI", "PSI", "PBP", "PUD"]  # then others, alpha
+ESCALATION_METHODS = {"PC", "PC/M", "PC/Q", "PC/S", "PC/Y", "PC/B",
+                      "PE", "PE/Y", "$E", "$E/Q", "$E/Y"}
+SIDEFILE_CAP = 8         # side files shipped to the viewer
+SIDEFILE_LINE_CAP = 40   # lines per side file shipped
 
 
 def to_int(v, default=None):
@@ -74,6 +79,24 @@ def to_float(v):
         return float(str(v).replace(",", "").strip())
     except (TypeError, ValueError):
         return None
+
+
+def to_month(v) -> str | None:
+    """Lenient date -> 'YYYY-MM' for START expressions ('01/2025',
+    'MM/DD/YYYY', 'YYYY-MM-…'). Unparseable -> None (never guess)."""
+    s = str(v or "").strip()
+    m = re.match(r"^(\d{4})-(\d{2})", s)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}"
+    m = re.match(r"^(\d{1,2})/(\d{4})$", s)
+    if m:
+        return f"{int(m.group(2)):04d}-{int(m.group(1)):02d}"
+    m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{2,4})", s)
+    if m:
+        mo, yr = int(m.group(1)), int(m.group(3))
+        yr = yr + (2000 if yr < 50 else 1900) if yr < 100 else yr
+        return f"{yr:04d}-{mo:02d}"
+    return None
 
 
 def read_csv(path: Path) -> list[dict]:
@@ -101,6 +124,29 @@ def rescat_sort_key(rescat: str):
 
 # ── economics decode ─────────────────────────────────────────────────────────
 
+def decode_net(expression: str):
+    """Decode a section-7 NET shortcut line: word 0 is the WORKING interest,
+    word 1 the NRI (per-phase NRIs may follow); a `%` unit token means every
+    value is a percentage (÷100). Anything after the unit besides a plain
+    escalation pair (e.g. `PC 0`) is an interest schedule — a reversion
+    trigger or stepped interest — returned verbatim, never interpreted.
+    Returns (wi, nri, schedule)."""
+    words = expression.split()
+    if not words:
+        return None, None, None
+    unit_idx = next((i for i, w in enumerate(words)
+                     if w.upper() in ("%", "FRAC")), None)
+    scale = 100.0 if unit_idx is not None and words[unit_idx] == "%" else 1.0
+    nums = words[:unit_idx] if unit_idx is not None else words
+    wi = to_float(nums[0]) if nums else None
+    nri = to_float(nums[1]) if len(nums) > 1 else None
+    wi = round(wi / scale, 10) if wi is not None else None
+    nri = round(nri / scale, 10) if nri is not None else None
+    tail = words[unit_idx + 1:] if unit_idx is not None else []
+    benign = (not tail) or (len(tail) == 2 and tail[0].upper() in ESCALATION_METHODS)
+    return wi, nri, (None if benign else " ".join(tail))
+
+
 def forecast_source(econ_rows: list[dict], fcst_segments: int) -> str:
     """Name where this property's forecast comes from — never guesses:
     reports every distinct mechanism seen in section 4 plus AC_FCST."""
@@ -124,6 +170,11 @@ def forecast_source(econ_rows: list[dict], fcst_segments: int) -> str:
         elif kw in PHASE_KEYWORDS and words and to_float(words[0]) is not None:
             if "rate lines" not in sources:
                 sources.append("rate lines")
+    if fcst_segments and "rate lines" in sources:
+        # AC_FCST is ARIES's store of the same forecast the section-4 rate
+        # lines express — one forecast, two storages; don't double-report.
+        sources.remove("rate lines")
+        sources[0] = f"decline segments ({fcst_segments}; also as econ rate lines)"
     return " + ".join(sources) if sources else "none"
 
 
@@ -133,6 +184,7 @@ def build(aries_dir: Path, qualifier_arg: str | None, notes: dict | None):
     props_rows = read_csv(tables_dir / "AC_PROPERTY.csv")
     econ_rows = read_csv(tables_dir / "AC_ECONOMIC.csv")
     lookup_rows = read_csv(tables_dir / "ARLOOKUP.csv")
+    sidefile_rows = read_csv(tables_dir / "AR_SIDEFILE.csv")
     fcst_rows = read_csv(tables_dir / "AC_FCST.csv")
     proj_rows = read_csv(tables_dir / "PROJLIST.csv") or read_csv(tables_dir / "PROJECT.csv")
     cov_path = aries_dir / "production_coverage.json"
@@ -198,7 +250,12 @@ def build(aries_dir: Path, qualifier_arg: str | None, notes: dict | None):
         rows.sort(key=lambda r: (to_int(r.get("SECTION"), 0) or 0,
                                  to_int(r.get("SEQUENCE"), 0) or 0))
 
-    fcst_by_prop = Counter((r.get("PROPNUM") or "").strip() for r in fcst_rows)
+    # AC_FCST rows can be stale fits from old scenario vintages (verified in
+    # the wild: 2022 qualifiers in a 2026 database whose live forecast is
+    # section-4 rate lines only) — count only segments in the chosen qualifier.
+    fcst_by_prop = Counter(
+        (r.get("PROPNUM") or "").strip() for r in fcst_rows
+        if ((r.get("QUALIFIER") or "").strip() or "(blank)") == chosen)
 
     # ── assumption clusters: distinct (section, keyword, expression) ─────────
     clusters: dict[tuple, set] = defaultdict(set)
@@ -236,12 +293,19 @@ def build(aries_dir: Path, qualifier_arg: str | None, notes: dict | None):
         p["econ_lines"] = len(econ_by_prop.get(propnum, []))
         p["forecast"] = forecast_source(econ_by_prop.get(propnum, []),
                                         fcst_by_prop.get(propnum, 0))
-        if p["nri"] is None:  # fall back to the NET line in section 7
-            for r in econ_by_prop.get(propnum, []):
-                if (r.get("KEYWORD") or "").upper() == "NET":
-                    words = (r.get("EXPRESSION") or "").split()
-                    p["nri"] = to_float(words[0]) if words else None
-                    break
+        # The section-7 NET line is what an economics run actually uses;
+        # master WI/NRI columns are metadata unless referenced via @M.
+        # Carry both so the viewer can show a disagreement.
+        for r in econ_by_prop.get(propnum, []):
+            if (r.get("KEYWORD") or "").upper() == "NET":
+                wi_e, nri_e, schedule = decode_net(r.get("EXPRESSION") or "")
+                if wi_e is not None:
+                    p["wi_econ"] = wi_e
+                if nri_e is not None:
+                    p["nri_econ"] = nri_e
+                if schedule:
+                    p["interest_schedule"] = schedule
+                break
 
     prop_list = sorted(props.values(),
                        key=lambda p: (rescat_sort_key(p["rescat"]), p["name"]))
@@ -258,30 +322,81 @@ def build(aries_dir: Path, qualifier_arg: str | None, notes: dict | None):
     rescat_rollup = [{"rescat": k, **v} for k, v in
                      sorted(rescat_counter.items(), key=lambda kv: rescat_sort_key(kv[0]))]
 
-    forecast_mix = [{"source": s, "count": n} for s, n in
-                    Counter(p["forecast"] for p in props.values()).most_common()]
+    # Mechanism-level mix: per-property detail like segment counts stays on
+    # the property row; the mix would otherwise fragment into one bucket per
+    # segment count.
+    forecast_mix = [{"source": s, "count": n} for s, n in Counter(
+        re.sub(r"\s*\([^)]*\)", "", p["forecast"]) for p in props.values()
+    ).most_common()]
 
     # ── lookup tables (type curves, price decks, tax schedules) ──────────────
     by_lookup: dict[str, dict] = {}
     for r in lookup_rows:
         name = first_of(r, "NAME") or "?"
         lt = to_int(first_of(r, "LINETYPE"))
+        seq = to_int(first_of(r, "SEQUENCE"), 0) or 0
         vars_ = [r.get(f"VAR{i}", "") for i in range(31)]
         while vars_ and not vars_[-1]:
             vars_.pop()
         lk = by_lookup.setdefault(name, {"name": name, "template": [],
-                                         "header": [], "rows": [], "rows_total": 0})
+                                         "headers": [], "rows": []})
         if lt == 0:
-            lk["template"].append(" ".join(v for v in vars_ if v))
+            lk["template"].append((seq, " ".join(v for v in vars_ if v)))
         elif lt == 1:
-            lk["header"] = vars_
+            lk["headers"].append((seq, vars_))
         elif lt == 3:
-            lk["rows_total"] += 1
-            if len(lk["rows"]) < LOOKUP_ROW_CAP:
-                lk["rows"].append(vars_)
-    lookups = list(by_lookup.values())
+            lk["rows"].append((seq, vars_))
+    lookups = []
+    for lk in by_lookup.values():
+        # SEQUENCE is the authoritative order. A lookup can carry several
+        # LineType=1 rows — the first is the column header, later ones are
+        # ARIES format rows (match-key/constant type codes); keep them apart
+        # so the type codes never masquerade as column names.
+        headers = [h for _, h in sorted(lk.pop("headers"), key=lambda x: x[0])]
+        rows = [v for _, v in sorted(lk["rows"], key=lambda x: x[0])]
+        lookups.append({
+            "name": lk["name"],
+            "template": [t for _, t in sorted(lk["template"], key=lambda x: x[0])],
+            "header": headers[0] if headers else [],
+            "header_extra": headers[1:],
+            "rows": rows[:LOOKUP_ROW_CAP],
+            "rows_total": len(rows),
+        })
     lookups_total = len(lookups)
     lookups = lookups[:LOOKUP_CAP]
+
+    # ── side files: external econ lines (prices usually live here) ───────────
+    # A SIDEFILE keyword in the economics points at a named block of lines in
+    # AR_SIDEFILE — same KEYWORD/EXPRESSION grammar, often the whole price
+    # deck. Decode them; the filename alone hides the most load-bearing
+    # assumption in the database.
+    sidefile_refs: dict[str, set] = defaultdict(set)
+    for r in chosen_rows:
+        if (r.get("KEYWORD") or "").upper() == "SIDEFILE":
+            words = (r.get("EXPRESSION") or "").split()
+            if words:
+                sidefile_refs[words[0].upper()].add((r.get("PROPNUM") or "").strip())
+    by_sidefile: dict[str, list] = defaultdict(list)
+    for r in sidefile_rows:
+        by_sidefile[(first_of(r, "FILENAME") or "?").strip()].append(r)
+    side_files = []
+    for fname, rows in by_sidefile.items():
+        rows.sort(key=lambda r: (to_int(r.get("SECTION"), 0) or 0,
+                                 to_int(r.get("SEQUENCE"), 0) or 0))
+        side_files.append({
+            "name": fname,
+            "referenced_by": len(sidefile_refs.get(fname.upper(), ())),
+            "lines_total": len(rows),
+            "lines": [{
+                "section": to_int(r.get("SECTION"), 0) or 0,
+                "keyword": (r.get("KEYWORD") or "").strip(),
+                "label": KEYWORD_LABELS.get((r.get("KEYWORD") or "").strip().upper()),
+                "expression": " ".join((r.get("EXPRESSION") or "").split()),
+            } for r in rows[:SIDEFILE_LINE_CAP]],
+        })
+    side_files.sort(key=lambda s: (-s["referenced_by"], s["name"]))
+    side_files_total = len(side_files)
+    side_files = side_files[:SIDEFILE_CAP]
 
     # ── referential integrity — the tie-out analog for a database ───────────
     def check(label, bad: list, detail_ok: str):
@@ -307,6 +422,47 @@ def build(aries_dir: Path, qualifier_arg: str | None, notes: dict | None):
         check("Production history all maps to known properties", cov_orphans,
               "every producing PROPNUM resolves"),
     ]
+
+    # Master WI/NRI vs the section-7 NET line — the NET line is what an
+    # economics run uses; a disagreement means the database argues with
+    # itself about the multiplier on every dollar. Only rendered when both
+    # sides exist to compare (a trivially-green check teaches nothing).
+    comparable, interest_mismatch = 0, []
+    for p in props.values():
+        pairs = [(p.get("wi"), p.get("wi_econ")), (p.get("nri"), p.get("nri_econ"))]
+        pairs = [(m, e) for m, e in pairs if m is not None and e is not None]
+        if pairs:
+            comparable += 1
+            if any(abs(m - e) > 1e-6 for m, e in pairs):
+                interest_mismatch.append(p["name"])
+    if comparable:
+        integrity.append(check(
+            "Master WI/NRI agrees with the section-7 NET line", interest_mismatch,
+            f"master and NET interests match on all {comparable} comparable"
+            f" propert{'y' if comparable == 1 else 'ies'}"))
+
+    # Forecast START vs the last reported production month — actuals that
+    # postdate the forecast start mean the run is stale relative to history.
+    starts_seen, stale_fcst = 0, []
+    for propnum, p in props.items():
+        if not p.get("last_prod"):
+            continue
+        for r in econ_by_prop.get(propnum, []):
+            if (to_int(r.get("SECTION")) == 4
+                    and (r.get("KEYWORD") or "").upper() == "START"):
+                words = (r.get("EXPRESSION") or "").split()
+                start = to_month(words[0]) if words else None
+                if start:
+                    starts_seen += 1
+                    if p["last_prod"] > start:
+                        stale_fcst.append(
+                            f"{p['name']} (START {start}, actuals thru {p['last_prod']})")
+                break
+    if starts_seen:
+        integrity.append(check(
+            "No actuals postdate the forecast START", stale_fcst,
+            f"history ends at or before the forecast start on all {starts_seen}"
+            f" dated propert{'y' if starts_seen == 1 else 'ies'}"))
 
     cov_firsts = [c["first"] for c in cov_props.values() if c.get("first")]
     cov_lasts = [c["last"] for c in cov_props.values() if c.get("last")]
@@ -340,6 +496,9 @@ def build(aries_dir: Path, qualifier_arg: str | None, notes: dict | None):
         "lookups": lookups,
         "lookups_truncated": ({"shown": LOOKUP_CAP, "total": lookups_total}
                               if lookups_total > LOOKUP_CAP else None),
+        "side_files": side_files,
+        "side_files_truncated": ({"shown": SIDEFILE_CAP, "total": side_files_total}
+                                 if side_files_total > SIDEFILE_CAP else None),
         "integrity": integrity,
         "inventory": [{"name": t["name"], "rows": t.get("rows"), "role": t["role"]}
                       for t in manifest.get("tables", [])],
@@ -384,6 +543,20 @@ def facts_digest(payload):
             out.append(f"  {lk['name']}: {lk['rows_total']} data rows,"
                        f" {len(lk['template'])} template lines,"
                        f" header {lk['header'] or '—'}")
+    if payload["side_files"]:
+        out.append("== SIDE FILES (external econ lines — prices usually live here) ==")
+        for sf in payload["side_files"]:
+            out.append(f"  {sf['name']} — referenced by {sf['referenced_by']}"
+                       f" properties, {sf['lines_total']} lines")
+            for ln in sf["lines"][:8]:
+                out.append(f"    [s{ln['section']} {ln['keyword']}] {ln['expression']}")
+            if sf["lines_total"] > 8:
+                out.append(f"    … {sf['lines_total'] - 8} more (all in the payload)")
+    schedules = [p for p in payload["properties"] if p.get("interest_schedule")]
+    if schedules:
+        out.append("== INTEREST SCHEDULES / REVERSIONS (NET-line tails, verbatim) ==")
+        for p in schedules:
+            out.append(f"  {p['name']}: {p['interest_schedule']}")
     out.append("== INTEGRITY ==")
     for c in payload["integrity"]:
         out.append(f"  [{'ok' if c['ok'] else 'LOOK'}] {c['label']} — {c['detail']}")

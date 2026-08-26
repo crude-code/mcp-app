@@ -364,10 +364,16 @@ subfolder with a `SKILL.md` in to add a skill; nothing else registers it.
   streams AC_PRODUCT into coverage stats (the huge computed tables are never
   dumped); `aries_payload.py` decodes deterministically — scenario
   qualifiers (BASE by default), reserve-category rollup, per-property
-  forecast source (segments / type-curve lookup / rate lines), assumption
+  forecast source (segments / type-curve lookup / rate lines; AC_FCST is
+  the cache of the rate lines, reported as one forecast), assumption
   clusters (identical lines counted across properties, unknown keywords
-  passed through verbatim), ARLOOKUP type curves, referential-integrity
-  checks — with a `--facts` digest the model reads before writing
+  passed through verbatim), ARLOOKUP type curves, AR_SIDEFILE side files
+  (where price decks usually live), NET-line interests (word 0 = WI,
+  word 1 = NRI, %-unit aware — what the economics run actually uses; the
+  viewer leads with these and surfaces a disagreeing master value) with
+  reversion/schedule tails flagged verbatim, and integrity checks
+  (referential, master-vs-NET interest reconciliation, forecast START vs
+  last actuals) — with a `--facts` digest the model reads before writing
   `notes.json` (the judgment layer). Claude fills the emitted payload into
   the frozen `AriesViewer.jsx` as `DATA`/`TITLE`/`TLDR` (`example.json` is
   generated from a synthetic fixture by the payload script itself, so it

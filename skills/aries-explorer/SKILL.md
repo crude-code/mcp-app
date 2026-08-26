@@ -110,6 +110,17 @@ you**:
 - **The `$/M` trap**: in section 5 it's dollars per MCF; in section 6 it's
   dollars per month. Same token, section decides. The reference's unit
   tables are the authority.
+- **Prices often aren't inline.** A `SIDEFILE` line in section 5 points at
+  a named block of lines in AR_SIDEFILE — usually the whole price deck as
+  monthly LIST series. The payload decodes those files; read them, they
+  are typically the most load-bearing assumption in the database.
+- **Interests: the NET line is what the economics run uses**; the master
+  WI/NRI columns are metadata. The viewer leads with the NET-derived value
+  and shows a disagreeing master value under it — a disagreement is a
+  note, every time. A NET tail beyond its escalation pair is a **reversion
+  or interest schedule** (flagged on the property, shown verbatim): a
+  reader modeling post-payout economics at the pre-payout interest is the
+  mistake to warn about.
 - **Ditto lines (`"`)** continue the previous keyword — multi-segment
   forecasts and stepped schedules read as one logical line.
 - **`@M.field` references** resolve against that property's AC_PROPERTY

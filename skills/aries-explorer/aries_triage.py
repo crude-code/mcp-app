@@ -10,7 +10,7 @@ coverage stats, the rest get row counts only.
 Reader backends, tried in order:
   1. mdb-tools binaries (`mdb-tables` / `mdb-export`) when on PATH
   2. the pure-Python `access_parser` package (`pip install access_parser`)
-No working backend -> exits 2 with the message to relay to the user.
+No working backend -> exits nonzero with the message to relay to the user.
 
 Usage:
   python3 aries_triage.py <database.accdb> [--out _aries]
@@ -126,10 +126,10 @@ class AccessParserBackend:
 
     def list_tables(self) -> list[str]:
         # Skip Access internals mdb-tools also hides: MSys*, deleted (~*),
-        # and complex-column stores (F_<32 hex>_DATA).
+        # and complex-column stores (f_<32 hex>_Data — mixed case in the wild).
         return [t for t in self.parser.catalog
                 if not t.startswith("MSys") and not t.startswith("~")
-                and not re.match(r"^F_[0-9A-Fa-f]{32}_", t)]
+                and not re.match(r"^F_[0-9A-F]{32}_", t, re.I)]
 
     def iter_rows(self, table: str):
         data = self.parser.parse_table(table)  # {column: [values]}

@@ -163,9 +163,14 @@ Monthly production history per property:
 ### AC_FCST — Decline Forecast Segments
 Explicit Arps decline segments (when not using LOOKUP):
 - `PROPNUM`, `PHASE`, `QUALIFIER`, `SEGMENT`, `STARTDATE`, `ENDDATE`
-- `PRODRATE`, `UOM`, `DECLINERATE`, `DECLINETYPE`, `BFACTOR`
-- `STARTCUM`, `ENDRATE`, `REMRESV`, `DURATION`, `ULTIMATE`
+- `PRODRATE`, `UOM`, `DECLINERATE` (effective annual %), `DECLINETYPE`
+  (`HyperRT`/`ExpRT`/`LogRT`), `BFACTOR`, `NOMINALRATE` (nominal per month)
+- `STARTCUM`, `ENDRATE`, `REMRESV`, `DURATION` (months), `ULTIMATE`, `SEGRESV`
 - Empty when forecasts come from type curve lookups
+- **Qualifier matters**: AC_FCST rows can be stale fits from old scenarios
+  (e.g. 2022 qualifiers in a 2026 database) while the current forecast lives
+  only in section-4 rate lines. Match `QUALIFIER` before treating segments
+  as the active forecast. `PHASE` includes ratio phases (`GAS/OIL`).
 
 ### ARLOOKUP — Lookup Tables (Type Curves, Prices, Tax)
 Global lookup tables referenced by `LOOKUP` keyword in AC_ECONOMIC:
@@ -249,6 +254,36 @@ Engineering data: area, net pay, porosity, water saturation, pressures, depths, 
 | EXP | Exponential decline |
 | HYP | Hyperbolic decline (requires b-factor) |
 | HARM | Harmonic decline (b=1) |
+| B/x | Hyperbolic with b-factor x (e.g. `B/0.9000`); the method value is the decline |
+
+### Decline conventions (empirically pinned — do not guess these)
+
+Verified against a real database's own numbers (AC_FCST stores both the
+quoted and the nominal rate: 78/78 segments exact to 1e-9; per-well EURs
+reproduced against the shop's oneliner to ≤0.022% on both streams, 20 wells):
+
+- **A quoted decline `D` is the EFFECTIVE ANNUAL decline** — the secant
+  `1 − q(t+1yr)/q(t)` evaluated on the curve itself.
+- **Nominal monthly rate**: `a = ((1−D)^(−b) − 1) / (12·b)`, or
+  `a = −ln(1−D)/12` when b=0. (AC_FCST's `NOMINALRATE` column is exactly
+  this per-month value; `DECLINERATE` is D in percent.)
+- **Rate propagation**: `q(t) = qi·(1 + b·a·t)^(−1/b)` with **t in months**
+  and rates in units/month (`B/M`, `M/M`). Exponential when b=0.
+- **A rate-line limit `N EXP`** (e.g. `7.000000 EXP`) means: run this
+  segment until the local effective annual decline shallows to N%, then the
+  next (ditto) segment takes over — typically `X <floor> <units> X YRS EXP N`,
+  an exponential at N% effective annual down to the ending-rate floor.
+- **Segment volumes** integrate the continuous curve (ARIES's internal daily
+  granularity differs by well under 1% on segment volumes and nets to ~0.01%
+  at EUR level).
+- **`CUMS` words are thousands**: oil MB, gas MMCF (order: oil gas cnd? ngl?
+  ? water), cumulative through the forecast `START`.
+- **What a §4 integral does NOT reproduce**: the economic-limit cutoff.
+  `ELOSS OPINC` (a Common Line) ends each well's life where operating income
+  dies — on the verified database that truncation removes ~3–6% of oil EUR
+  and far more of late-life gas tails versus integrating to the rate floor.
+  Reproducing life requires the full economics (prices, costs, ownership);
+  treat life as the economics engine's own policy, never the curve's.
 
 ### Price/Cost Units
 | Unit | Meaning |
@@ -491,5 +526,6 @@ print(list(t))"
 - **`"`** — Continuation/ditto line (continues previous keyword)
 - **Reserve categories:** PDP (producing), PDNP (non-producing), PUD (proved undeveloped), 2P/3P (probable/possible), 4LOC/5LOC (locations)
 - **Phase codes:** OIL=370, GAS=371, CND(condensate)=372, OWG(casinghead gas)=373, NGL=374, WTR=376
+- **NET shortcut line** — `NET <WI> <NRI oil> [<NRI gas> <NRI other>] <units> <tail>`: word 0 is the **working interest**, word 1 the NRI; a `%` unit means every value is a percentage (÷100), `FRAC` means fractions as-is. A tail beyond a plain escalation pair (`PC 0`) is an interest **schedule or reversion trigger** (e.g. `3652.8 M$/747` — revert when stream 747 cumulates to 3,652.8 M$; see Reversion Units above)
 - **`DBSKEY` and `PROPNUM`** — Must always be preserved when transporting data between databases
 - **Sliding scale royalties** — Use FEDO/A/B/R lines in AC_SETUPDATA with volume breakpoints and royalty rates

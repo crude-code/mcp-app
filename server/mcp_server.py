@@ -1,7 +1,7 @@
 """Crude Code MCP Server.
 
-Synchronous tool registry — run_sql, forecast_wells, run_valuation, map, get_skill,
-plus the renderer-only read tool (get_map_full). No inner agents.
+Synchronous tool registry — run_sql, deal_forecast_wells, deal_valuation, map_render, get_skill,
+plus the renderer-only read tool (map_read_full). No inner agents.
 """
 
 # Release version. A dev → main merge is a release: bump this and the
@@ -42,7 +42,7 @@ from server.valuation.orchestrator import (
 )
 from server.valuation.artifact_payload import load_viewer, viewer_sha256, viewer_url
 
-# Frozen deal-sheet artifact template, shipped in every run_valuation response
+# Frozen deal-sheet artifact template, shipped in every deal_valuation response
 # so the template Claude fills always matches the payload contract that
 # produced `data`. The content-addressed URL + sha ride along so a session
 # with code execution can download the template instead of re-emitting it
@@ -143,7 +143,7 @@ _app_config_map = AppConfig(resource_uri="ui://app/map.html")
     "resourceDomains": ["https://*.openstreetmap.org"],
 }}})
 def map_view() -> str:
-    """Serve the Crude Code app for `map` tool renders.
+    """Serve the Crude Code app for `map_render` tool renders.
 
     Distinct URI so the host renders a fresh iframe per map call. The CSP meta
     whitelists OpenStreetMap tile fetches (the iframe blocks them otherwise) —
@@ -216,10 +216,10 @@ def get_skill(name: str = "") -> str:
             return _json.dumps({"error": str(e)})
 
 
-# ── save_dataroom_extraction ─────────────────────────────────────────────────
+# ── dataroom_save_extraction ─────────────────────────────────────────────────
 
-_save_extraction_log = _logging.getLogger("cc.save_dataroom_extraction")
-_open_dataroom_log = _logging.getLogger("cc.open_dataroom")
+_save_extraction_log = _logging.getLogger("cc.dataroom_save_extraction")
+_dataroom_open_log = _logging.getLogger("cc.dataroom_open")
 
 _SHA256_HEX_LEN = 64
 
@@ -258,17 +258,17 @@ def _known_room_response(identity: dict, existing: dict, label: str) -> str:
                        "corrections re-save under this extraction_id.",
             })
     except Exception as e:  # noqa: BLE001 — reuse must degrade, never block
-        _open_dataroom_log.error("reuse path failed for %s: %s", room_id, e)
+        _dataroom_open_log.error("reuse path failed for %s: %s", room_id, e)
     if not payload["extraction_ready"]:
         payload["note"] = ("Room already captured — skip the zip upload, run the "
                           "normal extraction, and pass room_id when persisting.")
-    _open_dataroom_log.info("known room %s ready=%s label=%r",
+    _dataroom_open_log.info("known room %s ready=%s label=%r",
                             room_id, payload["extraction_ready"], label)
     return _json.dumps(payload)
 
 
-@mcp.tool(description=_load_prompt("outer/tool_open_dataroom.md"))
-def open_dataroom(label: str, sha256: str, size_bytes: int) -> str:
+@mcp.tool(description=_load_prompt("outer/tool_dataroom_open.md"))
+def dataroom_open(label: str, sha256: str, size_bytes: int) -> str:
     """Register a dataroom zip before reading it. Known content hash →
     the room is already captured ({status: "known"}, no upload); new hash →
     a pending room row plus a one-time upload URL for the zip. Presented to
@@ -278,7 +278,7 @@ def open_dataroom(label: str, sha256: str, size_bytes: int) -> str:
     if not identity:
         return _json.dumps({"error": "Could not identify user"})
 
-    with trace("open_dataroom", user=identity["user_slug"]):
+    with trace("dataroom_open", user=identity["user_slug"]):
         clean_label = (label or "").strip()
         clean_sha = (sha256 or "").strip().lower()
         if not clean_label:
@@ -291,7 +291,7 @@ def open_dataroom(label: str, sha256: str, size_bytes: int) -> str:
         try:
             existing = _room_store.find_by_hash(clean_sha)
         except Exception as e:  # noqa: BLE001
-            _open_dataroom_log.error("open_dataroom lookup failed: %s", e)
+            _dataroom_open_log.error("dataroom_open lookup failed: %s", e)
             return _json.dumps({"error": str(e)})
 
         if existing:
@@ -303,7 +303,7 @@ def open_dataroom(label: str, sha256: str, size_bytes: int) -> str:
                 sha256=clean_sha, size_bytes=size_bytes,
             )
         except Exception as e:  # noqa: BLE001
-            _open_dataroom_log.error("open_dataroom insert failed: %s", e)
+            _dataroom_open_log.error("dataroom_open insert failed: %s", e)
             return _json.dumps({"error": str(e)})
 
         token = _upload_tokens.mint(
@@ -321,8 +321,8 @@ def open_dataroom(label: str, sha256: str, size_bytes: int) -> str:
         })
 
 
-@mcp.tool(description=_load_prompt("outer/tool_save_dataroom_extraction.md"))
-def save_dataroom_extraction(label: str, extraction_id: str = "", room_id: str = "") -> str:
+@mcp.tool(description=_load_prompt("outer/tool_dataroom_save_extraction.md"))
+def dataroom_save_extraction(label: str, extraction_id: str = "", room_id: str = "") -> str:
     """Mint a one-time HTTP upload URL for a persist_pack.py kit. The kit
     bytes travel out-of-band (a POST from the sandbox) and never transit the
     model; this call carries only the label plus an optional extraction_id
@@ -333,7 +333,7 @@ def save_dataroom_extraction(label: str, extraction_id: str = "", room_id: str =
     if not identity:
         return _json.dumps({"error": "Could not identify user"})
 
-    with trace("save_dataroom_extraction", user=identity["user_slug"]):
+    with trace("dataroom_save_extraction", user=identity["user_slug"]):
         clean_label = (label or "").strip()
         if not clean_label:
             return _json.dumps({"error": "label is required — use the deal/teaser title"})
@@ -436,15 +436,15 @@ def message_team(subject: str, body: str, category: str = "other",
 # ── map ────────────────────────────────────────────────────────────────────
 
 
-@mcp.tool(name="map", app=_app_config_map, description=_load_prompt("outer/tool_map.md"))
-def render_map(spec: dict) -> str:
+@mcp.tool(name="map_render", app=_app_config_map, description=_load_prompt("outer/tool_map_render.md"))
+def map_render(spec: dict) -> str:
     """Synchronous map render. Validate -> hydrate -> mint handle -> summary."""
     identity = get_current_identity()
     if not identity:
         return _json.dumps({"error": "Could not identify user"})
     user_slug = identity["user_slug"]
 
-    with trace("map", user=user_slug):
+    with trace("map_render", user=user_slug):
         try:
             parsed = parse_map_spec(spec)
             hydrated = hydrate_map(parsed)
@@ -468,11 +468,11 @@ def render_map(spec: dict) -> str:
 
 
 @mcp.tool(
-    name="get_map_full",
+    name="map_read_full",
     app=_app_config_app_only,
     description="INTERNAL — Crude Code app only. Returns the full hydrated map spec for a map_token.",
 )
-def get_map_full(token: str) -> str:
+def map_read_full(token: str) -> str:
     """Renderer-only, non-blocking full-spec fetch from the handle store."""
     identity = get_current_identity()
     if not identity:
@@ -486,15 +486,15 @@ def get_map_full(token: str) -> str:
 
 # ── valuation tools (synchronous) ────────────────────────────────────────────
 
-@mcp.tool(description=_load_prompt("outer/tool_forecast_wells.md"))
-def forecast_wells(forecasts: list[dict], run_id: str | None = None) -> str:
+@mcp.tool(description=_load_prompt("outer/tool_deal_forecast_wells.md"))
+def deal_forecast_wells(forecasts: list[dict], run_id: str | None = None) -> str:
     """Accept asserted decline parameters, echo consequences. See
-    prompts/outer/tool_forecast_wells.md."""
+    prompts/outer/tool_deal_forecast_wells.md."""
     identity = get_current_identity()
     if not identity:
         return _json.dumps({"error": "Could not identify user"})
     user_id = identity["user_id"]
-    with trace("forecast_wells", user=identity["user_slug"]):
+    with trace("deal_forecast_wells", user=identity["user_slug"]):
         try:
             result = forecast_wells_for_run(run_id=run_id, forecasts=forecasts, user_id=user_id)
         except ForecastValidationError as e:
@@ -509,14 +509,14 @@ def forecast_wells(forecasts: list[dict], run_id: str | None = None) -> str:
         return _json.dumps(result, default=str)
 
 
-@mcp.tool(description=_load_prompt("outer/tool_run_valuation.md"))
-def run_valuation(run_id: str, params: dict) -> str:
-    """Union forecasts → econ → slim artifact payload. See prompts/outer/tool_run_valuation.md."""
+@mcp.tool(description=_load_prompt("outer/tool_deal_valuation.md"))
+def deal_valuation(run_id: str, params: dict) -> str:
+    """Union forecasts → econ → slim artifact payload. See prompts/outer/tool_deal_valuation.md."""
     identity = get_current_identity()
     if not identity:
         return _json.dumps({"error": "Could not identify user"})
     user_slug = identity["user_slug"]
-    with trace("run_valuation", user=user_slug):
+    with trace("deal_valuation", user=user_slug):
         try:
             run_valuation_for_run(run_id=run_id, params=params)
             data = compose_artifact_payload_for_run(run_id)
@@ -566,7 +566,7 @@ def _mint_export_url(identity, *, kind: str, run_id: str = "", sql: str = "",
     that survives restarts; `query` — and everything, when no signing secret is
     configured — falls back to the in-memory ticket. `durable` says which,
     because it changes what the caller can honestly promise. Called above its
-    definition by `run_valuation`; module-level names resolve at call time, and
+    definition by `deal_valuation`; module-level names resolve at call time, and
     the export lane's constants belong here with the rest of it.
     """
     run_id = run_id.strip()

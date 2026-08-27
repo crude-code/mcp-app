@@ -1,19 +1,19 @@
 Run economics on the wells you've already forecast and build the deal sheet. Call
-this AFTER `forecast_wells` — pass the same `run_id` it returned. `forecast_wells`
+this AFTER `deal_forecast_wells` — pass the same `run_id` it returned. `deal_forecast_wells`
 mints the `run_id` on the first call; thread that exact id into every later call.
-`run_valuation` reads whatever forecast stages exist under the run, applies the
+`deal_valuation` reads whatever forecast stages exist under the run, applies the
 cashflow model, and returns risked PV plus the data to build an interactive
 deal-sheet artifact from — see "Returns" below.
 
 ## REQUIRED: show the assumptions and get a yes before you run
 
 A valuation is only as good as its inputs, and most of them have house defaults the
-user never sees. Do NOT call `run_valuation` straight away. First:
+user never sees. Do NOT call `deal_valuation` straight away. First:
 
 1. **Resolve every input to an explicit value.** For each assumption below, use the
    user's number if they gave one, otherwise the house default from the **House
    defaults** table at the bottom of this doc. Compute the deal-specific pieces too
-   (well counts by status from your `forecast_wells` result; the net capex check).
+   (well counts by status from your `deal_forecast_wells` result; the net capex check).
    For **price**, the house default is now the **live NYMEX strip** (oil + gas),
    not a flat number — show the price row as "NYMEX strip (most recent settle)"
    unless the user explicitly asks for a flat deck. Differentials still apply on
@@ -21,7 +21,7 @@ user never sees. Do NOT call `run_valuation` straight away. First:
 2. **Show the assumptions grid in chat** (format below) and ask the user to confirm
    or change anything. Use plain-English labels — never the raw field names.
 3. **Wait for the user.** If they change a value, re-show the affected row.
-4. **Then call `run_valuation`, passing every value you showed — explicitly — in
+4. **Then call `deal_valuation`, passing every value you showed — explicitly — in
    `params`.** Don't omit a field and let the engine re-default it; what you showed
    must be byte-for-byte what runs. (Passing a value equal to the house default is
    fine and expected.)
@@ -51,9 +51,9 @@ The engine multiplies it by the working interest itself. So:
   **$9.93M per well** ($39.73M ÷ 4) — pass the per-well number.
 - Do **NOT** pre-multiply by WI. The engine does that. Pass the gross figure.
 
-## `run_valuation(run_id, params)`
+## `deal_valuation(run_id, params)`
 
-- `run_id: str` (REQUIRED) — the exact `run_id` returned by your `forecast_wells`
+- `run_id: str` (REQUIRED) — the exact `run_id` returned by your `deal_forecast_wells`
   call for THIS deal. Not a name you make up; copy it verbatim.
 
 - `params: dict` (REQUIRED) — the authoritative deal terms. Every economic number
@@ -123,7 +123,7 @@ source>", "viewer_url": "<https://crudecode.dev/templates/…>",
   date, diffs, costs, horizon, undiscounted CF, net capex) — feeds the
   sheet's "what informed the model" panel.
 - `data.evidence` — the judgment record behind the number, one entry per
-  `forecast_wells` assertion: the committed parameters, anchor, rationale,
+  `deal_forecast_wells` assertion: the committed parameters, anchor, rationale,
   per-well PV, reported production history, the committed curve's monthly
   series, and — for entries that carried an `analog_cohort` — the hydrated
   cohort (kept analogs with real normalized series, excluded analogs with

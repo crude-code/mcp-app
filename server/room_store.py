@@ -49,7 +49,7 @@ class RoomStore:
 
     def refine_label(self, room_id: str, label: str, *, user_id: int) -> bool:
         """Replace the registration-time placeholder label with the real deal
-        title once extraction knows it (open_dataroom must be called before
+        title once extraction knows it (dataroom_open must be called before
         anything in the zip is read, so the good label arrives late). Scoped
         to the original uploader — rooms are global rows, and another
         holder's kit save must never rename someone else's room."""

@@ -1,5 +1,5 @@
 // Crude Code deal sheet — frozen artifact template.
-// Paste run_valuation's `data` into DATA at the bottom; write TITLE and TLDR.
+// Paste deal_valuation's `data` into DATA at the bottom; write TITLE and TLDR.
 // Do not restyle or restructure. Dependencies: react, recharts only.
 //
 // The sheet is data-driven: the evidence modules (producing fits, type
@@ -921,7 +921,7 @@ function DealSheet({ title, tldr, data }) {
 }
 
 // ── Fill these three in. Everything above is frozen. ────────────────────────
-const DATA = null;  /* paste run_valuation's `data` object verbatim */
+const DATA = null;  /* paste deal_valuation's `data` object verbatim */
 const TITLE = "";   /* short deal title — DATA.facts.area is usually right */
 const TLDR = "";    /* 1–2 sentences you write: what the deal is, what drives the value */
 

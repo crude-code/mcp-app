@@ -7,7 +7,7 @@ guidance lives in `run_sql`'s description (the full schema reference is appended
 to it) — this tool repeats none of it on purpose, so there is one place for
 column names, not several that can drift.
 Build each layer's SELECT in `run_sql`, confirm it returns rows with the columns
-you want, then pass that exact verified query here. Never hand `map` a query you
+you want, then pass that exact verified query here. Never hand `map_render` a query you
 haven't run.
 
 Call `map(spec)` where `spec` is:
@@ -34,7 +34,7 @@ Each layer's `sql` — the one thing you author — has three map-specific requi
 - It must select `ST_AsGeoJSON(geom) AS geometry`, plus every column your `style`
   and `tooltip` reference.
 - It may read `public` / `market` / `financials` / `features` — NOT `shapes`.
-- Get the column names right in `run_sql` before you call this tool; `map` will not
+- Get the column names right in `run_sql` before you call this tool; `map_render` will not
   teach them to you and a wrong column just fails.
 
 Rules:
@@ -55,7 +55,7 @@ Rules:
   for draw-only layers.
 - Array order = draw order (first = bottom). Put base data under highlights.
 
-To change a map (add/swap a layer, recolor), call `map` again with the full layer
+To change a map (add/swap a layer, recolor), call `map_render` again with the full layer
 stack — a fresh map renders; there is no in-place editing.
 
 Returns `{ surface, map_token, title, layers, static_layers }`. The map draws

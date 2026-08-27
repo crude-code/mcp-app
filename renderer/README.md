@@ -1,9 +1,9 @@
 # Crude Code Renderer
 
 The inline MCP app that renders inside the host chat client (Claude Desktop /
-claude.ai). Today it renders one surface: the `map` tool's MapLibre GL
+claude.ai). Today it renders one surface: the `map_render` tool's MapLibre GL
 well/unit/PLSS map, fetched fully hydrated from the server via
-`get_map_full(map_token)`.
+`map_read_full(map_token)`.
 
 ## Build
 

@@ -1,4 +1,4 @@
-"""Guard: the House defaults table in tool_run_valuation.md must match config.ECON.
+"""Guard: the House defaults table in tool_deal_valuation.md must match config.ECON.
 
 The valuation tool prompt documents every house default so Claude can resolve the
 assumptions grid it shows the user *before* running. If those documented numbers
@@ -17,7 +17,7 @@ from pathlib import Path
 
 from server.valuation import config
 
-_PROMPT = Path(__file__).resolve().parent.parent / "prompts/outer/tool_run_valuation.md"
+_PROMPT = Path(__file__).resolve().parent.parent / "prompts/outer/tool_deal_valuation.md"
 _BLOCK_RE = re.compile(
     r"<!-- cc:econ_defaults:start -->\s*(.*?)\s*<!-- cc:econ_defaults:end -->",
     re.DOTALL,
@@ -56,7 +56,7 @@ def _parse_block() -> dict[str, str]:
     match = _BLOCK_RE.search(text)
     assert match, (
         "missing <!-- cc:econ_defaults:start --> ... <!-- cc:econ_defaults:end --> "
-        "block in prompts/outer/tool_run_valuation.md"
+        "block in prompts/outer/tool_deal_valuation.md"
     )
     rows: dict[str, str] = {}
     for line in match.group(1).splitlines():

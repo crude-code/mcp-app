@@ -1,4 +1,4 @@
-"""Valuation orchestrator. Runs forecast_wells → economics → deal-sheet assembly.
+"""Valuation orchestrator. Runs deal_forecast_wells → economics → deal-sheet assembly.
 
 The forecast side is accept-and-echo: Claude asserts decline parameters
 ({qi, di, b} per stream, an anchor month, optional uptime factor) per well or
@@ -28,7 +28,7 @@ from server.valuation.wells import bulk_load_production, bulk_load_wells
 
 
 class ForecastValidationError(Exception):
-    """Bounce: the forecast_wells call had validation violations. Carries every
+    """Bounce: the deal_forecast_wells call had validation violations. Carries every
     violation in the call (never fail-fast) as ``[{entry, well?, field, message}]``.
     Nothing is persisted on a bounce."""
     def __init__(self, violations: list[dict]):
@@ -150,7 +150,7 @@ def _deserialize_curve(c: dict) -> DeclineCurve:
 def _place_curve(*, self_curve: dict, start_date: str, strategy: str,
                  peak_date: str | None = None) -> dict:
     """Build a serialized-forecast dict from a (dateless) serialized curve and a
-    start date. The forecast tools store dateless curves; run_valuation supplies
+    start date. The forecast tools store dateless curves; deal_valuation supplies
     start_date (PDP: the well's historical anchor; PUD: the status-derived online
     date). peak_date defaults to start_date (PUDs/climbing: peak is at the anchor).
     For producing wells with history, pass the historical peak month so project()
@@ -166,7 +166,7 @@ def _place_curve(*, self_curve: dict, start_date: str, strategy: str,
 def _deserialize_forecast(d: dict) -> Forecast:
     """Inverse of _serialize_forecast. Handles `None` switch_month as `float('inf')`.
     provenance is read from the curve dict when present (old serialized path) or
-    synthesized when absent (new dateless-curve path from forecast_wells stages)."""
+    synthesized when absent (new dateless-curve path from deal_forecast_wells stages)."""
     curve_prov = (d["curve"].get("provenance") or {})
     return Forecast(
         curve=_deserialize_curve(d["curve"]),
@@ -479,7 +479,7 @@ def _economics_from_forecasts(*, forecasts: dict, needs_capex: dict,
 
 def compose_artifact_payload_for_run(run_id: str) -> dict:
     """Read the wells + economics stages and build the slim artifact payload
-    `run_valuation` returns for Claude to build a deal-sheet artifact from.
+    `deal_valuation` returns for Claude to build a deal-sheet artifact from.
     See `server.valuation.artifact_payload.build_artifact_payload`."""
     from server.valuation.artifact_payload import build_artifact_payload
 
@@ -971,7 +971,7 @@ def run_valuation_for_run(*, run_id: str, params: dict) -> dict:
     store = ValuationRunStore()
     forecast = store.read_stage(run_id, stage="forecast")
     if not forecast:
-        raise ValueError(f"run {run_id}: no forecast stage — call forecast_wells first")
+        raise ValueError(f"run {run_id}: no forecast stage — call deal_forecast_wells first")
 
     econ_overrides = dict(params.get("economics_overrides") or {})
     # Fold interest into econ_overrides so the economics core is self-contained.

@@ -121,7 +121,7 @@ def test_row_payload_wraps_and_pushes_in_blob_mode():
 
 
 def test_stub_passthrough_never_double_wraps():
-    """open_dataroom copies a room's snapshot stub into a first-time holder's
+    """dataroom_open copies a room's snapshot stub into a first-time holder's
     row — the stub must be stored as-is, pointing at the room's object."""
     blobs = _FakeBlobs()
     store = ExtractionStore(blobs)

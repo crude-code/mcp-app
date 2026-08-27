@@ -365,7 +365,7 @@ def test_legacy_stage_replays_with_peak_offset_and_capex_fallback():
 
 
 @pytest.mark.db  # run_valuation_for_run loads the strip curve from the DB
-def test_forecast_then_run_valuation_round_trip(monkeypatch):
+def test_forecast_then_deal_valuation_round_trip(monkeypatch):
     metas = {"H": _meta("H", "PRODUCING"), "P": _meta("P", "PERMITTED")}
     prod = {"H": {"months": _HIST_MONTHS, "oil_bbl": _HIST_OIL, "gas_mcf": [0.0] * _HIST_N}}
     store = _patch(monkeypatch, metas, prod)

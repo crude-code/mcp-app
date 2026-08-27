@@ -358,7 +358,7 @@ def test_correction_resave_never_snapshots(rig):
 
 
 def test_kit_refines_room_label_uploader_scoped(rig):
-    """open_dataroom registers under a placeholder (it runs pre-triage);
+    """dataroom_open registers under a placeholder (it runs pre-triage);
     the kit save carries the real deal title and back-fills the room row,
     scoped to the uploader inside the store."""
     client, tokens, _, rooms, _ = rig

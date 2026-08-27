@@ -29,4 +29,4 @@ def test_outer_prompt_has_no_briefing_vocabulary():
     p = compose_outer_system_prompt()
     assert "## Widget palette" not in p
     assert "run_data_analysis" not in p
-    assert "run_valuation" in p          # valuation flow still framed
+    assert "deal_valuation" in p          # valuation flow still framed

@@ -1,4 +1,4 @@
-"""save_dataroom_extraction is a mint now: it returns a one-time upload URL
+"""dataroom_save_extraction is a mint now: it returns a one-time upload URL
 and moves no data itself. Storage-path behavior (expansion, caps, store
 errors) lives with the HTTP handler — see tests/test_uploads.py."""
 import json
@@ -13,28 +13,28 @@ _IDENTITY = {"user_slug": "acme", "user_id": 7}
 
 def test_rejects_none_identity(monkeypatch):
     monkeypatch.setattr(srv, "get_current_identity", lambda: None)
-    out = json.loads(srv.save_dataroom_extraction(label="Room"))
+    out = json.loads(srv.dataroom_save_extraction(label="Room"))
     assert out == {"error": "Could not identify user"}
 
 
 @pytest.mark.parametrize("label", ["", "   "])
 def test_rejects_blank_label(monkeypatch, label):
     monkeypatch.setattr(srv, "get_current_identity", lambda: dict(_IDENTITY))
-    out = json.loads(srv.save_dataroom_extraction(label=label))
+    out = json.loads(srv.dataroom_save_extraction(label=label))
     assert "label is required" in out["error"]
 
 
 def test_mints_claimable_upload_url(monkeypatch):
     monkeypatch.setattr(srv, "get_current_identity", lambda: dict(_IDENTITY))
     monkeypatch.setenv("CC_UPLOAD_BASE_URL", "https://mcp.example.com")
-    out = json.loads(srv.save_dataroom_extraction(label="  Bison Whitetail  "))
+    out = json.loads(srv.dataroom_save_extraction(label="  Bison Whitetail  "))
     assert out["upload_url"].startswith("https://mcp.example.com/upload/kit/")
     assert out["upload_host"] == "mcp.example.com"
     # A path-bearing base (the /dev-prefixed apex lane) keeps the path in
     # the URL but must never leak it into upload_host — that string is what
     # users are told to put in their egress allowlist, which takes hostnames.
     monkeypatch.setenv("CC_UPLOAD_BASE_URL", "https://crudecode.dev/dev")
-    out2 = json.loads(srv.save_dataroom_extraction(label="Bison Whitetail"))
+    out2 = json.loads(srv.dataroom_save_extraction(label="Bison Whitetail"))
     assert out2["upload_url"].startswith("https://crudecode.dev/dev/upload/kit/")
     assert out2["upload_host"] == "crudecode.dev"
     assert out["expires_in_seconds"] > 0
@@ -48,7 +48,7 @@ def test_mints_claimable_upload_url(monkeypatch):
 
 def test_resave_binds_extraction_id_to_token(monkeypatch):
     monkeypatch.setattr(srv, "get_current_identity", lambda: dict(_IDENTITY))
-    out = json.loads(srv.save_dataroom_extraction(label="Room", extraction_id=" abc-id "))
+    out = json.loads(srv.dataroom_save_extraction(label="Room", extraction_id=" abc-id "))
     token = out["upload_url"].rsplit("/", 1)[1]
     grant = srv._upload_tokens.claim(token, purpose="kit")
     assert grant.meta["extraction_id"] == "abc-id"
@@ -56,26 +56,26 @@ def test_resave_binds_extraction_id_to_token(monkeypatch):
 
 def test_each_mint_is_a_fresh_token(monkeypatch):
     monkeypatch.setattr(srv, "get_current_identity", lambda: dict(_IDENTITY))
-    first = json.loads(srv.save_dataroom_extraction(label="Room"))
-    second = json.loads(srv.save_dataroom_extraction(label="Room"))
+    first = json.loads(srv.dataroom_save_extraction(label="Room"))
+    second = json.loads(srv.dataroom_save_extraction(label="Room"))
     assert first["upload_url"] != second["upload_url"]
 
 
 def test_room_id_rides_in_kit_token_meta(monkeypatch):
     monkeypatch.setattr(srv, "get_current_identity", lambda: dict(_IDENTITY))
-    out = json.loads(srv.save_dataroom_extraction(label="Room", room_id=" r-42 "))
+    out = json.loads(srv.dataroom_save_extraction(label="Room", room_id=" r-42 "))
     token = out["upload_url"].rsplit("/", 1)[1]
     assert srv._upload_tokens.claim(token, purpose="kit").meta["room_id"] == "r-42"
 
 
-# ── open_dataroom ────────────────────────────────────────────────────────────
+# ── dataroom_open ────────────────────────────────────────────────────────────
 
 _SHA = "a" * 64
 
 
 def test_open_rejects_none_identity(monkeypatch):
     monkeypatch.setattr(srv, "get_current_identity", lambda: None)
-    out = json.loads(srv.open_dataroom(label="Room", sha256=_SHA, size_bytes=10))
+    out = json.loads(srv.dataroom_open(label="Room", sha256=_SHA, size_bytes=10))
     assert out == {"error": "Could not identify user"}
 
 
@@ -87,7 +87,7 @@ def test_open_rejects_none_identity(monkeypatch):
 ])
 def test_open_validates_arguments(monkeypatch, kw, needle):
     monkeypatch.setattr(srv, "get_current_identity", lambda: dict(_IDENTITY))
-    out = json.loads(srv.open_dataroom(**kw))
+    out = json.loads(srv.dataroom_open(**kw))
     assert needle in out["error"]
 
 
@@ -98,7 +98,7 @@ def test_open_known_hash_skips_upload(monkeypatch):
                                      "has_initial_extraction": False})
     monkeypatch.setattr(srv._extraction_store, "find_for_user_room",
                         lambda uid, rid: None)
-    out = json.loads(srv.open_dataroom(label="Room", sha256=_SHA.upper(), size_bytes=10))
+    out = json.loads(srv.dataroom_open(label="Room", sha256=_SHA.upper(), size_bytes=10))
     assert out["status"] == "known"
     assert out["room_id"] == "room-1"
     assert out["extraction_ready"] is False
@@ -125,7 +125,7 @@ def test_open_known_with_snapshot_copies_and_serves(monkeypatch):
 
     monkeypatch.setattr(srv._extraction_store, "save", fake_save)
     monkeypatch.setenv("CC_UPLOAD_BASE_URL", "https://mcp.example.com")
-    out = json.loads(srv.open_dataroom(label="Hilltop", sha256=_SHA, size_bytes=10))
+    out = json.loads(srv.dataroom_open(label="Hilltop", sha256=_SHA, size_bytes=10))
     assert out["extraction_ready"] is True
     assert out["extraction_id"] == "copy-eid"
     assert out["extraction_url"].startswith("https://mcp.example.com/upload/extraction/")
@@ -150,7 +150,7 @@ def test_open_known_returning_user_gets_their_own_row(monkeypatch):
         raise AssertionError("must not copy the snapshot for a returning user")
 
     monkeypatch.setattr(srv._extraction_store, "save", boom)
-    out = json.loads(srv.open_dataroom(label="Hilltop", sha256=_SHA, size_bytes=10))
+    out = json.loads(srv.dataroom_open(label="Hilltop", sha256=_SHA, size_bytes=10))
     assert out["extraction_ready"] is True
     assert out["extraction_id"] == "mine-eid"
 
@@ -165,7 +165,7 @@ def test_open_reuse_failure_degrades_to_normal_flow(monkeypatch):
         raise RuntimeError("db hiccup")
 
     monkeypatch.setattr(srv._extraction_store, "find_for_user_room", boom)
-    out = json.loads(srv.open_dataroom(label="Room", sha256=_SHA, size_bytes=10))
+    out = json.loads(srv.dataroom_open(label="Room", sha256=_SHA, size_bytes=10))
     assert out["status"] == "known"
     assert out["extraction_ready"] is False
     assert "note" in out
@@ -182,7 +182,7 @@ def test_open_new_hash_mints_room_upload(monkeypatch):
 
     monkeypatch.setattr(srv._room_store, "create_pending", fake_create)
     monkeypatch.setenv("CC_UPLOAD_BASE_URL", "https://mcp.example.com")
-    out = json.loads(srv.open_dataroom(label=" Hilltop ", sha256=_SHA, size_bytes=999))
+    out = json.loads(srv.dataroom_open(label=" Hilltop ", sha256=_SHA, size_bytes=999))
     assert out["status"] == "new"
     assert out["room_id"] == "room-2"
     assert out["upload_url"].startswith("https://mcp.example.com/upload/room/")

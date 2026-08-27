@@ -225,7 +225,7 @@ export function MapView({ mapToken, app, errorMessage }: MapViewProps) {
     (async () => {
       try {
         const res = await app.callServerTool({
-          name: "get_map_full", arguments: { token: mapToken },
+          name: "map_read_full", arguments: { token: mapToken },
         });
         if (cancelled) return;
         const text = (res?.content ?? [])

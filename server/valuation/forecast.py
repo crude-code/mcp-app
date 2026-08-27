@@ -2,7 +2,7 @@
 
 There is no fitting and no parameter selection anywhere in this module (or this
 server): decline parameters are asserted upstream by Claude via
-``forecast_wells`` and arrive here as literals. The calculator owns exactly one
+``deal_forecast_wells`` and arrive here as literals. The calculator owns exactly one
 number of its own — the terminal decline (``config.ECON.terminal_di_annual``),
 applied by ``make_curve`` as the exponential-tail switch.
 """

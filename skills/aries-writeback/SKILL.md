@@ -8,7 +8,7 @@ description: Use when the user wants Crude Code forecasts exported for ARIES —
 ## What you're doing
 
 The user has forecasts in Crude Code terms — usually the curves asserted in
-this session's `forecast_wells` run (their own independent forecast, or a
+this session's `deal_forecast_wells` run (their own independent forecast, or a
 revised take on a seller's deck) — and wants them **in ARIES**. This skill
 packages them as an **import package**: a zip of CSVs the target database's
 engineer appends with ordinary MS Access import, under a **new qualifier**
@@ -36,7 +36,7 @@ file. Say that plainly when handing it over.
 1. **Write `curves.json`** (schema in `aries_package.py`'s docstring):
    qualifier (short, NEW — e.g. `CC2608`), and per well: `api`,
    `anchor_month`, `oil`/`gas` params exactly as committed via
-   `forecast_wells`, optional `cums` and `propnum`. Copy numbers verbatim —
+   `deal_forecast_wells`, optional `cums` and `propnum`. Copy numbers verbatim —
    never round, never adjust.
 2. **Build the package:**
    ```bash
@@ -57,7 +57,7 @@ file. Say that plainly when handing it over.
 - **New qualifier only, always.** The script refuses a qualifier that
   exists in the target database; never work around that.
 - **Never edit parameters while packaging** — the zip carries exactly what
-  was committed in the run. A change of mind means a new `forecast_wells`
+  was committed in the run. A change of mind means a new `deal_forecast_wells`
   pass first, then re-export.
 - **Never fabricate a PROPNUM** — unknown ones ship as labeled
   placeholders with join instructions, and you tell the user.

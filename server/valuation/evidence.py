@@ -1,6 +1,6 @@
 """Evidence assembly: the judgment record behind a valuation, per assertion.
 
-One evidence entry per `forecast_wells` entry (a single well, a producing
+One evidence entry per `deal_forecast_wells` entry (a single well, a producing
 cohort, or permits on a shared type curve). Every number here is hydrated
 server-side from the run record and the DB — reported production history,
 the committed curves evaluated forward from their anchors, per-well PV from

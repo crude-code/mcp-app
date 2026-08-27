@@ -1,9 +1,9 @@
-"""Translate ARIES section-4 forecasts into forecast_wells assertions.
+"""Translate ARIES section-4 forecasts into deal_forecast_wells assertions.
 
 Reads the `_aries/` directory written by the aries-explorer skill's
 aries_triage.py and emits, for the chosen scenario qualifier:
 
-  - a proposed `forecast_wells` payload (entries with qi / di / b per stream,
+  - a proposed `deal_forecast_wells` payload (entries with qi / di / b per stream,
     anchor_month, and a rationale carrying the verbatim ARIES lines), and
   - a coverage report — every well, stream, and construct that did or did not
     translate, plus the deck's NGL / shrink / water burden the Crude Code
@@ -332,7 +332,7 @@ def fmt_report(payload):
     out.append(f"== TRANSLATION — qualifier {payload['qualifier']} "
                f"(present: {', '.join(payload['qualifiers_present'])}) ==")
     out.append(f"{len(payload['entries'])} of {len(r['wells'])} wells translated "
-               f"into forecast_wells entries")
+               f"into deal_forecast_wells entries")
     out.append("")
     for w in r["wells"]:
         line = f"  {w['name']}  api={w['api'] or 'NONE'}  anchor={w['anchor']}"
@@ -432,7 +432,7 @@ def main():
     ap.add_argument("aries_dir")
     ap.add_argument("--qualifier")
     ap.add_argument("--payload", default="forecast_payload.json",
-                    help="where to write the proposed forecast_wells payload")
+                    help="where to write the proposed deal_forecast_wells payload")
     ap.add_argument("--tieout", help="oneliner.json for the EUR tie-out")
     args = ap.parse_args()
 

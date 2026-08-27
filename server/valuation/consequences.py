@@ -1,6 +1,6 @@
 """Consequence math for the forecast echo. Pure — no DB, no persistence.
 
-``forecast_wells`` speaks back to Claude entirely in future volumes — never in
+``deal_forecast_wells`` speaks back to Claude entirely in future volumes — never in
 fit quality (there is no fit). The functions here turn an asserted curve into
 the numbers the sanity loop interrogates: implied next-12/next-24 cum against
 trailing actuals, effective annual decline at years 1 and 5, EUR (cum-to-date

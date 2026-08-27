@@ -278,7 +278,7 @@ def _validate_deal_terms(body: dict) -> dict:
 
 
 def parse_run_params(params: dict) -> CaseFile:
-    """Validate run_valuation's ``params`` (interest + asset_list + economics_overrides)
+    """Validate deal_valuation's ``params`` (interest + asset_list + economics_overrides)
     WITHOUT the agent-framing fields (handoff/transcript). Raises CaseFileError on bad
     input. Returns a CaseFile with empty transcript/handoff (their dataclass defaults)."""
     terms = _validate_deal_terms(params)

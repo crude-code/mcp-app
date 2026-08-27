@@ -27,7 +27,7 @@ Pass `forecasts`: a list of entries, each one well or one cohort:
 }
 ```
 
-Each entry is also one **evidence unit** on the deal sheet `run_valuation`
+Each entry is also one **evidence unit** on the deal sheet `deal_valuation`
 builds: an individual well becomes a history-vs-curve panel, a cohort
 becomes one summed panel, and entries carrying an `analog_cohort` become a
 type-curve panel showing the cohort behind the curve. Triage accordingly —
@@ -100,5 +100,5 @@ final is the intended rhythm. Undrilled entries echo `online_month` and no
 trailing comparison.
 
 Omit `run_id` on the first call (it mints one); pass the same `run_id` to
-add or revise wells on the deal, and carry it into `run_valuation`.
+add or revise wells on the deal, and carry it into `deal_valuation`.
 `by_status` gives the well counts the valuation's assumptions grid needs.

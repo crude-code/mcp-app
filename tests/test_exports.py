@@ -161,7 +161,7 @@ def test_parameters_replay_legacy_qi_peak():
 
 
 def test_parameters_without_forecast_stage():
-    with pytest.raises(exports.ExportError, match="forecast_wells"):
+    with pytest.raises(exports.ExportError, match="deal_forecast_wells"):
         exports.build_parameters_csv({})
 
 

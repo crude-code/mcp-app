@@ -9,7 +9,7 @@ All tables live on the Crude Code Postgres database.
 - `market` — commodity prices, futures, news, weekly supply, STEO forecasts
 - `financials` — SEC-derived operator financials (income, balance_sheet, cash_flow, reserves, operator_production)
 - `features` — pre-computed development cohorts: pads/rows of co-developed wells with group rollups and parent/infill context (cohorts, subcohorts, well_assignments, parent_wells). The fastest path to "which pad is this well on" and "find analogous pads". DJ basin only today.
-- `shapes` — PLSS geometry (townships, sections) and LandtracUnit polygons (landtrac_units, landtrac_unit_wells). **Exploration only** — `shapes.*` cannot appear in a `map` layer query, only in `run_sql`.
+- `shapes` — PLSS geometry (townships, sections) and LandtracUnit polygons (landtrac_units, landtrac_unit_wells). **Exploration only** — `shapes.*` cannot appear in a `map_render` layer query, only in `run_sql`.
 <!-- cc:schemas:end -->
 
 Other schemas (`dataroom`, `platform`, etc.) are not accessible. Always qualify tables with the schema prefix (`market.spot_prices`, not `spot_prices`).

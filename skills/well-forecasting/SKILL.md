@@ -1,6 +1,6 @@
 ---
 name: well-forecasting
-description: Forecast wells like an expert reservoir engineer — read the history, diagnose the flow regime, judge the evidence, assert decline parameters, check the consequences, commit. Use for any deal or valuation needing production forecasts (feeds forecast_wells → run_valuation).
+description: Forecast wells like an expert reservoir engineer — read the history, diagnose the flow regime, judge the evidence, assert decline parameters, check the consequences, commit. Use for any deal or valuation needing production forecasts (feeds deal_forecast_wells → deal_valuation).
 ---
 
 # Well Forecasting
@@ -101,7 +101,7 @@ Three tools carry the whole job:
    EUR/ft families, operator timing cadence — all the same tool (its
    docstring carries the full schema).
 
-2. **Commitment goes through `forecast_wells`.** One entry per well (or
+2. **Commitment goes through `deal_forecast_wells`.** One entry per well (or
    cohort — a multi-well `wells` list forecasts their summed stream):
 
        {"wells": ["05-123-…"],
@@ -144,7 +144,7 @@ mixed formations, value concentrated in a handful of wells. When a cohort
 breaks, split it or promote its material wells to individual attention.
 
 Your triage is also the deal sheet's table of contents: every
-`forecast_wells` entry becomes one evidence panel on the valuation
+`deal_forecast_wells` entry becomes one evidence panel on the valuation
 artifact — an individual well shows its history against your curve, a
 cohort shows the summed stream, an analog-carried entry shows the cohort
 behind the type curve. Forty wells where five carry the PV reads best as
@@ -439,7 +439,7 @@ and an undrilled location — only the evidence mix changes.
 ### Recording the cohort
 
 Whenever the analog method carried the parameters, record the cohort
-structurally in the `forecast_wells` entry — the `analog_cohort` field:
+structurally in the `deal_forecast_wells` entry — the `analog_cohort` field:
 the `curve_label` (permits sharing a curve share the label), the
 `criteria` in plain terms, the `kept` APIs, and the candidates you
 `excluded` with a reason each ("different formation", "lateral outside

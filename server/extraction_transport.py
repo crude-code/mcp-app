@@ -1,4 +1,4 @@
-"""CSV transport for save_dataroom_extraction.
+"""CSV transport for dataroom_save_extraction.
 
 The two tall tables in an ExtractionResult (production_history,
 revenue_observations) may arrive as CSV strings plus a shared `sources`

@@ -91,7 +91,7 @@ export function CCApp() {
 
   const toolName = hostContext?.toolInfo?.tool?.name as string | undefined;
 
-  if (isConnected && toolName === "map") {
+  if (isConnected && toolName === "map_render") {
     return (
       <div className="w-full" style={{ background: "var(--bg-page)" }}>
         <MapView mapToken={mapToken} app={app} errorMessage={error} />

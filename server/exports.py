@@ -161,7 +161,7 @@ def build_parameters_csv(forecast: dict) -> tuple[str, int]:
     """
     forecasts = (forecast or {}).get("forecasts") or {}
     if not forecasts:
-        raise ExportError("this run has no forecast stage yet — run forecast_wells first")
+        raise ExportError("this run has no forecast stage yet — run deal_forecast_wells first")
 
     rows = []
     for api in sorted(forecasts):
@@ -317,7 +317,7 @@ def assemble(kind: str, meta: dict, *, run_store=None) -> tuple[str | bytes, int
         economics = run_store.read_stage(run_id, stage="economics")
         if economics is None:
             raise ExportError(
-                f"run {run_id} has no economics stage — run run_valuation first")
+                f"run {run_id} has no economics stage — run deal_valuation first")
         return build_bundle_zip(
             economics, run_store.read_stage(run_id, stage="forecast"), run_id=run_id)
 

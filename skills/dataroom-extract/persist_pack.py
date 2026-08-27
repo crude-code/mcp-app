@@ -2,7 +2,7 @@
 """Pack extraction.json into a persist kit and upload it.
 
 Run this after writing extraction.json. Normal use: call the
-save_dataroom_extraction tool first (it returns a one-time upload URL),
+dataroom_save_extraction tool first (it returns a one-time upload URL),
 then let this script move the bytes — the kit never enters the chat:
 
     python3 persist_pack.py extraction.json --upload "<upload_url>"
@@ -150,7 +150,7 @@ def main():
                     help="pack production_history instead of omitting it")
     ap.add_argument("--upload", metavar="URL", default=None,
                     help="POST the kit to this one-time upload URL (from "
-                         "save_dataroom_extraction) instead of printing it")
+                         "dataroom_save_extraction) instead of printing it")
     args = ap.parse_args()
 
     with open(args.path) as f:

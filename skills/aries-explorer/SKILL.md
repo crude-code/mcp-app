@@ -20,7 +20,7 @@ for a document package headed to a bid; this is one database, read on its
 own. The forecasts and economics inside are **the database author's
 claims** — you are displaying them, never adopting them. If the user asks
 what the assets are *worth*, that is the valuation flow
-(`get_skill("well-forecasting")` → `forecast_wells`), which builds its own
+(`get_skill("well-forecasting")` → `deal_forecast_wells`), which builds its own
 forecasts from public data. The one sanctioned exception: when the user
 **explicitly asks to value this database's own curves**, that is
 `get_skill("aries-to-valuation")` — a separate skill that translates them

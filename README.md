@@ -8,7 +8,7 @@ The design principle: **the model does the thinking; the server does the
 deterministic work.** There are no inner agents. The host model explores a
 Postgres database with a guarded, read-only SQL tool, then publishes finished
 deliverables as claude.ai artifacts it builds itself — from raw `run_sql`
-data, or from `run_valuation`'s payload plus a frozen deal-sheet template.
+data, or from `deal_valuation`'s payload plus a frozen deal-sheet template.
 Maps are the one surface the server still renders: it hands the renderer a
 spec it validates, hydrates, and serves once.
 
@@ -27,10 +27,10 @@ See [`CLAUDE.md`](./CLAUDE.md) for the full architecture reference.
 ## The tools
 
 - **`run_sql`** — guarded, SELECT-only, capped exploration query
-- **`forecast_wells`** / **`run_valuation`** — accept asserted decline parameters (Claude is the reservoir engineer; the server is the calculator), echo their consequences, and run economics — returning the data behind a claude.ai deal-sheet artifact
-- **`map`** — a MapLibre GL well/unit/PLSS map
+- **`deal_forecast_wells`** / **`deal_valuation`** — accept asserted decline parameters (Claude is the reservoir engineer; the server is the calculator), echo their consequences, and run economics — returning the data behind a claude.ai deal-sheet artifact
+- **`map_render`** — a MapLibre GL well/unit/PLSS map
 - **`get_skill`** — fetches a packaged, occasional-use procedure (e.g. dataroom extraction)
-- **`save_dataroom_extraction`** — persists a dataroom extraction so the deal record outlives the chat
+- **`dataroom_save_extraction`** — persists a dataroom extraction so the deal record outlives the chat
 - **`message_team`** — files bugs, feedback, and data requests to the team (durable row + best-effort email)
 
 ## Requirements

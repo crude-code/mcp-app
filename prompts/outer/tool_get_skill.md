@@ -43,7 +43,7 @@ Available skills:
   forecasts inside an ARIES database** ("what do the seller's curves say
   this is worth", "run their forecasts through our economics"), call
   `get_skill("aries-to-valuation")` and follow the returned instructions:
-  it translates the section-4 decline curves into `forecast_wells`
+  it translates the section-4 decline curves into `deal_forecast_wells`
   assertions with full attribution (verbatim ARIES lines in every
   rationale), then the normal valuation flow runs unchanged. The result is
   "seller's curves, Crude Code economics" — never presented as a replay of
@@ -73,7 +73,7 @@ Available skills:
   check → this skill; an acquisition package headed for a bid or valuation →
   `dataroom-extract` instead.
 - **well-forecasting** — before forecasting any wells for a deal or
-  valuation (`forecast_wells`), call `get_skill("well-forecasting")` and
+  valuation (`deal_forecast_wells`), call `get_skill("well-forecasting")` and
   follow the returned procedure: how to read production history, judge the
   evidence, assert decline parameters and timing, and interrogate the
   consequence echo.

@@ -11,17 +11,17 @@ instead of your context window.
   net_cashflow), `parameters.csv`, and a README explaining both. Offer this
   when the user wants the deal's numbers rather than one specific slice —
   they can keep whichever columns they need. Needs `run_id`; the run must
-  have been through `run_valuation`.
+  have been through `deal_valuation`.
 - `volumes` — monthly oil and gas by well, over the run's full economic
   horizon (360 months by default). Gross physical volumes (`oil_bbl`,
   `gas_mcf`, before any interest) plus net volumes scaled by each well's
   revenue interest. One row per well per month. Needs `run_id`; the run must
-  have been through `run_valuation`.
+  have been through `deal_valuation`.
 - `parameters` — the committed decline curves, one row per well per stream:
   qi (as committed *and* as asserted), Di, b, terminal decline, the terminal
   switch month, the anchor month, uptime factor, and the rationale. This is
   the reproducibility record for a forecast. Needs `run_id`; the run must
-  have been through `forecast_wells`.
+  have been through `deal_forecast_wells`.
 - `query` — a `run_sql` SELECT re-run at export scale (100,000 rows instead
   of the 200-row chat cap). Same guard stack, same schema allowlist. Needs
   `sql`. Use this for actual production history, well headers, anything the

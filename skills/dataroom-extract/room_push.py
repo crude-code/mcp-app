@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Push the dataroom zip to its one-time upload URL (from open_dataroom).
+"""Push the dataroom zip to its one-time upload URL (from dataroom_open).
 
     python3 room_push.py <room.zip> "<upload_url>"
 

@@ -1,6 +1,6 @@
 ---
 name: aries-to-valuation
-description: Use when the user explicitly asks to value the forecasts inside an ARIES database (.accdb/.mdb) — "what do the seller's curves say this is worth", "run their forecasts through our economics". Translates the section-4 decline curves into forecast_wells assertions with full attribution, then the normal valuation flow runs unchanged. The deliverable is "seller's curves, Crude Code economics" — not a replay of their model and not our independent view.
+description: Use when the user explicitly asks to value the forecasts inside an ARIES database (.accdb/.mdb) — "what do the seller's curves say this is worth", "run their forecasts through our economics". Translates the section-4 decline curves into deal_forecast_wells assertions with full attribution, then the normal valuation flow runs unchanged. The deliverable is "seller's curves, Crude Code economics" — not a replay of their model and not our independent view.
 ---
 
 # ARIES → Valuation
@@ -9,7 +9,7 @@ description: Use when the user explicitly asks to value the forecasts inside an 
 
 The user has an ARIES database (already read via `aries-explorer`) and has
 **explicitly asked to value the curves inside it**. This skill translates
-the section-4 decline forecasts into `forecast_wells` assertions —
+the section-4 decline forecasts into `deal_forecast_wells` assertions —
 adopted-with-attribution, every rationale carrying the verbatim ARIES line —
 and the normal valuation flow runs unchanged from there.
 
@@ -52,7 +52,7 @@ asks for the database's own curves in a valuation, in their own words.
    SELECT well_api, well_name, operator FROM public.wells
    WHERE well_api = ANY(ARRAY['42-227-41093', ...])
    ```
-   A well missing from `public.wells` cannot enter a run (`forecast_wells`
+   A well missing from `public.wells` cannot enter a run (`deal_forecast_wells`
    bounces it) — remove its entry, and tell the user which wells fell out
    and why. Never fabricate or force an API.
 4. **Tie out against the oneliner when the room has one.** Extract per-well
@@ -80,7 +80,7 @@ asks for the database's own curves in a valuation, in their own words.
    ```bash
    python3 -c "import json; print(json.dumps(json.load(open('forecast_payload.json'))['entries']))"
    ```
-   — and paste that output verbatim as `forecast_wells`' `forecasts`
+   — and paste that output verbatim as `deal_forecast_wells`' `forecasts`
    argument. You may drop wells (step 3); you may not edit numbers or
    rationale text. Read the echo. Expect stale-anchor warnings when the
    ARIES `START` predates recent actuals — that is the seller's timing,
@@ -102,7 +102,7 @@ asks for the database's own curves in a valuation, in their own words.
      opex adjustment is the blunt instrument if the user wants it.
    - **Tail policy** — the report quantifies ARIES-tail vs engine-tail
      volumes per stream; surface the package-level difference.
-8. **Value:** `run_valuation` as normal. The deal sheet's `TLDR` must lead
+8. **Value:** `deal_valuation` as normal. The deal sheet's `TLDR` must lead
    with the label: *"Seller's ARIES curves (qualifier <Q>) under Crude Code
    economics."* Then offer the comparison: an independent
    `well-forecasting` pass on the same wells, same economics — that
@@ -118,7 +118,7 @@ asks for the database's own curves in a valuation, in their own words.
   are the never-adopt boundary made visible in the deal sheet's evidence.
 - **Nothing silent.** Every refused well or stream, every unmodeled
   construct (NGL, shrink, water, tail policy), reaches the user before
-  `run_valuation` — the coverage report is not optional reading.
+  `deal_valuation` — the coverage report is not optional reading.
 - **Never present the output as what the seller's model said.** Their
   prices, costs, ownership, and econ-limit life were not used.
 - **Never guess an API**; off-warehouse wells are reported, not forced.

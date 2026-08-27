@@ -9,7 +9,7 @@ how many revenue rows a package carries. Without a blob store (local dev,
 tests) the payload is stored inline in the row, exactly the pre-pointer
 behavior. `get_payload` resolves either form to the full extraction.
 
-A stub passed INTO save() (e.g. open_dataroom copying a room's initial
+A stub passed INTO save() (e.g. dataroom_open copying a room's initial
 snapshot to a first-time holder) is stored as-is — the copy points at the
 room's immutable object, and a later correction re-save writes the user's
 own object and repoints their row, never touching the room's.
@@ -133,7 +133,7 @@ class ExtractionStore:
 
     def find_for_user_room(self, user_id: int, room_id: str) -> dict | None:
         """This user's newest extraction for a room, id + label only. Used by
-        open_dataroom to hand a returning user their own (possibly corrected)
+        dataroom_open to hand a returning user their own (possibly corrected)
         copy instead of re-copying the room's initial snapshot."""
         rows = _query(
             """

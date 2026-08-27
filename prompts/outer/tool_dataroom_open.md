@@ -16,7 +16,7 @@ Two outcomes:
   platform yet. Push the zip with the bundled script:
   `python3 room_push.py <room.zip> "<upload_url>"` — it streams the file,
   and the server verifies the hash on receipt. Then proceed with triage and
-  extraction. Pass `room_id` to `save_dataroom_extraction` when you persist.
+  extraction. Pass `room_id` to `dataroom_save_extraction` when you persist.
 - `{status: "known", room_id, ...}` — this exact room (byte-identical zip)
   is already captured. Skip the zip upload entirely. Two sub-cases:
   - `extraction_ready: true` — an extraction already exists. The response
@@ -24,7 +24,7 @@ Two outcomes:
     `curl -sS -o extraction.json "<extraction_url>"`, then **skip triage
     and extraction entirely** — go straight to the viewer and user review.
     Corrections re-save under that `extraction_id` via the normal
-    save_dataroom_extraction flow. (The uploaded zip is still in the
+    dataroom_save_extraction flow. (The uploaded zip is still in the
     sandbox for spot-checks if review raises questions.)
   - `extraction_ready: false` — captured but not yet extracted: run the
     normal extraction flow and pass `room_id` when persisting.

@@ -14,7 +14,7 @@ from dateutil.relativedelta import relativedelta
 # ── The valuation config: every economic parameter, one object ───────────────
 #
 # Single source for the economic side of a valuation. Decline parameters are
-# asserted per well through `forecast_wells` and never live here; the terminal
+# asserted per well through `deal_forecast_wells` and never live here; the terminal
 # decline does, because the exponential tail is the calculator's own policy.
 # Read it as `config.ECON.<field>`; never re-hardcode these values at a call
 # site.

@@ -16,21 +16,21 @@ everything through a handful of MCP tools:
 - When the chat becomes a deliverable, **Claude itself builds a claude.ai
   artifact** straight from `run_sql` data — there is no server-side spec
   authoring or render step for this path anymore.
-- For deals it calls `forecast_wells` → `run_valuation` → gets a slim payload
+- For deals it calls `deal_forecast_wells` → `deal_valuation` → gets a slim payload
   plus the frozen `DealSheet.jsx` template in the same response, and builds
   the deal-sheet artifact from them directly.
-- For geography it calls `map`.
+- For geography it calls `map_render`.
 - For a one-off packaged procedure (e.g. extracting a dataroom upload) it
   calls `get_skill(name)` to fetch the instructions and follows them directly.
 - When the dataroom-extract skill produces an `extraction.json`, it persists
-  it via `save_dataroom_extraction` so the deal record outlives the chat.
+  it via `dataroom_save_extraction` so the deal record outlives the chat.
 - When the user hits friction or wants something (a bug, a dataset request,
   a feature wish) it files `message_team` — durable row + best-effort email
   to the team.
 
 Every tool is synchronous and server-side. The renderer today only ever
 renders maps: it fetches the finished, hydrated map spec **once** via
-`get_map_full(token)` and renders it inline — no streaming, no event log, no
+`map_read_full(token)` and renders it inline — no streaming, no event log, no
 polling.
 
 ### MCP Server (`server/mcp_server.py`)
@@ -48,7 +48,7 @@ Tools (all return JSON strings):
   `EXPLORATION_SCHEMAS` and a 200-row / 100 KB / 5s cap. Returns `{rows, count}`
   or `{error}`. The cap is on purpose: results land in the visible chat
   thread, so keep it presentable and the context lean.
-- **forecast_wells** — Accept-and-echo. Claude is the reservoir engineer
+- **deal_forecast_wells** — Accept-and-echo. Claude is the reservoir engineer
   (doctrine: `get_skill("well-forecasting")`); it asserts decline parameters
   per well or cohort — `{qi, di, b}` per stream (qi = rate at the anchor,
   never peak-anything), a required `anchor_month` (producers: where qi
@@ -68,7 +68,7 @@ Tools (all return JSON strings):
   linear in qi). Run ownership is enforced. Nothing server-side ever chooses
   a parameter; evidence comes from `run_sql` (offsets, histories, operator
   timing cadence).
-- **run_valuation** — Takes `run_id` (from `forecast_wells`) and `params`
+- **deal_valuation** — Takes `run_id` (from `deal_forecast_wells`) and `params`
   (interest type + blanket numbers, optional `by_api` per-well overrides,
   optional `economics_overrides`). Runs econ on the forecast stage in the run
   record, assembles the artifact payload (`build_artifact_payload` in
@@ -92,7 +92,7 @@ Tools (all return JSON strings):
   the universal fallback: Team/Enterprise egress defaults block external
   domains, and code execution can be off). Claude builds the deal-sheet
   artifact itself by filling `data` into the template, per the guardrail
-  in `prompts/outer/tool_run_valuation.md` — no MCP-app render. See
+  in `prompts/outer/tool_deal_valuation.md` — no MCP-app render. See
   `server/valuation/`.
 - **export_data** — The download lane: hands the user a file of work the
   session already did, instead of a chat payload. Takes a `kind`
@@ -155,7 +155,7 @@ Tools (all return JSON strings):
   `tests/test_template_publish_drift.py`). Pure/static — no DB, no
   network (fetches are still `trace`-logged, slug read straight from the
   routing header). See `server/skills.py` and `skills/`.
-- **open_dataroom** — Capture-first registration of a dataroom zip, called
+- **dataroom_open** — Capture-first registration of a dataroom zip, called
   before any of it is read. Takes `label`, `sha256`, `size_bytes` (hashed
   in the sandbox). New hash → pending `platform.dataroom_rooms` row
   (`server/room_store.py`, `RoomStore`) + one-time upload URL; the skill's
@@ -179,7 +179,7 @@ Tools (all return JSON strings):
   touch `platform.dataroom_extractions` rows (which now carry `room_id`).
   DDL: `deploy/sql/001-dataroom-rooms.sql` (first in-repo migration; apply
   with psql against SUPABASE_DATABASE_URL).
-- **save_dataroom_extraction** — Mints a one-time HTTP upload URL for a
+- **dataroom_save_extraction** — Mints a one-time HTTP upload URL for a
   dataroom-extract persist kit; carries only `label` (+ optional
   `extraction_id` for in-place re-saves). The kit itself travels
   out-of-band: the skill's `persist_pack.py --upload` POSTs it from the
@@ -211,7 +211,7 @@ Tools (all return JSON strings):
   for measuring the sandbox-proxy size ceiling against a live deploy.
   nginx: dedicated `/upload/` location (no slug header — the token carries
   identity), `client_max_body_size 600m`.
-- **get_map_full** — Renderer-only. Returns the full hydrated map spec.
+- **map_read_full** — Renderer-only. Returns the full hydrated map spec.
 
 Non-tool HTTP lane: **GET /new-account** (`server/accounts.py`) — anonymous
 account mint for the CrudeDocs funnel (crudecode.dev/docs/*). Fetched by
@@ -239,17 +239,17 @@ Inline React app rendered inside Claude Desktop. Single-pass build:
   vite alone does not type-check)
 
 **Render flow:** `CCApp` parses `ontoolresult` payloads and looks at the
-invoking tool name; only `map` triggers a render — it mounts `MapView` (a
+invoking tool name; only `map_render` triggers a render — it mounts `MapView` (a
 MapLibre GL well/unit/PLSS map), which fetches the full hydrated map spec
-**once** via `get_map_full(map_token)` and shows a plain loading spinner
-until it resolves (error text on a bad/expired token). `run_valuation`
+**once** via `map_read_full(map_token)` and shows a plain loading spinner
+until it resolves (error text on a bad/expired token). `deal_valuation`
 (and every other tool) has no `app=` config and never triggers an
 `ontoolresult` render — Claude builds the deal-sheet as a claude.ai artifact
 directly from the tool's `data` payload and the frozen template (`viewer`)
 that rides in the same response. There is no streaming/event-log path.
 
 **Component tree:**
-- `src/CCApp.tsx` — app shell; on `map` tool results, mounts `MapView`.
+- `src/CCApp.tsx` — app shell; on `map_render` tool results, mounts `MapView`.
 - `src/components/MapView.tsx` — MapLibre GL map surface, including its own
   loading/error states.
 - `src/ErrorBoundary.tsx` — top-level error boundary.
@@ -269,7 +269,7 @@ palettes, not design tokens.)
 
 Server-side calculator + economics, invoked by the valuation tools (Claude never
 authors this code). Decline parameters are asserted by Claude via
-`forecast_wells`; nothing in this package fits or chooses one. Methodology
+`deal_forecast_wells`; nothing in this package fits or chooses one. Methodology
 changes are proven in the sibling **`forecast-benchmark`** repo (blind
 hindcast, both arms scored by the same code) — this repo ships only the
 calculator. Pure, unit-tested modules:
@@ -285,7 +285,7 @@ calculator. Pure, unit-tested modules:
   undrilled online months; EUR replaces post-anchor actuals, never
   double-counts) are pinned in its module docstring.
 - **`casefile.py`** — `parse_case_file` / `CaseFile`: validate + type the JSON
-  contract `run_valuation` sends (interest_type, blanket `interest` + optional
+  contract `deal_valuation` sends (interest_type, blanket `interest` + optional
   `by_api` overrides, `asset_list` as `well_apis` XOR `filter_sql`,
   economics_overrides). The authoritative interest source.
 - **`econ.py`** — `compute_gross_revenue`, `compute_net_cashflow` (WI vs
@@ -294,7 +294,7 @@ calculator. Pure, unit-tested modules:
   DB): exec facts (`roll_up_facts`) and `default_rates`. Consumed by
   `artifact_payload.py`.
 - **`artifact_payload.py`** — `build_artifact_payload`: assembles the
-  payload `run_valuation` returns (`facts`, `economics` —
+  payload `deal_valuation` returns (`facts`, `economics` —
   `npv_at_centers`, the full deck×status×rate `cube`, `decks`,
   `default_deck`, `default_rates`, `statuses` — plus `assumptions` and the
   `evidence` passthrough) from a run's `wells` + `economics` stages,
@@ -324,7 +324,7 @@ calculator. Pure, unit-tested modules:
   the payload carries `data.export.bundle_url` (a plain `<a target="_blank">`
   — the artifact CSP blocks cross-origin `fetch`, and fetching would pull the
   bytes into the iframe instead of the user's disk). Shipped verbatim as
-  `viewer` in every `run_valuation` response; Claude fills
+  `viewer` in every `deal_valuation` response; Claude fills
   `DATA`/`TITLE`/`TLDR` and nothing else. Nothing in the build compiles this
   file — it is parsed first inside the artifact sandbox — so
   `tests/test_template_publish_drift.py` runs it through
@@ -397,12 +397,12 @@ subfolder with a `SKILL.md` in to add a skill; nothing else registers it.
   sanctioned exception is `aries-to-valuation`, below, on explicit request).
 - **`aries-to-valuation/`** — lane 1 of the ARIES→valuation integration:
   when the user explicitly asks to value an ARIES database's own curves,
-  `aries_curves.py` translates the section-4 forecasts into `forecast_wells`
+  `aries_curves.py` translates the section-4 forecasts into `deal_forecast_wells`
   assertions — decline conversion per the pinned conventions in the
   explorer's ARIES.md (effective-annual secant → nominal monthly; verified
   against a real database's own oneliner to ≤0.013% per stream, 20 wells ×
   2 streams), anchor = START, rationale carrying the verbatim §4 lines +
-  qualifier + db sha — and the normal `forecast_wells` → `run_valuation`
+  qualifier + db sha — and the normal `deal_forecast_wells` → `deal_valuation`
   flow runs unchanged (echo, evidence, exports all come free). Only the
   proven line shape translates (hyperbolic main + terminal ditto); LOOKUP /
   LIST / multi-segment streams are refused per stream with verbatim reasons
@@ -440,9 +440,9 @@ subfolder with a `SKILL.md` in to add a skill; nothing else registers it.
   collapsible status-grouped manifest, doc folders; wells spine or tracts
   spine, modules hide when data is absent) as `DATA`/`TITLE`/`TLDR`. The
   extraction's private economics are persisted via `persist_pack.py` →
-  `save_dataroom_extraction` (count-verified; re-saved under the same
+  `dataroom_save_extraction` (count-verified; re-saved under the same
   `extraction_id` after corrections; the raw extraction never gets pasted
-  into an artifact). Feeds `forecast_wells` / `run_valuation` when the room
+  into an artifact). Feeds `deal_forecast_wells` / `deal_valuation` when the room
   is headed for a deal.
 - **`statement-checkup/`** — a plain-English health check of one royalty
   check stub for an individual mineral/royalty owner (explicitly not a
@@ -464,7 +464,7 @@ subfolder with a `SKILL.md` in to add a skill; nothing else registers it.
   young-well decline) so normal gaps reassure rather than alarm. No
   persistence lane — the owner's statement stays in the chat.
 - **`well-forecasting/`** — the reservoir-engineer doctrine behind
-  `forecast_wells`: reading production history (contamination signatures,
+  `deal_forecast_wells`: reading production history (contamination signatures,
   strike-vs-average), trust judgment by maturity, qi/anchor + the uptime
   factor, Di, b as a population quantity (priors table), the analog
   method (filter-hierarchy analog selection + peak-aligned averaging,
@@ -474,7 +474,7 @@ subfolder with a `SKILL.md` in to add a skill; nothing else registers it.
   `forecast-benchmark` repo (v3 doctrine, 2026-07-27), adapted for the
   agentic context (run_sql evidence, real echo, cohort entries); analog
   doctrine added 2026-08-11.
-  (The deal-sheet template is NOT a skill — it rides in `run_valuation`'s
+  (The deal-sheet template is NOT a skill — it rides in `deal_valuation`'s
   response; see `server/valuation/viewer/`.)
 
 ### Prompts (`prompts/`)
@@ -482,8 +482,8 @@ subfolder with a `SKILL.md` in to add a skill; nothing else registers it.
 LLM-facing text, loaded via `utils/prompts.py` (`load("outer/...")`).
 - **`outer/`** — text outer Claude reads: `system_prompt.md` (lead-analyst
   posture, available-data summary) + one docstring per tool
-  (`tool_run_sql.md`, `tool_forecast_wells.md`, `tool_run_valuation.md`,
-  `tool_map.md`, `tool_get_skill.md`, `tool_save_dataroom_extraction.md`). `compose_outer_system_prompt()`
+  (`tool_run_sql.md`, `tool_deal_forecast_wells.md`, `tool_deal_valuation.md`,
+  `tool_map_render.md`, `tool_get_skill.md`, `tool_dataroom_save_extraction.md`). `compose_outer_system_prompt()`
   assembles `system_prompt.md` + a live skills catalog (built from
   `server/skills.list_skills()`) into the MCP server `instructions`.
 - **`outer/shared_schema.md`** — the DB schema reference, kept in sync with
@@ -519,7 +519,7 @@ sentence must carry the routing keywords a user's ask would match.
 - **briefing_handle_store.py** — In-memory per-user `BriefingHandleStore`
   mapping short-lived tokens to hydrated specs (24h TTL). `mint(user_slug,
   spec)` / `fetch(user_slug, token)` — synchronous, spec always in hand at
-  mint time. Today it serves only map specs, backing `map` / `get_map_full`
+  mint time. Today it serves only map specs, backing `map_render` / `map_read_full`
   (name kept for history, from when it also backed briefings).
 - **prompts.py** — Loads `prompts/` files. `compose_outer_system_prompt()`
   assembles `outer/system_prompt.md` + a live skills catalog (no schema —
@@ -615,12 +615,12 @@ Run: `.venv/bin/pytest -q`.
   `ANTHROPIC_API_KEY`), and `network` (no `--run-network`); purges sentinel
   `valuation_runs` rows at session end.
 - Coverage spans the live surface: `run_sql` + the valuation tools
-  (`forecast_wells` accept-and-echo — validation matrix, cohort allocation,
-  merge/overwrite, legacy-stage replay — and `run_valuation`), the
+  (`deal_forecast_wells` accept-and-echo — validation matrix, cohort allocation,
+  merge/overwrite, legacy-stage replay — and `deal_valuation`), the
   calculator (forecast/consequences/econ/artifact-payload/strip), maps,
   `sql_guard`,
   `briefing_handle_store` (map tokens), the dataroom persistence path —
-  store, mint tools (`save_dataroom_extraction`, `open_dataroom`), upload
+  store, mint tools (`dataroom_save_extraction`, `dataroom_open`), upload
   tokens, HTTP upload handlers (kit, room, echo), room store, CSV
   transport, and the packer round-trip + `--upload` mode against a live
   local HTTP server (`test_extraction_store.py`, `test_tools_dataroom.py`,

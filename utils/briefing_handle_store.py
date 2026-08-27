@@ -2,7 +2,7 @@
 
 `map` validates + hydrates the map spec server-side, mints a token, and
 stashes the full hydrated spec here. The renderer reads `map_token` out of
-the tool result and calls `get_map_full(token)` once on mount to fetch the
+the tool result and calls `map_read_full(token)` once on mount to fetch the
 spec. (Name kept for history — it also backed briefings before that
 vertical was removed.)
 

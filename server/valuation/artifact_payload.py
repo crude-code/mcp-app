@@ -24,7 +24,7 @@ _DEFAULT_TEMPLATE_BASE = "https://crudecode.dev/templates"
 
 
 def load_viewer() -> str:
-    """Source of the frozen DealSheet.jsx artifact template. `run_valuation`
+    """Source of the frozen DealSheet.jsx artifact template. `deal_valuation`
     ships it alongside `data`; Claude pastes the payload in verbatim and never
     rebuilds the component."""
     return _VIEWER_PATH.read_text(encoding="utf-8")

@@ -25,12 +25,12 @@ VALID_SPEC = {
 
 
 def test_map_rejects_without_identity(no_identity):
-    out = json.loads(mcp_server.render_map(spec=VALID_SPEC))
+    out = json.loads(mcp_server.map_render(spec=VALID_SPEC))
     assert "error" in out
 
 
 def test_map_rejects_bad_spec(patched_identity):
-    out = json.loads(mcp_server.render_map(spec={"layers": []}))
+    out = json.loads(mcp_server.map_render(spec={"layers": []}))
     assert "error" in out
     assert "layers" in out["error"]
 
@@ -42,29 +42,29 @@ def test_map_happy_path_returns_token(patched_identity, monkeypatch):
         "layers": [{"id": "wells", "label": "Wells", "geojson": {"features": []},
                     "feature_count": 3}],
     })
-    out = json.loads(mcp_server.render_map(spec=VALID_SPEC))
+    out = json.loads(mcp_server.map_render(spec=VALID_SPEC))
     assert out["surface"] == "map"
     assert out["map_token"]
     assert out["layers"] == [{"id": "wells", "label": "Wells", "feature_count": 3}]
 
 
-def test_get_map_full_returns_spec(patched_identity, monkeypatch):
+def test_map_read_full_returns_spec(patched_identity, monkeypatch):
     token = mcp_server._briefing_handles.mint(
         user_slug="test-slug", spec={"title": "T", "layers": []}
     )
-    out = json.loads(mcp_server.get_map_full(token=token))
+    out = json.loads(mcp_server.map_read_full(token=token))
     assert out["spec"]["title"] == "T"
 
 
-def test_get_map_full_unknown_token(patched_identity):
-    out = json.loads(mcp_server.get_map_full(token="nope"))
+def test_map_read_full_unknown_token(patched_identity):
+    out = json.loads(mcp_server.map_read_full(token="nope"))
     assert "error" in out
 
 
-def test_get_map_full_rejects_other_users_token(patched_identity):
+def test_map_read_full_rejects_other_users_token(patched_identity):
     # patched_identity = "test-slug"; mint under a different slug
     token = mcp_server._briefing_handles.mint(
         user_slug="other-slug", spec={"title": "secret", "layers": []}
     )
-    out = json.loads(mcp_server.get_map_full(token=token))
+    out = json.loads(mcp_server.map_read_full(token=token))
     assert "error" in out

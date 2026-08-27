@@ -14,11 +14,11 @@ Routes:
   mint bound a room_id, the saved row links to it and the room's write-once
   initial-extraction snapshot is taken here.
 - POST /upload/room/{token} — the dataroom zip itself (capture-first flow,
-  minted by open_dataroom). Streamed to a temp file while hashing; the
+  minted by dataroom_open). Streamed to a temp file while hashing; the
   digest must match the sha256 asserted at mint time, then the blob lands
   in Supabase Storage keyed rooms/<sha256>.zip.
 - GET /upload/extraction/{token} — the reuse lane: serves a stored
-  extraction (the caller's own row, bound at mint time by open_dataroom) so
+  extraction (the caller's own row, bound at mint time by dataroom_open) so
   a duplicate room skips re-extraction entirely and the sandbox just curls
   extraction.json down. Single-use like the upload routes.
 - POST /upload/echo/{token} — probe endpoint: streams the body, answers
@@ -144,7 +144,7 @@ def register_upload_routes(mcp, *, tokens, extraction_store,
         grant = tokens.claim(token, purpose="kit")
         if grant is None:
             return _reject(410, "unknown, expired, or already-used upload URL — "
-                                "mint a fresh one with save_dataroom_extraction")
+                                "mint a fresh one with dataroom_save_extraction")
 
         body = await request.body()
         if len(body) > MAX_KIT_BODY_BYTES:
@@ -192,7 +192,7 @@ def register_upload_routes(mcp, *, tokens, extraction_store,
             return _reject(500, str(e))
 
         if room_id and room_store is not None and label:
-            # The room registered under a placeholder (open_dataroom runs
+            # The room registered under a placeholder (dataroom_open runs
             # before anything in the zip is read); the kit's label is the
             # real deal title. Uploader-scoped inside the store.
             try:
@@ -241,7 +241,7 @@ def register_upload_routes(mcp, *, tokens, extraction_store,
         grant = tokens.claim(token, purpose="room")
         if grant is None:
             return _reject(410, "unknown, expired, or already-used upload URL — "
-                                "mint a fresh one with open_dataroom")
+                                "mint a fresh one with dataroom_open")
         if room_store is None or blob_store is None:
             return _reject(500, "room capture is not configured on this server")
 
@@ -263,7 +263,7 @@ def register_upload_routes(mcp, *, tokens, extraction_store,
                 return _reject(400, "empty body")
             if digest.hexdigest() != expected_sha:
                 return _reject(422, "sha256 mismatch: received bytes do not match the "
-                                    "hash asserted to open_dataroom — retry the upload")
+                                    "hash asserted to dataroom_open — retry the upload")
 
             key = f"rooms/{expected_sha}.zip"
             try:
@@ -292,7 +292,7 @@ def register_upload_routes(mcp, *, tokens, extraction_store,
         grant = tokens.claim(token, purpose="extraction")
         if grant is None:
             return _reject(410, "unknown, expired, or already-used download URL — "
-                                "mint a fresh one with open_dataroom")
+                                "mint a fresh one with dataroom_open")
         try:
             # get_payload resolves a pointer row through Storage; blob fetch
             # runs off the event loop like every other Storage call here.

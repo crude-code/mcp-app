@@ -25,7 +25,7 @@ You are NOT writing a report or running a valuation. You are extracting **facts,
    ```bash
    python3 -c "import hashlib,os,sys; p=sys.argv[1]; h=hashlib.sha256(open(p,'rb').read()).hexdigest(); print(h, os.path.getsize(p))" "<upload>.zip"
    ```
-   Call `open_dataroom(label, sha256, size_bytes)` with a short label (the
+   Call `dataroom_open(label, sha256, size_bytes)` with a short label (the
    deal/teaser title).
    - `status: "new"` → push the zip, then continue:
      ```bash
@@ -78,7 +78,7 @@ You are NOT writing a report or running a valuation. You are extracting **facts,
    deal, wells, tracts, division orders, documents); the sandbox copy dies
    with this session. The extraction travels as a direct upload from the
    sandbox — it never passes through the chat. Two steps:
-   1. Call `save_dataroom_extraction` with a short `label` (the deal/teaser
+   1. Call `dataroom_save_extraction` with a short `label` (the deal/teaser
       title) and the `room_id` from step 1. It returns a one-time
       `upload_url` (expires in ~15 min).
    2. ```bash
@@ -94,7 +94,7 @@ You are NOT writing a report or running a valuation. You are extracting **facts,
      in another state, or the sheet carries NGL detail worth keeping.
    - Keep the printed `extraction_id`: corrections after user review are
      re-saved under that same id — re-run the packer, mint a fresh URL via
-     `save_dataroom_extraction(label, extraction_id=<id>)` (URLs are
+     `dataroom_save_extraction(label, extraction_id=<id>)` (URLs are
      single-use), and upload again. The stored copy is updated in place,
      not duplicated.
    - `verified: false` → mint a fresh URL with the extraction_id and
@@ -185,7 +185,7 @@ costliest error in this workflow.
 
 **Provenance is required on every record.** `source_file` = the relative path inside the room. `source_locator` by convention: Excel `"sheet:Name;row:N"` (1-based, header = row 1), PDF `"page:N"`. Use `notes` only when you *inferred* a value rather than read it.
 
-**No database here.** Unlike the server pipeline, you have **no access to the Crude Code well database** in this sandbox. Leave `Well.public_well_object` null. When the room gives only a well **name**, leave `api` null and say so in `notes` / `extraction_notes` — a later server step resolves APIs against public data. (MCP tools remain available — persisting via `save_dataroom_extraction` is expected; it's the well-database *lookup* you don't have.)
+**No database here.** Unlike the server pipeline, you have **no access to the Crude Code well database** in this sandbox. Leave `Well.public_well_object` null. When the room gives only a well **name**, leave `api` null and say so in `notes` / `extraction_notes` — a later server step resolves APIs against public data. (MCP tools remain available — persisting via `dataroom_save_extraction` is expected; it's the well-database *lookup* you don't have.)
 
 **API formatting.** When the room states an API, normalize to `SS-CCC-WWWWW` (10 digits, two dashes; strip a 14-digit API to its first 10). Never fabricate digits to reach that shape.
 
@@ -234,15 +234,15 @@ don't add others.
 
 Often the room isn't the end goal — the user wants to **value** the interest. The
 dataroom is the input that makes that possible: the `wells` and the `interests`
-decimal are exactly what `forecast_wells` / `run_valuation` need. In that case:
+decimal are exactly what `deal_forecast_wells` / `deal_valuation` need. In that case:
 
-1. Extract → write `extraction.json` → persist (`save_dataroom_extraction`).
+1. Extract → write `extraction.json` → persist (`dataroom_save_extraction`).
 2. **Show the viewer first** — it's the confirm-before-you-value step. The user
    eyeballs what came out of the room (which wells, what interest decimal, where
    the revenue concentrates, what got flagged) and confirms it's right before any
    money number is built.
 3. Then proceed into the valuation flow (`get_skill("well-forecasting")` →
-   `forecast_wells` → assumptions grid → `run_valuation`), carrying the wells
+   `deal_forecast_wells` → assumptions grid → `deal_valuation`), carrying the wells
    and the interest from the extraction. The room's own documents feed the
    forecast too: AFE dates and stated development plans are the first-choice
    source for undrilled wells' timing, and LOS/check-stub months are evidence

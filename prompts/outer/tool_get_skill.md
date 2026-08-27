@@ -49,6 +49,15 @@ Available skills:
   "seller's curves, Crude Code economics" — never presented as a replay of
   the seller's model, and never the default: an ordinary "what is this
   worth" still means `well-forecasting`, our independent view.
+- **aries-writeback** — when the user wants Crude Code forecasts exported
+  for ARIES ("send these curves back to ARIES", "give me an ARIES import
+  package", "write our forecast into their deck"), call
+  `get_skill("aries-writeback")` and follow the returned instructions: it
+  packages the session's committed curves as a zip of CSVs (AC_ECONOMIC
+  rows under a NEW qualifier, a PROPNUM crosswalk, a step-by-step README)
+  that the user's engineer appends to a copy of their own database. It
+  never produces or edits a binary .accdb and never overwrites existing
+  scenarios.
 - **dataroom-extract** — when the user uploads an oil & gas dataroom (an
   acquisition/divestiture package: lease operating statements, check stubs,
   AFEs, production reports, title, division orders, a teaser/overview) and

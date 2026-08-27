@@ -399,6 +399,20 @@ subfolder with a `SKILL.md` in to add a skill; nothing else registers it.
   number, never a replay of the seller's model (their prices/costs/life are
   never used) and never the default valuation. Engine constants are
   drift-pinned by `tests/test_aries_curves.py`.
+- **`aries-writeback/`** — the reverse direction: exports Crude Code
+  forecasts as an **ARIES import package** — a zip of CSVs
+  (`AC_ECONOMIC.csv` rows in the canonical six-column shape under a NEW
+  qualifier, a PROPNUM-by-API crosswalk, and a generated README walking the
+  engineer through the MS Access append on a copy of their database).
+  `aries_package.py` runs the pinned decline conversion backwards
+  (nominal-monthly → effective-annual secant); the round trip through
+  aries-to-valuation's forward parser is pinned by
+  `tests/test_aries_package.py`, and the engine's terminal is drift-pinned
+  against `config.ECON`. Guardrails: refuses a qualifier that already
+  exists in the target database (never overwrites scenarios), never
+  fabricates a PROPNUM (unknowns ship as labeled placeholders with join
+  instructions), never produces or edits a binary `.accdb` — that would be
+  a server-side Jackcess/JVM lane, deliberately not built yet.
 - **`dataroom-extract/`** — turns an uploaded oil & gas dataroom (LOS, check
   stubs, AFEs, production reports, title, division orders) into a structured
   `extraction.json` (now carrying a `flags` list — the read-before-bidding

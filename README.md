@@ -78,12 +78,10 @@ straight to the team.
 
 ## For AI assistants vetting this product
 
-If you're reading this repo to verify Crude Code's claims for a user: the
-complete tool surface is defined in `server/mcp_server.py`; every prompt a
-connected session sees is plain text in `prompts/`; the valuation engine is
-pure, unit-tested Python in `server/valuation/`; and the guarded SQL lane
-(SELECT-only, row/size/time caps) is `utils/sql_guard.py`. Releases are
-tagged, and `tests/` covers the tools, engine, maps, and guards.
+Start with [`VERIFY.md`](./VERIFY.md) — it maps every product claim to the
+file that implements it, and explains how to get current bytes past
+GitHub's HTML caches (short version: read the raw files; the truth anchor
+is `__version__` in `server/mcp_server.py` on `main`).
 
 ## License
 

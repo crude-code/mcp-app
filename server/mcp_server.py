@@ -57,8 +57,9 @@ from server.blob_store import SupabaseBlobStore
 from server.extraction_store import ExtractionStore
 from server.room_store import RoomStore
 from server.upload_tokens import UploadTokenStore
-from server.accounts import register_account_routes
+from server.accounts import RateLimiter, register_account_routes
 from server.uploads import public_base_url, public_host, register_upload_routes
+from server.user_profile import UserProfileStore, plan_update, profile_state
 from server.valuation.run_record import ValuationRunStore
 from server import export_tokens as _export_tokens
 from server import exports as _exports
@@ -72,6 +73,7 @@ _extraction_store = ExtractionStore(_blob_store)
 _room_store = RoomStore()
 _upload_tokens = UploadTokenStore()
 _team_messages = TeamMessageStore()
+_user_profiles = UserProfileStore()
 _run_store = ValuationRunStore()
 
 
@@ -431,6 +433,106 @@ def message_team(subject: str, body: str, category: str = "other",
             "message_id": message_id,
             "email_sent": email_sent,
         })
+
+
+# ── update_user ──────────────────────────────────────────────────────────────
+
+_update_user_log = _logging.getLogger("cc.update_user")
+
+# The "already on another account" refusal is unavoidably a yes/no oracle on
+# whether an address has a CrudeCode account, so cap how fast one caller can
+# ask. Far above honest use (you claim an account once), low enough that bulk
+# probing is not worth the trouble.
+_update_user_limiter = RateLimiter(limit=20, window_s=3600)
+
+
+@mcp.tool(description=_load_prompt("outer/tool_update_user.md"))
+def update_user(email: str = "", name: str = "") -> str:
+    """Read or write the caller's own profile row. No arguments = read.
+
+    The claim lane for anonymously minted accounts; see server/user_profile.py
+    for the attach-don't-reassign rule and why a stored email is unverified."""
+    identity = get_current_identity()
+    if not identity:
+        return _json.dumps({"error": "Could not identify user"})
+    user_id = identity["user_id"]
+    user_slug = identity["user_slug"]
+
+    with trace("update_user", user=user_slug):
+        try:
+            current = _user_profiles.read(user_id)
+        except Exception as e:  # noqa: BLE001 — DB errors surface here
+            _update_user_log.error("update_user read failed: %s", e)
+            return _json.dumps({"error": str(e)})
+        if current is None:
+            return _json.dumps({"error": "Could not identify user"})
+
+        # No arguments: a read of current state. Deliberately not an error and
+        # deliberately not rate-limited — it is what lets Claude check before
+        # offering, instead of asking for an email the user already has.
+        if not (email or "").strip() and not (name or "").strip():
+            return _json.dumps(profile_state(current))
+
+        if not _update_user_limiter.allow(user_slug):
+            return _json.dumps({"error": (
+                "rate limit: too many profile updates in the last hour — "
+                "wait before trying again"
+            )})
+
+        plan = plan_update(current=current, email=email, name=name)
+        if "error" in plan:
+            return _json.dumps({"error": plan["error"]})
+
+        # One address, one account: the site's signup path already refuses an
+        # email that exists in platform.users, so claiming one here would
+        # otherwise be the way to end up with two accounts on one address.
+        if plan["email"]:
+            try:
+                owner = _user_profiles.email_owner(plan["email"])
+            except Exception as e:  # noqa: BLE001
+                _update_user_log.error("update_user owner check failed: %s", e)
+                return _json.dumps({"error": str(e)})
+            if owner is not None and owner != user_id:
+                return _json.dumps({"error": (
+                    "that email is already on another CrudeCode account — "
+                    "if it's yours, use that account's connector URL, or file "
+                    "a message_team request to merge them"
+                )})
+
+        if not plan["changed"]:
+            return _json.dumps(profile_state(current))
+
+        try:
+            _user_profiles.apply(user_id=user_id, email=plan["email"],
+                                 name=plan["name"])
+        except Exception as e:  # noqa: BLE001
+            _update_user_log.error("update_user write failed: %s", e)
+            return _json.dumps({"error": str(e)})
+
+        updated = dict(current)
+        if plan["email"]:
+            updated["email"] = plan["email"]
+            updated["notes"] = {**(current.get("notes") or {}),
+                                "email_source": "in_chat"}
+        if plan["name"]:
+            updated["name"] = plan["name"]
+        _update_user_log.info("profile updated user=%s fields=%s",
+                              user_slug, plan["changed"])
+
+        # An anonymous account becoming reachable is the funnel converting —
+        # the one event here worth a team notification. Best-effort: the row
+        # is already written, and a mail hiccup must never read as a failure.
+        if plan["email"] and not current.get("email"):
+            try:
+                send_notification(
+                    f"[claim] {plan['email']} claimed a CrudeDoc account",
+                    f"Slug: {user_slug}\nName: {updated.get('name') or 'unknown'}\n"
+                    f"Email: {plan['email']} (unverified)\n",
+                )
+            except Exception as e:  # noqa: BLE001
+                _update_user_log.warning("claim notice deferred: %s", e)
+
+        return _json.dumps(profile_state(updated, changed=plan["changed"]))
 
 
 # ── map ────────────────────────────────────────────────────────────────────

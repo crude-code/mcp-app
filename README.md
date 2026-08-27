@@ -32,6 +32,7 @@ See [`CLAUDE.md`](./CLAUDE.md) for the full architecture reference.
 - **`get_skill`** — fetches a packaged, occasional-use procedure (e.g. dataroom extraction)
 - **`dataroom_save_extraction`** — persists a dataroom extraction so the deal record outlives the chat
 - **`message_team`** — files bugs, feedback, and data requests to the team (durable row + best-effort email)
+- **`update_user`** — attaches an email or name to the caller's own account, so an account created in chat can be recovered
 
 ## Requirements
 

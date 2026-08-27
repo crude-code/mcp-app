@@ -212,6 +212,32 @@ Tools (all return JSON strings):
   nginx: dedicated `/upload/` location (no slug header — the token carries
   identity), `client_max_body_size 600m`.
 - **map_read_full** — Renderer-only. Returns the full hydrated map spec.
+- **update_user** — The claim lane for the funnel: attaches an `email` /
+  `name` to the **caller's own** `platform.users` row
+  (`server/user_profile.py`; user_id comes from resolved identity, never
+  from an argument). `/new-account` mints rows with `email NULL`, so
+  without this an account is unrecoverable and its holder unreachable —
+  which is exactly what the intro CrudeDoc promises can be fixed later in
+  chat. Called with **no arguments it reads** current state
+  (`{email, name, email_attached, email_verified, email_locked,
+  name_is_placeholder, changed}`) — that read is what lets Claude check
+  before offering, instead of pestering the 195 provisioned users for an
+  email they already have. **Attach, don't reassign:** an email that
+  arrived with the account (web signup → provisioning) is `email_locked`
+  and refused here — a leaked connector URL would otherwise silently
+  redirect recovery mail — while one attached in chat can be corrected in
+  chat, the typo lane, distinguished by `notes.email_source == "in_chat"`.
+  Uniqueness is checked before the write (`email_owner`) and now enforced
+  underneath by a partial unique index on `lower(email)`
+  (`deploy/sql/002-users-email-unique.sql`), so a concurrent double-claim
+  fails loudly instead of splitting one person across two accounts.
+  Rate-capped 20/user/hour because the "already on another account"
+  refusal is unavoidably an address-existence oracle; the no-argument read
+  is exempt. **Nothing is verified** — `utils/ses.py` only ever mails the
+  team, so a stored address is a claim (`email_verified` is always false,
+  stated on every response); no confirmation mail is sent and the tool doc
+  forbids saying otherwise. A first claim best-effort notifies the team —
+  the funnel converting is the one event here worth an email.
 
 Non-tool HTTP lane: **GET /new-account** (`server/accounts.py`) — anonymous
 account mint for the CrudeDocs funnel (crudecode.dev/docs/*). Fetched by
@@ -634,5 +660,8 @@ Run: `.venv/bin/pytest -q`.
   including the HTML error page, and two drift guards tying the volume
   columns and the bundle's full column set to the orchestrator's schedule),
   team messages
-  (`test_team_messages_store.py`, `test_tools_message_team.py`), and schema
-  drift.
+  (`test_team_messages_store.py`, `test_tools_message_team.py`), the
+  profile-claim lane (`test_user_profile.py` — the pure attach/correct/lock
+  decision matrix; `test_tools_update_user.py` — read-without-write,
+  collision refusal before any write, the signup-email lock, first-claim
+  notification and its mail-failure tolerance), and schema drift.

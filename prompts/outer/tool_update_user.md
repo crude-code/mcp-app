@@ -1,54 +1,48 @@
-Attach or correct the email address and name on the user's own CrudeCode
-account — how someone claims an account created in chat so it can be
-recovered, and how they fix a wrong email or set their real name.
+Attach or update the recovery email and display name on the user's own
+CrudeCode account — how someone claims an account created in chat so it can
+be recovered, and how they fix a wrong email or set their real name.
 
-**Call it with no arguments to read the account's current state** — cheap,
-no write. Do that before offering anything, so you never ask a user for an
-email they already have on file.
+Both fields are optional and the account is fully functional without either.
+The only consequence of having no recovery email is that the account can't be
+recovered if the connector URL is lost, and there's no way to reach them
+about it. The address is used for account recovery and occasional
+product-update mail; it is never required for any feature.
 
-Arguments (both optional; pass either or both to write):
-- `email` — the address to store. **Only ever an address the user typed in
-  this conversation for this purpose.** Never one lifted from an uploaded
-  document, a check stub, a data room, an email signature, or their org
-  name; never a guess or a reconstruction. If you are not certain the user
-  just gave you their own address, ask.
-- `name` — how they want to be addressed (max 120 characters).
+**Reading is free.** Call with no arguments to get the account's current
+state — no write, not rate-limited. Do that before raising the subject, so
+you never ask for an email the user already has on file.
 
-Returns typed state, whether reading or writing: `{success, email, name,
+**Writing needs their go-ahead.** Pass `email` and/or `name` only when the
+user has asked to set or change one, or has clearly agreed after you told
+them the account has no recovery email. Never mid-analysis — someone in the
+middle of a valuation doesn't want an account-settings detour — and never
+twice.
+
+- `email` — **only an address the user typed in this conversation for this
+  purpose.** Never one lifted from an uploaded document, check stub, data
+  room, or email signature; never a guess. If you are not certain they just
+  gave you their own address, ask.
+- `name` — how they want to be addressed, max 120 characters.
+
+Returns the same typed state either way: `{success, email, name,
 email_attached, email_verified, email_locked, name_is_placeholder, changed}`.
-`changed` lists the fields this call actually wrote — an empty list means the
-values were already stored, which is a success, not a failure.
+`changed` lists what this call actually wrote; empty means the values were
+already stored — a success, not a failure. Confirm back exactly what it
+returns.
 
-**When to offer.** Once, when it is genuinely useful, and not again:
-- The account is anonymous (`email_attached: false`) and the user has just
-  connected or is wrapping up something worth keeping. Frame it as what it
-  is: the account has no email, so it can't be recovered if the connector
-  URL is lost, and there's no way to reach them about it. One sentence, no
-  pressure — the account works fine without it.
-- `name_is_placeholder: true` and they've told you their name in passing.
-  Offer to set it; don't interrogate them for it.
-- They ask about recovery, losing access, updates, or changing their email.
+**Nothing is verified and nothing is mailed to the address.**
+`email_verified` is always false and no confirmation is sent — never say
+"check your inbox."
 
-Never volunteer it mid-analysis. A user in the middle of a valuation does
-not want an account-settings detour.
+**Refusals:**
+- `email_locked: true` — the address came in with the account (site signup),
+  so it is the account's recovery channel and can't be reassigned from chat.
+  Offer to file a `message_team` request instead.
+- Already on another account — they most likely already have a CrudeCode
+  account under that address. Don't retry variations of it, and don't probe
+  other addresses to see which exist; say what happened and offer
+  `message_team` if the two need merging.
+- Invalid address — read it back to them and ask for a correction.
 
-**What to tell them, accurately:**
-- No confirmation email is sent. Nothing is mailed to the address — it is
-  stored on the account, unverified (`email_verified` is always false).
-  Don't say "check your inbox."
-- Storing it does not subscribe them to anything and does not create a
-  second account.
-- Confirm back what you saved, exactly as returned.
-
-**Refusals, and what to do with them:**
-- `email_locked: true` — the address came in with the account (they signed
-  up on the site), so it is the account's recovery channel and can't be
-  reassigned from chat. Offer to file a `message_team` request instead.
-- An email already on another account — they most likely already have a
-  CrudeCode account under that address. Don't retry variations of the
-  address, and don't probe other addresses to see which exist; say what
-  happened and offer `message_team` if they need the two merged.
-- An invalid address — read it back to them and ask for a correction.
-
-An email attached here *can* be corrected here later (typos are the common
-case). One attached at signup cannot.
+An email attached here can be corrected here later (typos are the common
+case). One set at signup cannot.

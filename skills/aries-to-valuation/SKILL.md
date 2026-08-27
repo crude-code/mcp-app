@@ -58,21 +58,41 @@ asks for the database's own curves in a valuation, in their own words.
 4. **Tie out against the oneliner when the room has one.** Extract per-well
    ultimates into `oneliner.json` —
    `{"<api>": {"ult_oil": bbl, "ult_gas": mcf, "life_yrs": yrs,
-   "eff_offset_months": months from forecast START to the effective date}}` —
-   then:
+   "eff_offset_months": n}}`. **Get the life anchoring right**: the
+   oneliner's LIFE column is measured from the EFFECTIVE date, so
+   `eff_offset_months` = months from the forecast `START` to the effective
+   date (START 01/2025, effective 08/2026 → 19). Then:
    ```bash
    python3 aries_curves.py _aries --qualifier <Q> --tieout oneliner.json
    ```
-   Mean residual beyond ~0.1% means the translation is wrong — **stop and
-   investigate; do not value on top of a broken translation.** (Without
+   Residuals beyond ~0.1% on capped wells: **check the life anchoring
+   first** — a wrong offset or a misread life moves the shortest-lived
+   wells the most (in either direction) while long-lived wells still round
+   to 0.000%, which looks exactly like "a few wells failed." The per-well
+   `[cap ...]` annotations make the caps auditable. Only after anchoring is
+   ruled out, treat the residual as a broken translation: stop and
+   investigate; never value on top of an unexplained residual. (Without
    `life_yrs` the comparison overshoots by the seller's econ-limit
-   truncation — that residual is explained, not wrong.)
-5. **Commit:** call `forecast_wells` with the payload's entries verbatim.
-   Do not edit translated parameters; you may only drop wells (step 3).
-   Read the echo. Expect stale-anchor warnings when the ARIES `START`
-   predates recent actuals — that is the seller's timing, and the user
-   must see it, not have it smoothed over.
-6. **Confirm before valuing.** Present the assumptions grid as usual, PLUS
+   truncation — explained, not wrong.)
+5. **Commit — machine-copied, never retyped.** Hand-typed parameters have
+   corrupted in transit before (garbled digits inside rationale strings,
+   qi values drifting). Print the entries with code execution —
+   ```bash
+   python3 -c "import json; print(json.dumps(json.load(open('forecast_payload.json'))['entries']))"
+   ```
+   — and paste that output verbatim as `forecast_wells`' `forecasts`
+   argument. You may drop wells (step 3); you may not edit numbers or
+   rationale text. Read the echo. Expect stale-anchor warnings when the
+   ARIES `START` predates recent actuals — that is the seller's timing,
+   and the user must see it, not have it smoothed over.
+6. **Verify the commit deterministically.** Mint
+   `export_data(kind="parameters", run_id=...)`, curl the CSV in the
+   sandbox, and diff the committed/asserted `qi`/`di`/`b` and anchor per
+   well against `forecast_payload.json` in code — any drift means a
+   transcription error: re-commit the affected wells straight from the
+   payload and verify again. Do not proceed to valuation on an unverified
+   commit.
+7. **Confirm before valuing.** Present the assumptions grid as usual, PLUS
    the report's not-modeled items, each as a user decision:
    - **NGL yield** (bbl/mcf per well) — the engine has no NGL stream;
      revenue is understated by roughly that share of the deck.
@@ -82,7 +102,7 @@ asks for the database's own curves in a valuation, in their own words.
      opex adjustment is the blunt instrument if the user wants it.
    - **Tail policy** — the report quantifies ARIES-tail vs engine-tail
      volumes per stream; surface the package-level difference.
-7. **Value:** `run_valuation` as normal. The deal sheet's `TLDR` must lead
+8. **Value:** `run_valuation` as normal. The deal sheet's `TLDR` must lead
    with the label: *"Seller's ARIES curves (qualifier <Q>) under Crude Code
    economics."* Then offer the comparison: an independent
    `well-forecasting` pass on the same wells, same economics — that

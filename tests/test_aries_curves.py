@@ -151,8 +151,10 @@ def test_cli_tieout_flags_translation_health(tmp_path):
     _write_fixture(tmp_path / "_aries")
     # Answer key built with the same conventions -> residual ~0; life omitted
     # so the tail runs to the floor (matching eur_with_terminal exactly).
+    # switch_at is the b-dependent reading of the 7% effective terminal.
     a0 = ac.a_mo_from_eff(0.388878, 0.9)
-    eur = ac.eur_with_terminal(5278.048, a0, 0.9, ac.a_mo_from_eff(0.07, 0.0), floor=30.0)
+    eur = ac.eur_with_terminal(5278.048, a0, 0.9, ac.a_mo_from_eff(0.07, 0.0),
+                               floor=30.0, switch_at=ac.a_mo_from_eff(0.07, 0.9))
     key = {"42-227-41093": {"ult_oil": 100_000 + eur}}
     (tmp_path / "oneliner.json").write_text(json.dumps(key))
     proc = subprocess.run(

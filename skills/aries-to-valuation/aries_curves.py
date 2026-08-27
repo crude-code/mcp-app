@@ -26,8 +26,13 @@ Usage:
   python3 aries_curves.py _aries [--qualifier Q] [--payload forecast_payload.json]
   python3 aries_curves.py _aries --tieout oneliner.json
       oneliner.json: {"<api or propnum>": {"ult_oil": bbl, "ult_gas": mcf,
-                                           "life_yrs": years-from-effective}}
+                                           "life_yrs": years, "eff_offset_months": n}}
       (extract it yourself from the room's oneliner; the script only does math)
+      life_yrs is the oneliner's LIFE column, which ARIES measures from the
+      EFFECTIVE DATE; eff_offset_months is the months from the forecast START
+      to that effective date (e.g. START 01/2025, effective 08/2026 -> 19).
+      Life-anchoring errors move short-lived wells the most, in either
+      direction — the per-well [cap ...] annotations make the caps auditable.
 """
 
 import argparse
@@ -116,10 +121,20 @@ def cum(q0, a, b, t):
     return q0 / (a * (1.0 - b)) * (1.0 - (1.0 + b * a * t) ** (1.0 - 1.0 / b))
 
 
-def eur_with_terminal(qi, a0, b, a_term, *, floor=None, t_cap=None):
-    """Forecast volume: hyperbolic until the local nominal decline shallows
-    to a_term, then exponential at a_term to the rate floor and/or time cap."""
-    t_sw = max(0.0, (a0 / a_term - 1.0) / (b * a0)) if b > 1e-9 and a0 > a_term else 0.0
+def eur_with_terminal(qi, a0, b, a_term, *, floor=None, t_cap=None, switch_at=None):
+    """Forecast volume: hyperbolic until the local nominal decline shallows to
+    ``switch_at`` (default: a_term), then exponential at ``a_term`` to the
+    rate floor and/or time cap.
+
+    ARIES-side tails should pass ``switch_at = a_mo_from_eff(D_term, b)``:
+    the limit "N EXP" ends the segment where the local EFFECTIVE annual
+    decline reaches N%, which in nominal terms is b-dependent. (The two
+    readings differ <0.1% in EUR — the fixture cannot discriminate them —
+    but the b-dependent one is the faithful reading of the pinned
+    conventions.) The engine's own terminal compares nominal rates directly:
+    leave ``switch_at`` unset for the engine-tail calculation."""
+    sw = a_term if switch_at is None else switch_at
+    t_sw = max(0.0, (a0 / sw - 1.0) / (b * a0)) if b > 1e-9 and a0 > sw else 0.0
     if t_cap is not None and t_sw >= t_cap:
         return cum(qi, a0, b, t_cap)
     q_sw = q_at(qi, a0, b, t_sw)
@@ -258,8 +273,10 @@ def build(aries_dir: Path, qualifier_arg: str | None):
                 continue
             a0 = curve["di_nominal_monthly"]
             a_term_aries = a_mo_from_eff(curve["aries_terminal_eff_annual"], 0.0)
-            eur_aries = eur_with_terminal(curve["qi"], a0, curve["b"], a_term_aries,
-                                          floor=curve["aries_floor"])
+            eur_aries = eur_with_terminal(
+                curve["qi"], a0, curve["b"], a_term_aries,
+                floor=curve["aries_floor"],
+                switch_at=a_mo_from_eff(curve["aries_terminal_eff_annual"], curve["b"]))
             eur_engine = eur_with_terminal(curve["qi"], a0, curve["b"], a_term_engine,
                                            t_cap=ENGINE_HORIZON_MONTHS)
             rw["streams"][phase] = {
@@ -360,6 +377,18 @@ def fmt_tieout(payload, oneliner):
     out, errs = [], []
     out.append("== ONELINER TIE-OUT (curve math check: forecast + CUMS vs the "
                "seller's ULTIMATE, truncated at their stated life) ==")
+    missing_offset = [k for k, v in oneliner.items()
+                      if v.get("life_yrs") and not v.get("eff_offset_months")]
+    if missing_offset:
+        out.append(
+            f"  WARNING: {len(missing_offset)} key(s) carry life_yrs with no "
+            "eff_offset_months. Oneliner LIFE is measured from the EFFECTIVE "
+            "DATE, not the forecast START — a missing or wrong offset (or a "
+            "misread life) shifts every cap, and SHORT-LIVED wells move the "
+            "most in either direction (a 19-month error barely moves a "
+            "30-year well but is huge on a 4-year one). Set "
+            "eff_offset_months = months from START to the effective date "
+            "before trusting residuals.")
     for w in payload["report"]["wells"]:
         k = oneliner.get(w["api"] or "") or oneliner.get(w["propnum"]) or {}
         if not k or not w["cums"]:
@@ -374,18 +403,25 @@ def fmt_tieout(payload, oneliner):
             a_term = a_mo_from_eff(s["aries_terminal_eff_annual"], 0.0)
             t_cap = k.get("life_yrs")
             t_cap = (k.get("eff_offset_months", 0) + t_cap * 12) if t_cap else None
-            fcst = eur_with_terminal(s["qi_per_month"], a0, s["b"], a_term,
-                                     floor=s["aries_floor"], t_cap=t_cap)
+            fcst = eur_with_terminal(
+                s["qi_per_month"], a0, s["b"], a_term,
+                floor=s["aries_floor"], t_cap=t_cap,
+                switch_at=a_mo_from_eff(s["aries_terminal_eff_annual"], s["b"]))
             err = (w["cums"][cum_key] + fcst) / ult - 1
             errs.append(abs(err))
+            cap_note = (f"[cap {t_cap:.0f} mo from START]" if t_cap else
+                        "[no life cap — overshoot = their econ-limit truncation]")
             out.append(f"  {w['name']} {ph}: {w['cums'][cum_key] + fcst:,.0f} "
-                       f"vs oneliner {ult:,.0f}  ({err*100:+.3f}%)")
+                       f"vs oneliner {ult:,.0f}  ({err*100:+.3f}%)  {cap_note}")
     if errs:
         out.append(f"  -> mean |err| {sum(errs)/len(errs)*100:.3f}%  "
                    f"worst {max(errs)*100:.3f}%  (n={len(errs)})")
-        out.append("  Residuals beyond ~0.1% mean the translation is wrong — stop "
-                   "and investigate before valuing. Without life_yrs, expect "
-                   "overshoot equal to the seller's econ-limit truncation.")
+        out.append("  Residuals beyond ~0.1% on capped wells: check the life "
+                   "anchoring FIRST (eff_offset_months; short-lived wells are the "
+                   "sensitive ones) before concluding the translation is wrong — "
+                   "then stop and investigate; never value on top of an "
+                   "unexplained residual. Without life_yrs, expect overshoot "
+                   "equal to the seller's econ-limit truncation.")
     else:
         out.append("  nothing comparable (need api/propnum keys with ult_oil/ult_gas)")
     return "\n".join(out)

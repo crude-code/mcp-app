@@ -213,6 +213,21 @@ Tools (all return JSON strings):
   identity), `client_max_body_size 600m`.
 - **get_map_full** — Renderer-only. Returns the full hydrated map spec.
 
+Non-tool HTTP lane: **GET /new-account** (`server/accounts.py`) — anonymous
+account mint for the CrudeDocs funnel (crudecode.dev/docs/*). Fetched by
+Claude's web-fetch tool from a visitor's chat after they say yes to an
+account: inserts a `platform.users` row (email NULL, name "CrudeDoc
+visitor", org `crudedoc-signups`, `notes.source='crudedoc'`) and returns
+typed state only — `{status, shared, mcp_url, expires_at}` as text/plain
+(the fetch tool rejects non-text). Never prose: the CrudeDoc owns all
+narration per status. Per-IP rate limit (in-memory, X-Real-IP from nginx);
+over-limit or mint failure → `{"status": "unavailable"}` with HTTP 200 so
+the doc's fallback branch can narrate. `?t=` is ignored (the site's copy
+button appends a per-click token purely to defeat Anthropic's per-URL fetch
+cache). `CC_PUBLIC_MCP_BASE` overrides the URL base (default the prod
+`https://mcp.crudecode.dev` — dev mints deliberately return prod connector
+URLs; both point at the same Supabase).
+
 ### MCP App (`renderer/`)
 
 Inline React app rendered inside Claude Desktop. Single-pass build:

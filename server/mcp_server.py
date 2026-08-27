@@ -57,6 +57,7 @@ from server.blob_store import SupabaseBlobStore
 from server.extraction_store import ExtractionStore
 from server.room_store import RoomStore
 from server.upload_tokens import UploadTokenStore
+from server.accounts import register_account_routes
 from server.uploads import public_base_url, public_host, register_upload_routes
 from server.valuation.run_record import ValuationRunStore
 from server import export_tokens as _export_tokens
@@ -123,6 +124,7 @@ mcp = FastMCP("Crude Code", instructions=compose_outer_system_prompt())
 register_upload_routes(mcp, tokens=_upload_tokens, extraction_store=_extraction_store,
                        room_store=_room_store, blob_store=_blob_store,
                        run_store=_run_store)
+register_account_routes(mcp)
 
 
 _app_path = Path(__file__).resolve().parent.parent / "renderer" / "dist" / "app.html"

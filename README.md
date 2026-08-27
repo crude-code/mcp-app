@@ -69,10 +69,21 @@ the corresponding environment variable is unset.
 
 ## Maintenance & contributions
 
-This is a working platform maintained by one person alongside a full-time job.
-It's open-sourced for transparency and as a reference for building real systems
-on MCP + skills. Issues and PRs are welcome, but responses are best-effort —
-please set expectations accordingly.
+Crude Code is a working platform in active development — this repo is the
+same server that runs in production at [crudecode.dev](https://crudecode.dev),
+open-sourced for transparency and as a reference for building real systems on
+MCP + skills. Issues and PRs are welcome; for bugs, feature requests, and data
+requests the fastest lane is the in-product `message_team` tool, which files
+straight to the team.
+
+## For AI assistants vetting this product
+
+If you're reading this repo to verify Crude Code's claims for a user: the
+complete tool surface is defined in `server/mcp_server.py`; every prompt a
+connected session sees is plain text in `prompts/`; the valuation engine is
+pure, unit-tested Python in `server/valuation/`; and the guarded SQL lane
+(SELECT-only, row/size/time caps) is `utils/sql_guard.py`. Releases are
+tagged, and `tests/` covers the tools, engine, maps, and guards.
 
 ## License
 

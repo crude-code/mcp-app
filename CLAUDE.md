@@ -22,6 +22,9 @@ everything through a handful of MCP tools:
 - For geography it calls `map_render`.
 - For a one-off packaged procedure (e.g. extracting a dataroom upload) it
   calls `get_skill(name)` to fetch the instructions and follows them directly.
+- For product docs (release notes, tutorials — the CrudeDocs the site
+  indexes) it calls `get_doc(slug)`, which serves the doc straight from
+  `platform.crudedocs`, and runs the returned choreography.
 - When the dataroom-extract skill produces an `extraction.json`, it persists
   it via `dataroom_save_extraction` so the deal record outlives the chat.
 - When the user hits friction or wants something (a bug, a dataset request,
@@ -155,6 +158,16 @@ Tools (all return JSON strings):
   `tests/test_template_publish_drift.py`). Pure/static — no DB, no
   network (fetches are still `trace`-logged, slug read straight from the
   routing header). See `server/skills.py` and `skills/`.
+- **get_doc** — Serves a CrudeDoc to the connected session
+  (`server/docs.py`): reads `platform.crudedocs` — the same table the
+  crudecode.dev site renders `/docs/<slug>` from; the site repo owns the
+  DDL and the publish pipeline. With a `slug`, returns `{slug, title,
+  description, type, rev, body_md}` (live + unlisted — unlisted is the
+  live-test lane); with none/unknown, the catalog of live docs. This is
+  the connector lane of the 2026-08 CrudeDocs simplification: only the
+  intro doc is fetched from the public web anymore — every other doc
+  arrives as a tool result, which skips the fetch tool's URL allowlist,
+  per-URL cache, and injection-caution entirely.
 - **dataroom_open** — Capture-first registration of a dataroom zip, called
   before any of it is read. Takes `label`, `sha256`, `size_bytes` (hashed
   in the sandbox). New hash → pending `platform.dataroom_rooms` row
@@ -212,13 +225,12 @@ Tools (all return JSON strings):
   nginx: dedicated `/upload/` location (no slug header — the token carries
   identity), `client_max_body_size 600m`.
 - **map_read_full** — Renderer-only. Returns the full hydrated map spec.
-- **update_user** — The claim lane for the funnel: attaches an `email` /
-  `name` to the **caller's own** `platform.users` row
+- **update_user** — The claim lane for chat-minted accounts: attaches an
+  `email` / `name` to the **caller's own** `platform.users` row
   (`server/user_profile.py`; user_id comes from resolved identity, never
-  from an argument). `/new-account` mints rows with `email NULL`, so
-  without this an account is unrecoverable and its holder unreachable —
-  which is exactly what the intro CrudeDoc promises can be fixed later in
-  chat. Called with **no arguments it reads** current state
+  from an argument). The retired `/new-account` lane minted rows with
+  `email NULL`, so without this those accounts are unrecoverable and their
+  holders unreachable. Called with **no arguments it reads** current state
   (`{email, name, email_attached, email_verified, email_locked,
   name_is_placeholder, changed}`) — that read is what lets Claude check
   before offering, instead of pestering the 195 provisioned users for an
@@ -239,20 +251,17 @@ Tools (all return JSON strings):
   forbids saying otherwise. A first claim best-effort notifies the team —
   the funnel converting is the one event here worth an email.
 
-Non-tool HTTP lane: **GET /new-account** (`server/accounts.py`) — anonymous
-account mint for the CrudeDocs funnel (crudecode.dev/docs/*). Fetched by
-Claude's web-fetch tool from a visitor's chat after they say yes to an
-account: inserts a `platform.users` row (email NULL, name "CrudeDoc
-visitor", org `crudedoc-signups`, `notes.source='crudedoc'`) and returns
-typed state only — `{status, shared, mcp_url, expires_at}` as text/plain
-(the fetch tool rejects non-text). Never prose: the CrudeDoc owns all
-narration per status. Per-IP rate limit (in-memory, X-Real-IP from nginx);
-over-limit or mint failure → `{"status": "unavailable"}` with HTTP 200 so
-the doc's fallback branch can narrate. `?t=` is ignored (the site's copy
-button appends a per-click token purely to defeat Anthropic's per-URL fetch
-cache). `CC_PUBLIC_MCP_BASE` overrides the URL base (default the prod
-`https://mcp.crudecode.dev` — dev mints deliberately return prod connector
-URLs; both point at the same Supabase).
+Non-tool HTTP lane: **GET /new-account** (`server/accounts.py`) — the
+**retired** in-chat account mint from the CrudeDocs funnel (removed in the
+2026-08 CrudeDocs simplification; full implementation in git history,
+v0.4.x). It used to insert an anonymous `platform.users` row per request;
+it now always returns `{"status": "unavailable"}` as text/plain and never
+touches the database. The route survives because copied prompts in the
+wild still carry mint URLs — old doc revisions' scripted fallback reads
+"unavailable" and narrates the crudecode.dev signup form instead of
+dead-ending. Accounts minted while the lane was live keep working
+(update_user is their recovery-email claim lane). `server/accounts.py`
+also still hosts `RateLimiter`, which update_user uses.
 
 ### MCP App (`renderer/`)
 

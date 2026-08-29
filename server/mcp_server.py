@@ -1,14 +1,14 @@
 """Crude Code MCP Server.
 
 Synchronous tool registry — run_sql, deal_forecast_wells, deal_valuation, map_render, get_skill,
-get_doc, plus the renderer-only read tool (map_read_full). No inner agents.
+plus the renderer-only read tool (map_read_full). No inner agents.
 """
 
 # Release version. A dev → main merge is a release: bump this and the
 # renderer's package.json version (kept in lockstep by
 # tests/test_version_drift.py) in the last dev commit, then tag vX.Y.Z on
 # main after the merge.
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 import json as _json
 import logging as _logging
@@ -53,7 +53,6 @@ _DEAL_SHEET_URL = viewer_url(_DEAL_SHEET_SHA256)
 from server.maps.spec import parse_map_spec, MapSpecError
 from server.maps.hydrate import hydrate_map, MapHydrateError
 from server.skills import list_skills, load_skill, SkillNotFound
-from server import docs as _docs
 from server.blob_store import SupabaseBlobStore
 from server.extraction_store import ExtractionStore
 from server.room_store import RoomStore
@@ -216,33 +215,6 @@ def get_skill(name: str = "") -> str:
                 return _json.dumps({"available_skills": list_skills()})
         except Exception as e:
             _get_skill_log.error("get_skill failed: %s", e)
-            return _json.dumps({"error": str(e)})
-
-
-# ── get_doc ──────────────────────────────────────────────────────────────────
-
-_get_doc_log = _logging.getLogger("cc.get_doc")
-
-
-@mcp.tool(description=_load_prompt("outer/tool_get_doc.md"))
-def get_doc(slug: str = "") -> str:
-    """Serve a CrudeDoc from platform.crudedocs to the connected session, or
-    the catalog of live docs when called with no/unknown slug. The connector
-    lane of the CrudeDocs system — see server/docs.py."""
-    requested = (slug or "").strip()
-    with trace("get_doc", user=get_request_slug(), doc=requested or "catalog"):
-        try:
-            if not requested:
-                return _json.dumps({"available_docs": _docs.list_docs()})
-            doc = _docs.load_doc(requested)
-            if doc is None:
-                return _json.dumps({
-                    "error": f"no doc named '{requested}'",
-                    "available_docs": _docs.list_docs(),
-                })
-            return _json.dumps(doc)
-        except Exception as e:
-            _get_doc_log.error("get_doc failed: %s", e)
             return _json.dumps({"error": str(e)})
 
 

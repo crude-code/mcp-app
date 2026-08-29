@@ -22,9 +22,6 @@ everything through a handful of MCP tools:
 - For geography it calls `map_render`.
 - For a one-off packaged procedure (e.g. extracting a dataroom upload) it
   calls `get_skill(name)` to fetch the instructions and follows them directly.
-- For product docs (release notes, tutorials — the CrudeDocs the site
-  indexes) it calls `get_doc(slug)`, which serves the doc straight from
-  `platform.crudedocs`, and runs the returned choreography.
 - When the dataroom-extract skill produces an `extraction.json`, it persists
   it via `dataroom_save_extraction` so the deal record outlives the chat.
 - When the user hits friction or wants something (a bug, a dataset request,
@@ -158,16 +155,6 @@ Tools (all return JSON strings):
   `tests/test_template_publish_drift.py`). Pure/static — no DB, no
   network (fetches are still `trace`-logged, slug read straight from the
   routing header). See `server/skills.py` and `skills/`.
-- **get_doc** — Serves a CrudeDoc to the connected session
-  (`server/docs.py`): reads `platform.crudedocs` — the same table the
-  crudecode.dev site renders `/docs/<slug>` from; the site repo owns the
-  DDL and the publish pipeline. With a `slug`, returns `{slug, title,
-  description, type, rev, body_md}` (live + unlisted — unlisted is the
-  live-test lane); with none/unknown, the catalog of live docs. This is
-  the connector lane of the 2026-08 CrudeDocs simplification: only the
-  intro doc is fetched from the public web anymore — every other doc
-  arrives as a tool result, which skips the fetch tool's URL allowlist,
-  per-URL cache, and injection-caution entirely.
 - **dataroom_open** — Capture-first registration of a dataroom zip, called
   before any of it is read. Takes `label`, `sha256`, `size_bytes` (hashed
   in the sandbox). New hash → pending `platform.dataroom_rooms` row
@@ -262,6 +249,12 @@ wild still carry mint URLs — old doc revisions' scripted fallback reads
 dead-ending. Accounts minted while the lane was live keep working
 (update_user is their recovery-email claim lane). `server/accounts.py`
 also still hosts `RateLimiter`, which update_user uses.
+
+Also retired (2026-08-29, the **Crude Cuts pivot**, v0.6.0): `get_doc` —
+the CrudeDoc-serving tool (lived v0.5.0 only; implementation in git
+history). The docs, the `platform.crudedocs` table, and the site's
+`/docs/*` pages went with it. Its successor is the Crude Cuts lane (a
+`get_cut` tool serving rebuildable published analyses) — not yet built.
 
 ### MCP App (`renderer/`)
 

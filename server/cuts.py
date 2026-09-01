@@ -42,3 +42,19 @@ def load_cut(ref: str) -> dict | None:
         [param],
     )
     return rows[0] if rows else None
+
+
+def record_pull(slug: str, user_slug: str | None) -> None:
+    """Count one connector pull of a cut in platform.crudecut_views
+    (source 'get_cut') — the same table the site's /cuts/<slug> handler
+    writes web views into, so `npm run cut -- stats` in the site repo shows
+    both lanes side by side (DDL lives there: deploy/sql/002-crudecut-views.sql).
+
+    Best-effort by contract: the caller swallows any failure, because a
+    readership counter must never break recipe delivery. The routing header's
+    "unknown" placeholder is stored as NULL, not as a user.
+    """
+    _platform._query(
+        "INSERT INTO crudecut_views (slug, source, user_slug) VALUES (%s, 'get_cut', %s)",
+        [slug, user_slug if user_slug and user_slug != "unknown" else None],
+    )

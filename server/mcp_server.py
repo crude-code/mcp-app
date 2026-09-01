@@ -243,6 +243,10 @@ def get_cut(cut: str = "") -> str:
                     "available_cuts": _cuts.list_cuts(),
                 })
             row["url"] = f"https://crudecode.dev/cuts/{row['slug']}"
+            try:  # readership counter — never allowed to break delivery
+                _cuts.record_pull(row["slug"], get_request_slug())
+            except Exception as e:
+                _get_cut_log.warning("get_cut pull not recorded: %s", e)
             return _json.dumps(row)
         except Exception as e:
             _get_cut_log.error("get_cut failed: %s", e)

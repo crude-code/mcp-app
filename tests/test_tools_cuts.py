@@ -28,16 +28,26 @@ _CUT = {
 
 
 class FakeDB:
-    """Scripted _query: catalog SELECTs return the index, ref SELECTs the cut."""
+    """Scripted _query: catalog SELECTs return the index, ref SELECTs the cut,
+    and the one write get_cut is allowed — the readership INSERT into
+    crudecut_views — is captured in `pulls`."""
 
-    def __init__(self, known=("greenlake-scraps", 1)):
+    def __init__(self, known=("greenlake-scraps", 1), pull_fails=False):
         self.calls = []
+        self.pulls = []
         self.known = known
+        self.pull_fails = pull_fails
 
     def __call__(self, sql, params=None):
         self.calls.append((sql, params))
         s = sql.strip().upper()
-        assert s.startswith("SELECT"), f"get_cut must only ever read: {sql}"
+        if s.startswith("INSERT INTO CRUDECUT_VIEWS"):
+            if self.pull_fails:
+                raise RuntimeError("views table down")
+            assert "'GET_CUT'" in s, f"connector pulls must be tagged source get_cut: {sql}"
+            self.pulls.append(params)
+            return []
+        assert s.startswith("SELECT"), f"get_cut only reads the cuts table: {sql}"
         if params is None:
             return [dict(r) for r in _CATALOG]
         return [dict(_CUT)] if params[0] in self.known else []
@@ -96,6 +106,37 @@ def test_tool_unknown_ref_returns_error_plus_catalog(db):
     out = json.loads(srv.get_cut("nope"))
     assert "no cut 'nope'" in out["error"]
     assert out["available_cuts"] == _CATALOG
+
+
+def test_tool_records_the_pull_with_slug_and_user(db, monkeypatch):
+    monkeypatch.setattr(srv, "get_request_slug", lambda: "jane-doe")
+    out = json.loads(srv.get_cut("001"))
+    assert out["slug"] == "greenlake-scraps"
+    # Recorded under the cut's canonical slug even when asked for by №.
+    assert db.pulls == [["greenlake-scraps", "jane-doe"]]
+
+
+def test_tool_catalog_and_misses_record_nothing(db, monkeypatch):
+    monkeypatch.setattr(srv, "get_request_slug", lambda: "jane-doe")
+    srv.get_cut()
+    srv.get_cut("nope")
+    assert db.pulls == []
+
+
+def test_record_pull_stores_unknown_routing_slug_as_null(db):
+    cuts.record_pull("greenlake-scraps", "unknown")
+    cuts.record_pull("greenlake-scraps", "")
+    assert db.pulls == [["greenlake-scraps", None], ["greenlake-scraps", None]]
+
+
+def test_pull_recording_failure_never_breaks_delivery(monkeypatch):
+    fake = FakeDB(pull_fails=True)
+    monkeypatch.setattr(cuts._platform, "_query", fake)
+    monkeypatch.setattr(srv, "get_request_slug", lambda: "jane-doe")
+    out = json.loads(srv.get_cut("greenlake-scraps"))
+    assert out["slug"] == "greenlake-scraps"
+    assert out["url"] == "https://crudecode.dev/cuts/greenlake-scraps"
+    assert fake.pulls == []
 
 
 def test_tool_db_failure_is_a_typed_error(monkeypatch):

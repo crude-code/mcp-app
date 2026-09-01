@@ -167,6 +167,13 @@ Tools (all return JSON strings):
   Claude: numbered guard-passing steps it re-runs verbatim with `run_sql`;
   drift since the pinned `as_of` is the point, not an error. Unlisted cuts
   load by ref (the eyeball lane) but never list. See `server/cuts.py`.
+  **Readership:** every successful load inserts one row into
+  `platform.crudecut_views` (`source = 'get_cut'`, the routing slug as
+  `user_slug`, NULL when unknown) — the same table the site's `/cuts/<slug>`
+  handler writes web views into (DDL in the site repo,
+  `deploy/sql/002-crudecut-views.sql`); `npm run cut -- stats` there shows
+  both lanes. Best-effort: a failed insert logs a warning and the recipe
+  still ships. Catalog calls and misses record nothing.
 - **dataroom_open** — Capture-first registration of a dataroom zip, called
   before any of it is read. Takes `label`, `sha256`, `size_bytes` (hashed
   in the sandbox). New hash → pending `platform.dataroom_rooms` row

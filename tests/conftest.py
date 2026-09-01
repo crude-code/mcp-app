@@ -31,6 +31,22 @@ def fake_identity() -> dict:
     }
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _disable_tool_call_telemetry():
+    """Keep test runs out of platform.tool_calls.
+
+    load_env() above means a developer's .env supplies SUPABASE_DATABASE_URL,
+    which would make every test that exercises a tool (test_tools_run_sql calls
+    mcp_server.run_sql directly) write a real row into production telemetry —
+    and pay a connection attempt per call doing it. Default it off; opt in with
+    CC_TOOL_CALL_LOG=1 in the environment when deliberately testing the writer
+    against a database.
+    """
+    if "CC_TOOL_CALL_LOG" not in os.environ:
+        os.environ["CC_TOOL_CALL_LOG"] = "0"
+    yield
+
+
 def pytest_addoption(parser):
     parser.addoption("--run-network", action="store_true",
                      help="Run tests marked @pytest.mark.network (hit live APIs)")

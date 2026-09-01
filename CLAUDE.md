@@ -155,6 +155,18 @@ Tools (all return JSON strings):
   `tests/test_template_publish_drift.py`). Pure/static — no DB, no
   network (fetches are still `trace`-logged, slug read straight from the
   routing header). See `server/skills.py` and `skills/`.
+- **get_cut** — The connector lane of **Crude Cuts** (the published analyses
+  on crudecode.dev — BG's primary channel to users). Takes an optional cut
+  ref, slug or № ("greenlake-scraps", "1", "001"). With no/unknown ref,
+  returns the catalog (`{available_cuts: [{cut_no, slug, tag, title, dek,
+  as_of}, ...]}` — live cuts, newest № first). With a valid ref, returns the
+  rebuild payload `{cut_no, slug, tag, title, dek, as_of, rev, recipe_md,
+  url}` from `platform.crudecuts` — the same table the site serves; the site
+  repo's `npm run cut -- publish` is the one write path, storing `recipe_md`
+  at publish time for exactly this tool. The recipe is written for outer
+  Claude: numbered guard-passing steps it re-runs verbatim with `run_sql`;
+  drift since the pinned `as_of` is the point, not an error. Unlisted cuts
+  load by ref (the eyeball lane) but never list. See `server/cuts.py`.
 - **dataroom_open** — Capture-first registration of a dataroom zip, called
   before any of it is read. Takes `label`, `sha256`, `size_bytes` (hashed
   in the sandbox). New hash → pending `platform.dataroom_rooms` row
@@ -253,8 +265,8 @@ also still hosts `RateLimiter`, which update_user uses.
 Also retired (2026-08-29, the **Crude Cuts pivot**, v0.6.0): `get_doc` —
 the CrudeDoc-serving tool (lived v0.5.0 only; implementation in git
 history). The docs, the `platform.crudedocs` table, and the site's
-`/docs/*` pages went with it. Its successor is the Crude Cuts lane (a
-`get_cut` tool serving rebuildable published analyses) — not yet built.
+`/docs/*` pages went with it. Its successor is `get_cut` (tool list above),
+built 2026-09-01 for v0.7.0 on the retired tool's pattern.
 
 ### MCP App (`renderer/`)
 

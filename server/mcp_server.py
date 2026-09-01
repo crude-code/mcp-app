@@ -1,7 +1,7 @@
 """Crude Code MCP Server.
 
 Synchronous tool registry — run_sql, deal_forecast_wells, deal_valuation, map_render, get_skill,
-plus the renderer-only read tool (map_read_full). No inner agents.
+get_cut, plus the renderer-only read tool (map_read_full). No inner agents.
 """
 
 # Release version. A dev → main merge is a release: bump this and the
@@ -53,6 +53,7 @@ _DEAL_SHEET_URL = viewer_url(_DEAL_SHEET_SHA256)
 from server.maps.spec import parse_map_spec, MapSpecError
 from server.maps.hydrate import hydrate_map, MapHydrateError
 from server.skills import list_skills, load_skill, SkillNotFound
+from server import cuts as _cuts
 from server.blob_store import SupabaseBlobStore
 from server.extraction_store import ExtractionStore
 from server.room_store import RoomStore
@@ -217,6 +218,35 @@ def get_skill(name: str = "") -> str:
             _get_skill_log.error("get_skill failed: %s", e)
             return _json.dumps({"error": str(e)})
 
+
+
+# ── get_cut ──────────────────────────────────────────────────────────────────
+
+_get_cut_log = _logging.getLogger("cc.get_cut")
+
+
+@mcp.tool(description=_load_prompt("outer/tool_get_cut.md"))
+def get_cut(cut: str = "") -> str:
+    """Serve a Crude Cut's rebuild recipe from platform.crudecuts to the
+    connected session, or the catalog of live cuts when called with no or an
+    unknown ref. The connector lane of the Crude Cuts system — see
+    server/cuts.py."""
+    requested = (cut or "").strip()
+    with trace("get_cut", user=get_request_slug(), cut=requested or "catalog"):
+        try:
+            if not requested:
+                return _json.dumps({"available_cuts": _cuts.list_cuts()})
+            row = _cuts.load_cut(requested)
+            if row is None:
+                return _json.dumps({
+                    "error": f"no cut '{requested}'",
+                    "available_cuts": _cuts.list_cuts(),
+                })
+            row["url"] = f"https://crudecode.dev/cuts/{row['slug']}"
+            return _json.dumps(row)
+        except Exception as e:
+            _get_cut_log.error("get_cut failed: %s", e)
+            return _json.dumps({"error": str(e)})
 
 # ── dataroom_save_extraction ─────────────────────────────────────────────────
 

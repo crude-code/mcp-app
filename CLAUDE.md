@@ -621,7 +621,7 @@ row on the sheet. Rotating it invalidates every outstanding signed link.
   `main` is also on `dev` — `dev` may run ahead, never behind. The one
   exception: prod is broken *and* `dev` holds unshippable work → fix on
   `main` directly, then merge `main` back into `dev` the same day. Both
-  deploy workflows post their outcome to the crude-code Slack channel
+  deploy workflows post their outcome to the #github Slack channel
   (Notify Slack step; `SLACK_WEBHOOK_URL` repo secret).
 - **Releases.** A `dev` → `main` merge is a release: bump `__version__`
   (`server/mcp_server.py`) and `renderer/package.json`'s version together in

@@ -8,7 +8,7 @@ get_cut, plus the renderer-only read tool (map_read_full). No inner agents.
 # renderer's package.json version (kept in lockstep by
 # tests/test_version_drift.py) in the last dev commit, then tag vX.Y.Z on
 # main after the merge.
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 import json as _json
 import logging as _logging

@@ -26,10 +26,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from utils.log import setup as _log_setup, trace
 from utils.platform import resolve_identity
 from utils.prompts import (
+    chat_mode as _chat_mode,
     compose_outer_system_prompt,
     compose_run_sql_doc,
     load as _load_prompt,
+    tool_doc as _tool_doc,
 )
+
+# Chat mode: this deployment serves a host that can't render claude.ai
+# artifacts or the MCP-app map (set `CC_CHAT_MODE=1`; the dev server gets it
+# from deploy/dev.env). Tool *responses* drop what such a host can't use —
+# the deal-sheet template, the map token — and every prompt surface gains the
+# chat-only-host note (prompts/outer/chat_mode.md) so Claude delivers markdown.
+# Module-level so tests can flip the response branches without re-importing.
+_CHAT_MODE = _chat_mode()
 from utils.briefing_handle_store import BriefingHandleStore
 from utils.schemas import EXPLORATION_SCHEMAS
 from utils.sql_guard import GuardError, dry_run, run_guarded
@@ -51,7 +61,7 @@ _DEAL_SHEET_VIEWER = load_viewer()
 _DEAL_SHEET_SHA256 = viewer_sha256()
 _DEAL_SHEET_URL = viewer_url(_DEAL_SHEET_SHA256)
 from server.maps.spec import parse_map_spec, MapSpecError
-from server.maps.hydrate import hydrate_map, MapHydrateError
+from server.maps.hydrate import hydrate_map, MapHydrateError, _bbox_of as _map_bbox
 from server.skills import list_skills, load_skill, SkillNotFound
 from server import cuts as _cuts
 from server.blob_store import SupabaseBlobStore
@@ -572,7 +582,57 @@ def update_user(email: str = "", name: str = "") -> str:
 # ── map ────────────────────────────────────────────────────────────────────
 
 
-@mcp.tool(name="map_render", app=_app_config_map, description=_load_prompt("outer/tool_map_render.md"))
+# Chat mode's stand-in for the map: the rows behind the features, capped like
+# run_sql so a 5 000-well layer doesn't flood the thread. Shared across layers,
+# first layer first — the base layer is what the user asked to see.
+_CHAT_MAP_ROW_CAP = 200
+
+
+def _representative_point(geom: dict | None) -> tuple[float, float] | None:
+    """First coordinate pair in a geometry — a point's location, a lateral's
+    surface hole, a polygon's first vertex. Enough to place a feature in prose."""
+    coords = (geom or {}).get("coordinates")
+    while isinstance(coords, (list, tuple)) and coords and isinstance(coords[0], (list, tuple)):
+        coords = coords[0]
+    if (isinstance(coords, (list, tuple)) and len(coords) >= 2
+            and all(isinstance(c, (int, float)) for c in coords[:2])):
+        return round(float(coords[0]), 5), round(float(coords[1]), 5)
+    return None
+
+
+def _map_as_rows(hydrated: dict) -> dict:
+    """The hydrated map as tabular rows for a host with no map surface."""
+    layers, budget = [], _CHAT_MAP_ROW_CAP
+    for layer in hydrated["layers"]:
+        rows = []
+        for feature in layer["geojson"]["features"][:max(budget, 0)]:
+            row = dict(feature.get("properties") or {})
+            point = _representative_point(feature.get("geometry"))
+            if point:
+                row["lng"], row["lat"] = point
+            rows.append(row)
+        budget -= len(rows)
+        layers.append({"id": layer["id"], "label": layer["label"],
+                       "feature_count": layer["feature_count"],
+                       "rows_shown": len(rows), "rows": rows})
+    boxes = [b for b in (_map_bbox(l["geojson"]) for l in hydrated["layers"]) if b]
+    extent = None
+    if boxes:
+        extent = {"min_lng": min(b[0] for b in boxes), "min_lat": min(b[1] for b in boxes),
+                  "max_lng": max(b[2] for b in boxes), "max_lat": max(b[3] for b in boxes)}
+    return {
+        "surface": "map_table",
+        "title": hydrated["title"],
+        "layers": layers,
+        "static_layers": [s["id"] for s in hydrated["static_layers"]],
+        "extent": extent,
+        "presentation": ("Chat-only host: no map is displayed. Present each layer's rows "
+                         "as a markdown table (top rows if long, say how many more) and "
+                         "describe the geography in prose."),
+    }
+
+
+@mcp.tool(name="map_render", app=_app_config_map, description=_tool_doc("outer/tool_map_render.md"))
 def map_render(spec: dict) -> str:
     """Synchronous map render. Validate -> hydrate -> mint handle -> summary."""
     identity = get_current_identity()
@@ -589,6 +649,9 @@ def map_render(spec: dict) -> str:
         except Exception as e:  # noqa: BLE001 — DB errors surface here too
             _map_log.error("map failed: %s", e)
             return _json.dumps({"error": str(e)})
+
+        if _CHAT_MODE:
+            return _json.dumps(_map_as_rows(hydrated), default=str)
 
         token = _briefing_handles.mint(user_slug=user_slug, spec=hydrated)
         return _json.dumps({
@@ -645,7 +708,7 @@ def deal_forecast_wells(forecasts: list[dict], run_id: str | None = None) -> str
         return _json.dumps(result, default=str)
 
 
-@mcp.tool(description=_load_prompt("outer/tool_deal_valuation.md"))
+@mcp.tool(description=_tool_doc("outer/tool_deal_valuation.md"))
 def deal_valuation(run_id: str, params: dict) -> str:
     """Union forecasts → econ → slim artifact payload. See prompts/outer/tool_deal_valuation.md."""
     identity = get_current_identity()
@@ -671,6 +734,23 @@ def deal_valuation(run_id: str, params: dict) -> str:
                 label=(data.get("facts") or {}).get("area") or "")
             if durable:
                 data["export"] = {"bundle_url": bundle_url}
+            if _CHAT_MODE:
+                # No template: the host can't render it, and 50 KB of JSX in a
+                # chat response is exactly what a chat-only host prints out
+                # verbatim. The cube goes too — it only indexes the sheet's
+                # selectors. Everything Claude narrates from stays.
+                (data.get("economics") or {}).pop("cube", None)
+                return _json.dumps({
+                    "surface": "deal_sheet_chat",
+                    "run_id": run_id,
+                    "data": data,
+                    "presentation": (
+                        "Chat-only host: no deal-sheet template is shipped. Present "
+                        "data.facts as a one-line summary, data.economics.npv_at_centers "
+                        "(total and by-status) and the key data.assumptions as markdown "
+                        "tables, then your judgment. Offer data.export.bundle_url as a "
+                        "plain download link when present. Never emit React/JSX."),
+                }, default=str)
             return _json.dumps({
                 "surface": "deal_sheet_artifact",
                 "run_id": run_id,
@@ -775,5 +855,6 @@ if __name__ == "__main__":
 
     _port = int(_os.environ.get("MCP_PORT", "9000"))
     _logging.getLogger("cc.server").info(
-        "Crude Code MCP v%s starting on port %d", __version__, _port)
+        "Crude Code MCP v%s starting on port %d%s", __version__, _port,
+        " (chat mode: no artifacts, no map surface)" if _CHAT_MODE else "")
     mcp.run(transport="http", host="0.0.0.0", port=_port, uvicorn_config={"timeout_graceful_shutdown": 10})

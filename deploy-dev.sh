@@ -17,6 +17,40 @@ git fetch --quiet origin dev
 git reset --hard origin/dev
 NEW_SHA=$(git rev-parse HEAD)
 
+# --- dev-only environment (managed block) --------------------------------
+# deploy/dev.env holds settings that apply to the dev server only (today:
+# CC_CHAT_MODE=1, while a chat-only host is pointed at mcp-dev). They are
+# rewritten into .env between two marker lines on every deploy, so adding or
+# removing a line in the repo and pushing `dev` is the whole change — no hand
+# edits on the host, and a removal actually removes. Lines outside the
+# markers (secrets, DB URLs) are never touched. systemd reads .env top to
+# bottom, so the block at the end wins over anything above it. Prod has no
+# equivalent: deploy.sh never reads this file.
+DEV_ENV_REPO=deploy/dev.env
+DEV_ENV_LIVE=/home/ubuntu/crudecode-dev/.env
+DEV_ENV_BEGIN='# >>> managed by deploy-dev.sh from deploy/dev.env (do not edit by hand) >>>'
+DEV_ENV_END='# <<< managed by deploy-dev.sh <<<'
+ENV_CHANGED=0
+if [ -f "$DEV_ENV_REPO" ]; then
+    DEV_ENV_TMP=$(mktemp)
+    touch "$DEV_ENV_LIVE"
+    awk -v b="$DEV_ENV_BEGIN" -v e="$DEV_ENV_END" \
+        '$0 == b { skip = 1; next } $0 == e { skip = 0; next } !skip' \
+        "$DEV_ENV_LIVE" > "$DEV_ENV_TMP"
+    {
+        cat "$DEV_ENV_TMP"
+        echo "$DEV_ENV_BEGIN"
+        grep -vE '^[[:space:]]*(#|$)' "$DEV_ENV_REPO" || true
+        echo "$DEV_ENV_END"
+    } > "${DEV_ENV_TMP}.new"
+    if ! cmp -s "${DEV_ENV_TMP}.new" "$DEV_ENV_LIVE"; then
+        cp "${DEV_ENV_TMP}.new" "$DEV_ENV_LIVE"
+        ENV_CHANGED=1
+        echo "dev .env managed block updated from deploy/dev.env — will restart crudecode-mcp-dev"
+    fi
+    rm -f "$DEV_ENV_TMP" "${DEV_ENV_TMP}.new"
+fi
+
 # --- nginx config sync (dev only) ----------------------------------------
 NGINX_LIVE=/etc/nginx/conf.d/crudecode-dev.conf
 NGINX_REPO=deploy/nginx/crudecode-dev.conf
@@ -107,7 +141,7 @@ else
     echo "no .last-mcp-deployed-sha marker — restarting on first run"
 fi
 
-if [ "$NEEDS_RESTART" = "1" ]; then
+if [ "$NEEDS_RESTART" = "1" ] || [ "$ENV_CHANGED" = "1" ]; then
     sudo systemctl restart crudecode-mcp-dev
 fi
 echo "$NEW_SHA" > "$LAST_DEPLOYED_SHA_FILE"

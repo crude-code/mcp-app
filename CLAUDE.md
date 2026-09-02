@@ -646,6 +646,17 @@ row on the sheet. Rotating it invalidates every outstanding signed link.
   renderer, and restart the MCP server only when a path it actually loaded
   into memory changed since the last successful deploy (tracked in
   `.last-mcp-deployed-sha`).
+- **Chat mode (`CC_CHAT_MODE=1`).** A deployment-wide switch for hosts that
+  can't render claude.ai artifacts or the MCP-app map (third-party chat front
+  ends over the API). `deal_valuation` drops the template and the cube and
+  returns `surface: "deal_sheet_chat"`; `map_render` returns
+  `surface: "map_table"` — the features as rows (200 cap, plus extent) instead
+  of a token; every prompt surface gains `prompts/outer/chat_mode.md`, which
+  tells Claude to deliver markdown. Deployment-wide because tool descriptions
+  and the server instructions are composed once at startup. The dev server
+  runs in chat mode via `deploy/dev.env` — `deploy-dev.sh` rewrites that
+  file's lines into the host's `.env` inside a managed block on every deploy,
+  so removing the line and pushing `dev` turns it off. Prod never reads it.
 - **`deploy/nginx/`** — the canonical prod/dev vhost configs, synced onto the
   host by the deploy scripts.
 - **`deploy/systemd/`** — timer units for this deployment's own scheduled jobs

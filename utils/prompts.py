@@ -1,5 +1,6 @@
 """Prompt loader — reads markdown files from the prompts/ directory."""
 
+import os
 from pathlib import Path
 
 _DIR = Path(__file__).resolve().parent.parent / "prompts"
@@ -8,6 +9,31 @@ _DIR = Path(__file__).resolve().parent.parent / "prompts"
 def load(path: str) -> str:
     """Load a prompt file by relative path, e.g. load("mcp/instructions.md")."""
     return (_DIR / path).read_text().strip()
+
+
+def chat_mode() -> bool:
+    """True when this deployment serves a host that cannot render claude.ai
+    artifacts or MCP-app surfaces (`CC_CHAT_MODE=1` in the environment).
+
+    A deployment-wide switch, not per user: the prompt surfaces it changes
+    (server instructions, tool descriptions) are composed once at startup.
+    Read live rather than cached so tests can flip it with the environment.
+    """
+    return os.environ.get("CC_CHAT_MODE", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def chat_mode_note() -> str:
+    """The chat-only-host section appended to every prompt surface in chat mode."""
+    return load("outer/chat_mode.md")
+
+
+def tool_doc(path: str) -> str:
+    """A tool description: the prompt file, plus the chat-only-host note when
+    this deployment runs in chat mode. Appended, never prepended — tool-search
+    clients show a description's first sentence until the tool is loaded, and
+    that sentence carries the routing keywords."""
+    doc = load(path)
+    return f"{doc}\n\n{chat_mode_note()}" if chat_mode() else doc
 
 
 def _skills_section() -> str:
@@ -59,7 +85,8 @@ def compose_outer_system_prompt() -> str:
     outer = load("outer/system_prompt.md").rstrip()
     skills = _skills_section()
     skills_block = f"\n\n{skills}" if skills else ""
-    return f"{outer}{skills_block}\n"
+    chat_block = f"\n\n{chat_mode_note()}" if chat_mode() else ""
+    return f"{outer}{skills_block}{chat_block}\n"
 
 
 def compose_run_sql_doc() -> str:
@@ -72,4 +99,5 @@ def compose_run_sql_doc() -> str:
     """
     tool = load("outer/tool_run_sql.md").rstrip()
     schema = load("outer/shared_schema.md").strip()
-    return f"{tool}\n\n{schema}\n"
+    chat_block = f"\n\n{chat_mode_note()}" if chat_mode() else ""
+    return f"{tool}\n\n{schema}{chat_block}\n"

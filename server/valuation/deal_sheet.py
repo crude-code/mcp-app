@@ -12,10 +12,12 @@ from server.valuation.econ import resolve_well_interest
 
 # Display order + labels/tags for the three status buckets. This display
 # metadata feeds the artifact payload; colors live in the deal-sheet template.
+# Online timing is asserted per well (deal_forecast_wells' anchor_month), so
+# the tag is the bucket code, never a blanket "+N months".
 _STATUS_DISPLAY = [
     {"code": "PDP", "label": "Producing", "tag": "(PDP)"},
-    {"code": "DUC", "label": "DUC", "tag": "+18mo"},
-    {"code": "PUD", "label": "Permitted", "tag": "(PUD) +36mo"},
+    {"code": "DUC", "label": "DUC", "tag": "(DUC)"},
+    {"code": "PUD", "label": "Permitted", "tag": "(PUD)"},
 ]
 
 

@@ -48,12 +48,12 @@ def build_artifact_payload(*, economics: dict, wells: dict) -> dict:
     default_rates, statuses}`. Statuses are data-only (code/label/tag/counts/
     rate ladder) — colors and layout belong to the template, not the payload.
     `assumptions` feeds the template's provenance panel; `evidence` is the
-    per-assertion judgment record built at valuation time (None on legacy
-    runs valued before evidence capture — the template hides the modules).
+    per-assertion judgment record built at valuation time (the template hides
+    a module whose entries are absent).
     """
-    rate_centers = economics.get("rate_centers") or config.resolve_rate_centers(None)
+    rate_centers = economics["rate_centers"]
     well_meta = wells.get("well_meta", {})
-    interest = economics.get("interest") or economics.get("assumptions") or {}
+    interest = economics["interest"]
 
     facts, statuses = ds.roll_up_facts(well_meta, interest, rate_centers)
 
@@ -73,7 +73,7 @@ def build_artifact_payload(*, economics: dict, wells: dict) -> dict:
         "gas_diff": inputs.get("gas_diff"),
         "tax_pct": inputs.get("tax_pct"),
         "gpt_pct": inputs.get("gpt_pct"),
-        "horizon_months": int(economics.get("horizon_months", 360)),
+        "horizon_months": int(economics["horizon_months"]),
         "capex_per_well": costs.get("capex_per_well"),
         "opex_per_well_month": costs.get("opex_per_well_month"),
         "opex_per_bbl": costs.get("opex_per_bbl"),

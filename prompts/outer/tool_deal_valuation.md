@@ -68,10 +68,11 @@ The engine multiplies it by the working interest itself. So:
     - optional `"by_api"`: per-well overrides keyed by well API — each value is
       `{"wi_pct", "nri_pct"}` (wi) or a bare decimal (minerals). A well not listed
       uses the blanket interest above.
-  - `asset_list`: an **object** (REQUIRED — not a list, not a string) with exactly
-    ONE of:
-    - `{"well_apis": ["<well_api>", ...]}` — explicit API list, or
-    - `{"filter_sql": "<WHERE clause on public.wells>"}` — scope-by-criteria.
+  - `asset_list` (optional): `{"well_apis": ["<well_api>", ...]}` — the wells
+    you expect the run to hold. The valuation covers whatever
+    `deal_forecast_wells` committed to the run; passing the list makes the server
+    refuse if the run holds different wells (the guard against valuing the wrong
+    `run_id`). Nothing is filtered server-side.
   - `economics_overrides`: an **object**. After the user confirms the grid, pass
     every assumption here explicitly (omit only `interest`/`asset_list`, which live
     above). Keys: `effective_date`, `price_deck` (defaults to the **live NYMEX
@@ -79,7 +80,8 @@ The engine multiplies it by the working interest itself. So:
     only to override with a flat deck), `oil_diff`, `gas_diff`, `discount_rates`
     (`{"PDP"?,"DUC"?,"PUD"?}` decimals), `forecast_horizon` (int months),
     `tax_pct`, `gpt_pct`, `opex_per_bbl_usd`, `opex_per_well_per_month_usd`,
-    `capex_per_well_usd`, `months_to_first_prod` (`{"DUC"?,"PUD"?}` ints).
+    `capex_per_well_usd`. Online timing is not an override: every well's first
+    month came in as its `anchor_month` on `deal_forecast_wells`.
 
 Complete example — copy this shape exactly:
 
@@ -98,7 +100,7 @@ A working-interest deal instead looks like:
 {
   "interest_type": "wi",
   "interest": {"wi_pct": 0.75, "nri_pct": 0.5625},
-  "asset_list": {"filter_sql": "operator = 'EOG' AND county = 'REEVES'"},
+  "asset_list": {"well_apis": ["42-389-30001", "42-389-30002"]},
   "economics_overrides": {}
 }
 ```
@@ -185,8 +187,8 @@ asks for a different look, edit only the `C` palette object at the top).
 Dependencies are `react` and `recharts` only — no lucide-react, no Tailwind,
 no CSS variables, no MCP-app/host APIs (this runs in the claude.ai artifact
 sandbox, not the MCP app). The template hides on its own anything the
-payload lacks (an evidence module with no entries, a legacy run with
-`evidence: null`) — don't remove sections or fabricate data to fill them.
+payload lacks (an evidence module with no entries) — don't remove sections or
+fabricate data to fill them.
 Re-running the valuation (new assumptions) means a fresh `data` →
 update the artifact's `DATA` and nothing else.
 
@@ -216,8 +218,6 @@ engine by `tests/test_valuation_defaults_drift.py`.)
 | capex_per_well_usd | Drilling capex (gross, per new well) | $0.00 | 0.0 |
 | horizon_months | Forecast horizon | 360 months (30 yr) | 360 |
 | terminal_di_annual | Terminal decline (annual exponential tail — the calculator's, not assertable) | 5% / yr | 0.05 |
-| duc_months_to_first_prod | DUC online timing (fallback — only when a legacy forecast carries no asserted online month) | +18 months | 18 |
-| permit_months_to_first_prod | Permit online timing (fallback — only when a legacy forecast carries no asserted online month) | +36 months | 36 |
 | discount_rate_pdp | Discount rate — producing (PDP) | 15% | 0.15 |
 | discount_rate_duc | Discount rate — DUC | 20% | 0.20 |
 | discount_rate_pud | Discount rate — permit (PUD) | 25% | 0.25 |

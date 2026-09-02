@@ -68,11 +68,6 @@ def test_build_artifact_payload_assumptions_and_evidence_passthrough():
     assert payload["evidence"] == evidence
 
 
-def test_build_artifact_payload_evidence_none_on_legacy_wells_stage():
-    payload = build_artifact_payload(economics=_economics(), wells=WELLS)
-    assert payload["evidence"] is None
-
-
 def test_build_artifact_payload_statuses_are_data_only():
     econ = _economics(npv_by_status=CUBE, inputs={"price_mode": "strip"})
     payload = build_artifact_payload(economics=econ, wells=WELLS)

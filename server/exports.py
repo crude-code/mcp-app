@@ -182,7 +182,7 @@ def build_parameters_csv(forecast: dict) -> tuple[str, int]:
             rows.append((
                 api,
                 stream,
-                curve.get("qi", curve.get("qi_peak")),
+                curve["qi"],
                 a.get("qi"),
                 curve.get("di"),
                 curve.get("b"),

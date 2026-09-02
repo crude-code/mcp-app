@@ -21,7 +21,9 @@ from dateutil.relativedelta import relativedelta
 
 @dataclass(frozen=True)
 class EconConfig:
-    # Price deck — flat, v1 (NYMEX strip is a later slice).
+    # Flat price deck — what a deal runs against when economics_overrides
+    # opts into `price_deck.type == "flat"` without naming prices. The default
+    # deck is the live NYMEX strip (strip.py); these are the fallback scalars.
     oil_price: float = 70.0          # $/bbl
     gas_price: float = 3.50          # $/MMBtu
 
@@ -53,15 +55,6 @@ class EconConfig:
     # this rate. The calculator's, never Claude's — asserted parameters are
     # {qi, di, b} only.
     terminal_di_annual: float = 0.05
-
-    # Non-producing-well online timing FALLBACK (months from the
-    # first-of-next-month anchor): a DUC is drilled awaiting completion
-    # (closer); a permit is not yet spudded (further out). New forecast
-    # stages carry an asserted online month (`anchor_month`) and never touch
-    # these; they date only legacy stages committed before timing became an
-    # asserted parameter.
-    duc_months_to_first_prod: int = 18
-    permit_months_to_first_prod: int = 36
 
     # Per-status annual discount-rate CENTERS (decimal). Each well-status stream
     # is discounted at its own cost of capital; uncertainty rises PDP → DUC → PUD.
@@ -146,42 +139,9 @@ def status_code(well_status: str | None) -> str:
 
 def first_of_next_month(d: date) -> date:
     """First day of the month following ``d`` (always rolls forward, even when
-    ``d`` is already a first-of-month).
-
-    This is the shared timeline anchor: the non-producing-well online dates and
-    the economics NPV origin both reference it, so a DUC dated ``+18mo`` lands
-    exactly 18 months into the cash-flow timeline.
-    """
+    ``d`` is already a first-of-month). The economics NPV origin: month 0 of
+    the cash-flow timeline is the month after the as-of date."""
     return d.replace(day=1) + relativedelta(months=1)
-
-
-def planned_first_prod_date(
-    status: str | None,
-    *,
-    as_of: date,
-    months_override: dict[str, int] | None = None,
-) -> date | None:
-    """Assumed first-production date for a non-producing well.
-
-    Anchored at the first of the month following ``as_of`` (the valuation
-    effective date, or today). DUCs come online ``ECON.duc_months_to_first_prod``
-    months out; permits ``ECON.permit_months_to_first_prod``. Any other status
-    (or ``None``) returns ``None`` — the engine has no basis to date it.
-
-    ``months_override`` is a per-deal replacement of those default deltas, keyed
-    by the deal-sheet status code (``DUC`` / ``PUD``, matching ``discount_rates``):
-    e.g. ``{"PUD": 1}`` brings permitted wells online one month after the anchor
-    instead of 36. A status absent from the map keeps its config default. The
-    case file is validated at the MCP boundary, so values here are trusted.
-    """
-    anchor = first_of_next_month(as_of)
-    s = (status or "").strip().upper()
-    ov = months_override or {}
-    if s == "DUC":
-        return anchor + relativedelta(months=ov.get("DUC", ECON.duc_months_to_first_prod))
-    if s == "PERMITTED":
-        return anchor + relativedelta(months=ov.get("PUD", ECON.permit_months_to_first_prod))
-    return None
 
 
 def resolve_price_inputs(econ_overrides: dict | None) -> dict:

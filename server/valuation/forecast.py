@@ -6,6 +6,7 @@ server): decline parameters are asserted upstream by Claude via
 number of its own — the terminal decline (``config.ECON.terminal_di_annual``),
 applied by ``make_curve`` as the exponential-tail switch.
 """
+import math
 from datetime import date
 
 import numpy as np
@@ -71,6 +72,35 @@ def make_zero_curve(stream: str) -> DeclineCurve:
     )
 
 
+def curve_to_dict(c: DeclineCurve) -> dict:
+    """DeclineCurve → the JSON shape the forecast stage persists. An infinite
+    switch month is stored as None."""
+    switch = c.switch_month_from_peak
+    return {
+        "qi": c.qi, "di": c.di, "b": c.b,
+        "terminal_di_monthly": c.terminal_di_monthly,
+        "switch_month_from_peak": switch if math.isfinite(switch) else None,
+        "stream": c.stream,
+        "provenance": {"source": c.provenance.source, "strategy": c.provenance.strategy},
+    }
+
+
+def curve_from_dict(c: dict) -> DeclineCurve:
+    """Inverse of `curve_to_dict`. None switch month → float('inf'). The one
+    reader of persisted curves, shared by the orchestrator, the evidence
+    builder and the export lane."""
+    switch = c["switch_month_from_peak"]
+    prov = c.get("provenance") or {}
+    return DeclineCurve(
+        qi=c["qi"], di=c["di"], b=c["b"],
+        terminal_di_monthly=c["terminal_di_monthly"],
+        switch_month_from_peak=float("inf") if switch is None else switch,
+        stream=c["stream"],
+        provenance=ForecastProvenance(source=prov.get("source", "asserted"),
+                                      strategy=prov.get("strategy")),
+    )
+
+
 def curve_rate(curve: DeclineCurve, t_months: float | np.ndarray) -> float | np.ndarray:
     """Evaluate the curve at t months past its anchor (t=0 is where q == qi).
 
@@ -101,30 +131,18 @@ def curve_rate(curve: DeclineCurve, t_months: float | np.ndarray) -> float | np.
 
 
 def project(forecast: Forecast, *, horizon_months: int) -> tuple[list[date], np.ndarray]:
-    """Project a Forecast forward as monthly rates. NO lateral_scale.
+    """Project a Forecast forward as monthly rates.
 
-    Returns ``(months, rates)`` where ``months[i]`` is the calendar month and
-    ``rates[i]`` is the curve evaluated at ``t = peak_offset + i``, with
-    ``peak_offset`` being the months between ``peak_date`` and ``start_date``.
-    Asserted curves anchor where they start (``peak_date == start_date`` ⇒
-    ``peak_offset == 0`` ⇒ ``rates[0] == qi``); a nonzero offset appears only
-    when replaying legacy fit-era stages whose qi was a peak rate.
+    Returns ``(months, rates)``: ``months[i]`` is the calendar month
+    ``start_date + i`` and ``rates[i]`` the curve at ``t = i`` — so
+    ``rates[0] == qi``, the asserted anchor rate.
     """
     if horizon_months <= 0:
         raise ValueError(f"horizon_months must be positive; got {horizon_months}")
-    peak = forecast.peak_date.replace(day=1)
-    start = forecast.start_date.replace(day=1)
-    peak_offset = (start.year - peak.year) * 12 + (start.month - peak.month)
-    if peak_offset < 0:
-        raise ValueError(
-            f"start_date {forecast.start_date} is before peak_date {forecast.peak_date}; "
-            f"curve_rate does not support pre-peak extrapolation"
-        )
-    t_offsets = np.arange(peak_offset, peak_offset + horizon_months, dtype=float)
-    rates = curve_rate(forecast.curve, t_offsets)
+    rates = curve_rate(forecast.curve, np.arange(horizon_months, dtype=float))
 
     months: list[date] = []
-    cur = start
+    cur = forecast.start_date.replace(day=1)
     for _ in range(horizon_months):
         months.append(cur)
         cur = cur + relativedelta(months=1)

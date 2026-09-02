@@ -6,8 +6,8 @@ from datetime import date
 
 @dataclass(frozen=True)
 class ForecastProvenance:
-    source: str                                 # "asserted" | legacy: "fit"/"percentile"/"blend"/"cohort"
-    strategy: str | None = None                 # "asserted" | "not_asserted" | legacy fit-era values
+    source: str                                 # "asserted"
+    strategy: str | None = None                 # "asserted" | "not_asserted" (a stream Claude left out)
 
 
 @dataclass(frozen=True)
@@ -16,19 +16,20 @@ class DeclineCurve:
     di: float                                   # nominal monthly decline at the anchor
     b: float
     terminal_di_monthly: float
-    switch_month_from_peak: float               # float("inf") when no terminal switch. Asserted
-                                                # curves anchor at t=0 (peak == anchor); the name
-                                                # survives from the fit era where t=0 was the peak.
+    switch_month_from_peak: float               # months after the anchor (t=0) where the terminal
+                                                # exponential takes over; float("inf") when it never
+                                                # does. The name is also the persisted JSON key.
     stream: str                                 # "oil" | "gas"
     provenance: ForecastProvenance
 
 
 @dataclass(frozen=True)
 class Forecast:
+    """A curve placed on the calendar: `start_date` is the month where t=0
+    (the asserted anchor for a producer, the asserted online month for an
+    undrilled well)."""
     curve: DeclineCurve
-    peak_date: date
     start_date: date
-    provenance: ForecastProvenance
 
 
 @dataclass(frozen=True)

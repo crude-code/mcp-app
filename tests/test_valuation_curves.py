@@ -70,15 +70,10 @@ def test_curve_rate_terminal_tail_is_exponential():
     assert curve_rate(c, switch + 12.0) == pytest.approx(q_sw * np.exp(-c.terminal_di_monthly * 12))
 
 
-# ── project / aggregate ──────────────────────────────────────────────────────
+# ── project ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 def test_project_horizon_months():
-    f = Forecast(
-        curve=_curve(),
-        peak_date=date(2024, 1, 1),
-        start_date=date(2024, 1, 1),
-        provenance=ForecastProvenance(source="asserted"),
-    )
+    f = Forecast(curve=_curve(), start_date=date(2024, 1, 1))
     months, rates = project(f, horizon_months=360)
     assert len(months) == 360
     assert len(rates) == 360
@@ -86,31 +81,7 @@ def test_project_horizon_months():
     assert rates[0] > rates[-1]                  # decline
 
 
-def test_project_respects_peak_to_start_offset():
-    """Legacy-stage replay: a fit-era forecast with peak in Jan 2022 and anchor
-    at Jan 2024 (24 months post-peak). rates[0] must be the rate at t=24, not
-    q(0). New asserted stages always have peak == start, but old runs don't."""
-    f = Forecast(
-        curve=_curve(qi=1000.0),
-        peak_date=date(2022, 1, 1),
-        start_date=date(2024, 1, 1),
-        provenance=ForecastProvenance(source="fit"),
-    )
-    months, rates = project(f, horizon_months=12)
-    assert rates[0] == pytest.approx(float(curve_rate(f.curve, 24.0)))
-    assert rates[0] < 800.0
-    assert months[0] == date(2024, 1, 1)
-
-
 def test_project_raises_on_zero_horizon():
-    f = Forecast(curve=_curve(), peak_date=date(2024, 1, 1), start_date=date(2024, 1, 1),
-                 provenance=ForecastProvenance(source="asserted"))
+    f = Forecast(curve=_curve(), start_date=date(2024, 1, 1))
     with pytest.raises(ValueError, match="positive"):
         project(f, horizon_months=0)
-
-
-def test_project_raises_on_start_before_peak():
-    f = Forecast(curve=_curve(), peak_date=date(2024, 6, 1), start_date=date(2024, 1, 1),
-                 provenance=ForecastProvenance(source="asserted"))
-    with pytest.raises(ValueError, match="pre-peak"):
-        project(f, horizon_months=12)

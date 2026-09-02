@@ -1,13 +1,10 @@
-"""Unit tests for valuation dating config — no DB, no agent.
-
-The non-producing-well online-date rule: anchor at the first of the month
-*following* the as-of date, then offset by status (DUC = 18mo, PERMITTED = 36mo).
-"""
+"""Unit tests for the valuation config — no DB, no agent: economic inputs,
+the as-of date, status bucketing and the price-deck labels."""
 from datetime import date
 
 from server.valuation.config import (
     ECON,
-    planned_first_prod_date,
+    deck_labels,
     resolve_as_of,
     resolve_price_inputs,
     status_code,
@@ -44,11 +41,6 @@ def test_resolve_price_inputs_reads_gas_btu_factor():
 
 def test_resolve_price_inputs_handles_none():
     assert resolve_price_inputs(None)["oil_price"] == ECON.oil_price
-
-
-def test_offsets_are_18_and_36():
-    assert ECON.duc_months_to_first_prod == 18
-    assert ECON.permit_months_to_first_prod == 36
 
 
 # ── deal-sheet status bucketing (fork 1) + price decks (fork 3) ──────────────
@@ -112,66 +104,6 @@ def test_deck_oil_flat_reference_decks():
     assert ECON.deck_oil_flat == (70.0, 75.0, 80.0)
 
 
-def test_duc_dated_18_months_from_next_month_first():
-    # as-of 2026-05-28 -> anchor 2026-06-01 -> +18mo = 2027-12-01
-    assert planned_first_prod_date("DUC", as_of=date(2026, 5, 28)) == date(2027, 12, 1)
-
-
-def test_permit_dated_36_months_from_next_month_first():
-    # as-of 2026-05-28 -> anchor 2026-06-01 -> +36mo = 2029-06-01
-    assert planned_first_prod_date("PERMITTED", as_of=date(2026, 5, 28)) == date(2029, 6, 1)
-
-
-def test_anchor_always_rolls_to_next_month_even_when_as_of_is_a_first():
-    # as-of already first-of-month (2026-05-01) -> still rolls to 2026-06-01
-    assert planned_first_prod_date("DUC", as_of=date(2026, 5, 1)) == date(2027, 12, 1)
-
-
-def test_status_is_case_insensitive():
-    assert planned_first_prod_date("duc", as_of=date(2026, 5, 28)) == date(2027, 12, 1)
-    assert planned_first_prod_date("Permitted", as_of=date(2026, 5, 28)) == date(2029, 6, 1)
-
-
-def test_producing_or_unknown_status_returns_none():
-    # Only DUC / PERMITTED have an online-date basis; everything else is None
-    # (the engine has no rule to date it).
-    assert planned_first_prod_date("PRODUCING", as_of=date(2026, 5, 28)) is None
-    assert planned_first_prod_date(None, as_of=date(2026, 5, 28)) is None
-    assert planned_first_prod_date("", as_of=date(2026, 5, 28)) is None
-
-
-def test_months_override_replaces_permit_delta():
-    # {"PUD": 1} pulls a permit online one month after the anchor (2026-06-01)
-    # instead of the default +36mo.
-    assert planned_first_prod_date(
-        "PERMITTED", as_of=date(2026, 5, 28), months_override={"PUD": 1}
-    ) == date(2026, 7, 1)
-
-
-def test_months_override_replaces_duc_delta():
-    assert planned_first_prod_date(
-        "DUC", as_of=date(2026, 5, 28), months_override={"DUC": 3}
-    ) == date(2026, 9, 1)
-
-
-def test_months_override_only_touches_named_status():
-    # A PUD override leaves DUC on its default +18mo.
-    ov = {"PUD": 1}
-    assert planned_first_prod_date("DUC", as_of=date(2026, 5, 28), months_override=ov) == date(2027, 12, 1)
-    assert planned_first_prod_date("PERMITTED", as_of=date(2026, 5, 28), months_override=ov) == date(2026, 7, 1)
-
-
-def test_months_override_of_zero_lands_on_anchor():
-    assert planned_first_prod_date(
-        "PERMITTED", as_of=date(2026, 5, 28), months_override={"PUD": 0}
-    ) == date(2026, 6, 1)
-
-
-def test_empty_or_none_override_keeps_defaults():
-    assert planned_first_prod_date("DUC", as_of=date(2026, 5, 28), months_override=None) == date(2027, 12, 1)
-    assert planned_first_prod_date("DUC", as_of=date(2026, 5, 28), months_override={}) == date(2027, 12, 1)
-
-
 def test_resolve_as_of_prefers_effective_date_string():
     assert resolve_as_of("2025-01-15", today=date(2026, 5, 28)) == date(2025, 1, 15)
 
@@ -199,3 +131,15 @@ def test_econ_defaults_hold_the_house_economic_assumptions():
     assert ECON.opex_per_well_per_month_usd == 0.0
     assert ECON.capex_per_well_usd == 0.0
     assert ECON.horizon_months == 360
+
+
+def test_deck_labels_strip_mode():
+    labels, base = deck_labels("strip")
+    assert labels == ["Strip", "$70", "$75", "$80"]       # base deck leads, then the flat decks
+    assert base == "Strip"
+
+
+def test_deck_labels_flat_mode():
+    labels, base = deck_labels("flat")
+    assert labels == ["Flat", "$70", "$75", "$80"]
+    assert base == "Flat"

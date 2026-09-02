@@ -160,14 +160,6 @@ def test_parameters_carry_both_committed_and_asserted_qi():
     assert gas["qi_committed"] == "1900.0"
 
 
-def test_parameters_replay_legacy_qi_peak():
-    legacy = {"forecasts": {"33-1": {"oil": {"curve": {"qi_peak": 800.0, "di": 0.07, "b": 1.0,
-                                                       "terminal_di_monthly": 0.005,
-                                                       "switch_month_from_peak": None}}}}}
-    rows = _rows(exports.build_parameters_csv(legacy)[0])
-    assert rows[0]["qi_committed"] == "800.0"
-
-
 def test_parameters_without_forecast_stage():
     with pytest.raises(exports.ExportError, match="deal_forecast_wells"):
         exports.build_parameters_csv({})

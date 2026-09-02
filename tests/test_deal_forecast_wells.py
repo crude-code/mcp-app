@@ -7,6 +7,7 @@ from dateutil.relativedelta import relativedelta
 
 import server.valuation.orchestrator as orch
 from server.valuation.orchestrator import ForecastValidationError, forecast_wells_for_run
+from server.valuation.forecast import curve_from_dict
 from server.valuation.types import WellMeta
 
 
@@ -92,8 +93,7 @@ def test_committed_curve_starts_at_asserted_qi_not_peak(monkeypatch):
     store = _producer_world(monkeypatch)
     out = forecast_wells_for_run(run_id=None, user_id=7, forecasts=[_producer_entry()])
     fcs, needs_capex, _st = orch._load_forecast_stage(
-        forecast=store.read_stage(out["run_id"], stage="forecast"),
-        as_of=date.today(), months_override=None)
+        forecast=store.read_stage(out["run_id"], stage="forecast"))
     from server.valuation.forecast import project
     _mo, rates = project(orch._deserialize_forecast(fcs["H"]["oil"]), horizon_months=3)
     assert rates[0] == pytest.approx(_LAST_RATE, rel=0.01), \
@@ -143,7 +143,7 @@ def test_undrilled_permitted_well_asserts_online_month(monkeypatch):
     assert stage["anchor_month"] == _FUTURE
     # placement: the asserted online month IS the start date (no config offset)
     fcs, needs_capex, statuses = orch._load_forecast_stage(
-        forecast=store.stages["forecast"], as_of=date.today(), months_override=None)
+        forecast=store.stages["forecast"])
     assert fcs["P"]["oil"]["start_date"] == _FUTURE + "-01"
     assert needs_capex["P"] is True and statuses["P"] == "PERMITTED"
 
@@ -200,7 +200,7 @@ def test_cohort_member_curves_sum_to_cohort_stream(monkeypatch):
     t = np.arange(0, 25, dtype=float)
     total = np.zeros_like(t)
     for api in ("C1", "C2", "C3"):
-        c = orch._deserialize_curve(store.stages["forecast"]["forecasts"][api]["oil"]["curve"])
+        c = curve_from_dict(store.stages["forecast"]["forecasts"][api]["oil"]["curve"])
         total += np.asarray(curve_rate(c, t))
     cohort = make_curve(300.0, 0.04, 0.8, stream="oil",
                         terminal_di_annual=config.ECON.terminal_di_annual)
@@ -327,40 +327,6 @@ def test_unknown_api_rejected(monkeypatch):
     assert "not found in public.wells" in exc.value.violations[0]["message"]
 
 
-# ── legacy fit-era stages still replay ───────────────────────────────────────
-
-def _legacy_curve(qi_peak):
-    return {"qi_peak": qi_peak, "di": 0.05, "b": 0.8, "terminal_di_monthly": 0.05 / 12,
-            "switch_month_from_peak": None, "stream": "oil",
-            "provenance": {"source": "fit", "strategy": "history"}}
-
-
-def test_legacy_stage_replays_with_peak_offset_and_capex_fallback():
-    stage = {"forecasts": {
-        "OLD-PDP": {
-            "oil": {"curve": _legacy_curve(900.0), "peak_month": "2024-01"},
-            "gas": {"curve": {**_legacy_curve(0.0), "stream": "gas"}},
-            "classification": "history", "strategy": "history", "status": "PRODUCING",
-            "anchor_month": "2025-06",
-        },
-        "OLD-PUD": {
-            "oil": {"curve": _legacy_curve(800.0)},
-            "gas": {"curve": {**_legacy_curve(0.0), "stream": "gas"}},
-            "classification": "no_history", "strategy": "pure_analog", "status": "PERMITTED",
-        },
-    }}
-    fcs, needs_capex, statuses = orch._load_forecast_stage(
-        forecast=stage, as_of=date(2026, 8, 1), months_override=None)
-    # legacy qi_peak deserializes; peak offset honored (17 months peak→anchor)
-    from server.valuation.forecast import curve_rate, project
-    f = orch._deserialize_forecast(fcs["OLD-PDP"]["oil"])
-    assert f.curve.qi == 900.0
-    _mo, rates = project(f, horizon_months=2)
-    assert rates[0] == pytest.approx(float(curve_rate(f.curve, 17.0)))
-    # anchor-less PUD dated by the config fallback (+36mo from as_of next month)
-    assert fcs["OLD-PUD"]["oil"]["start_date"] == "2029-09-01"
-    assert needs_capex == {"OLD-PDP": False, "OLD-PUD": True}
-    assert statuses["OLD-PUD"] == "PERMITTED"
 
 
 @pytest.mark.db  # run_valuation_for_run loads the strip curve from the DB
@@ -392,3 +358,33 @@ def test_run_valuation_refuses_a_run_the_caller_does_not_own(monkeypatch):
         orch.run_valuation_for_run(run_id="run-1", params=params, user_id=8)
     with pytest.raises(orch.RunAccessError, match="unknown run_id"):
         orch.run_valuation_for_run(run_id="run-9", params=params, user_id=7)
+
+
+def test_run_without_asserted_timing_is_refused(monkeypatch):
+    """Forecast stages written before timing became an asserted parameter
+    (2026-08-11) carry no anchor_month; valuing one gets the fix, not a
+    server-invented online date."""
+    metas = {"H": _meta("H", "PRODUCING")}
+    store = _patch(monkeypatch, metas, {})
+    store.records["run-1"] = {"run_id": "run-1", "user_id": 7}
+    store.stages["forecast"] = {"forecasts": {"H": {
+        "oil": {"curve": {}}, "gas": {"curve": {}}, "status": "PRODUCING"}}}
+    params = {"interest_type": "minerals", "interest": {"decimal": 0.05}}
+    with pytest.raises(orch.StaleRunError, match="deal_forecast_wells"):
+        orch.run_valuation_for_run(run_id="run-1", params=params, user_id=7)
+
+
+def test_declared_asset_list_must_match_the_run(monkeypatch):
+    """asset_list is the guard against valuing the wrong run: when passed, it
+    has to be exactly the wells deal_forecast_wells committed."""
+    metas = {"H": _meta("H", "PRODUCING")}
+    prod = {"H": {"months": _HIST_MONTHS, "oil_bbl": _HIST_OIL, "gas_mcf": [0.0] * _HIST_N}}
+    _patch(monkeypatch, metas, prod)
+    out = forecast_wells_for_run(run_id=None, user_id=7, forecasts=[_producer_entry()])
+    base = {"interest_type": "minerals", "interest": {"decimal": 0.05}}
+    with pytest.raises(ValueError, match="not in the run: \\['NOPE'\\]"):
+        orch.run_valuation_for_run(run_id=out["run_id"], user_id=7,
+                                   params={**base, "asset_list": {"well_apis": ["H", "NOPE"]}})
+    with pytest.raises(ValueError, match="in the run but not listed: \\['H'\\]"):
+        orch.run_valuation_for_run(run_id=out["run_id"], user_id=7,
+                                   params={**base, "asset_list": {"well_apis": ["OTHER"]}})

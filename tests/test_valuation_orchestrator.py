@@ -14,14 +14,14 @@ from server.valuation.orchestrator import (
 # ── cashflow schedule (audit trail) — pure, no DB ──────────────────────────
 
 def _fcdict(qi, start_iso, stream="oil"):
-    """A serialized-forecast dict (run-record shape) with peak == start."""
+    """A placed-forecast dict (what _load_forecast_stage hands the schedule)."""
     return {
         "curve": {
             "qi": qi, "di": 0.05, "b": 0.8, "terminal_di_monthly": 0.05 / 12,
             "switch_month_from_peak": None, "stream": stream,
-            "provenance": {"source": "fit", "strategy": "pdp"},
+            "provenance": {"source": "asserted", "strategy": "asserted"},
         },
-        "peak_date": start_iso, "start_date": start_iso, "strategy": "pdp",
+        "start_date": start_iso,
     }
 
 
@@ -256,19 +256,19 @@ def test_build_schedule_minerals_bear_no_costs():
 
 
 def test_curve_serde_roundtrip_preserves_fields_and_infinity():
-    from server.valuation.orchestrator import _serialize_curve, _deserialize_curve
+    from server.valuation.forecast import curve_from_dict, curve_to_dict
     from server.valuation.types import DeclineCurve, ForecastProvenance
     c = DeclineCurve(
         qi=900.0, di=0.15, b=1.05, terminal_di_monthly=0.004,
         switch_month_from_peak=float("inf"), stream="oil",
-        provenance=ForecastProvenance(source="fit", strategy="own_fit"),
+        provenance=ForecastProvenance(source="asserted", strategy="asserted"),
     )
-    d = _serialize_curve(c)
+    d = curve_to_dict(c)
     assert d["switch_month_from_peak"] is None          # infinity → None for JSON
-    back = _deserialize_curve(d)
+    back = curve_from_dict(d)
     assert back.qi == 900.0 and back.b == 1.05 and back.stream == "oil"
     assert back.switch_month_from_peak == float("inf")  # None → infinity on the way back
-    assert back.provenance.source == "fit"
+    assert back.provenance.source == "asserted"
 
 
 def test_compose_artifact_payload_for_run_reads_stages(monkeypatch):
@@ -435,3 +435,52 @@ def test_economics_from_forecasts_applies_gas_btu_factor():
 
 
 # ── _resolve_asset_list: cap + dedupe enforcement ──────────────────────────
+
+
+# ── _economics_from_forecasts: what it persists alongside the numbers ────────
+
+def test_economics_persists_price_path_and_cost_inputs():
+    from server.valuation.orchestrator import _economics_from_forecasts
+    fc = {"oil": _fcdict(500.0, "2026-01-01"), "gas": _fcdict(500.0, "2026-01-01", "gas")}
+    econ = _economics_from_forecasts(
+        forecasts={"42-000-00000": fc}, needs_capex={"42-000-00000": False},
+        statuses={"42-000-00000": "PRODUCING"},
+        econ_overrides={
+            "interest_type": "minerals", "interest": {"decimal": 0.05},
+            # flat deck avoids the NYMEX-strip DB fetch
+            "price_deck": {"type": "flat", "oil_usd_bbl": 70.0, "gas_usd_mmbtu": 3.0},
+            "opex_per_bbl_usd": 2.5, "opex_per_well_per_month_usd": 1500.0,
+            "capex_per_well_usd": 8_000_000.0,
+        })
+    horizon = econ["horizon_months"]
+    assert set(econ["price_path"]) == {"oil", "gas"}
+    assert len(econ["price_path"]["oil"]) == horizon == len(econ["price_path"]["gas"])
+    assert econ["cost_inputs"] == {"capex_per_well": 8_000_000.0,
+                                   "opex_per_well_month": 1500.0, "opex_per_bbl": 2.5}
+
+
+def test_economics_records_the_strip_it_priced_against(monkeypatch):
+    """With the strip resolved, the persisted inputs name the mode and trade
+    date the cube was built from — the sheet's provenance panel reads them."""
+    from server.valuation import orchestrator as orch
+
+    def fake_strip(econ_overrides, *, origin, horizon_months, flat_oil, flat_gas, db_query=None):
+        return {"oil": np.full(horizon_months, 70.0), "gas": np.full(horizon_months, 3.5),
+                "mode": "strip", "trade_date": date(2026, 6, 23),
+                "oil_repr": 70.0, "gas_repr": 3.5}
+    monkeypatch.setattr(orch.strip, "resolve_price_series", fake_strip)
+    econ = orch._economics_from_forecasts(
+        forecasts={"W1": _well(1000.0, "2026-07-01")}, needs_capex={"W1": False},
+        statuses={"W1": "PRODUCING"},
+        econ_overrides={"interest_type": "minerals", "interest": {"decimal": 0.01}})
+    assert econ["inputs"]["price_mode"] == "strip"
+    assert econ["inputs"]["strip_trade_date"] == "2026-06-23"
+    # the fake strip prices oil flat at 70, so the $80 deck beats Strip on identical volumes
+    cube = econ["npv_by_status"]
+    key = _CENTER_KEY(econ["rate_centers"]["PDP"])
+    assert cube["$80"]["PDP"][key] > cube["Strip"]["PDP"][key] > 0
+
+
+def _CENTER_KEY(center):
+    from server.valuation.config import rate_label, rate_ladder
+    return rate_label(rate_ladder(center)[1])

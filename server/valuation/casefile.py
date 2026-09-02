@@ -22,12 +22,11 @@ MAX_ASSET_WELLS = 500
 class CaseFile:
     interest_type: str                              # "wi" | "minerals"
     interest: dict                                  # {wi_pct, nri_pct} or {decimal}
-    asset_list: dict                                # {well_apis: [...]} XOR {filter_sql: "..."}
+    asset_list: dict = field(default_factory=dict)  # optional {well_apis: [...]} — a cross-check
     economics_overrides: dict = field(default_factory=dict)
 
 
 _DISCOUNT_STATUSES = {"PDP", "DUC", "PUD"}
-_TIMING_STATUSES = {"DUC", "PUD"}        # only non-producing wells have a scheduled online date
 
 # The complete, pinned set of economic-override keys. economics_overrides is the
 # single input surface for deal economics — the server reads every number from
@@ -36,7 +35,6 @@ _TIMING_STATUSES = {"DUC", "PUD"}        # only non-producing wells have a sched
 _ALLOWED_ECON_OVERRIDES = {
     "effective_date", "price_deck", "oil_diff", "gas_diff", "gas_btu_factor",
     "forecast_horizon", "tax_pct", "gpt_pct", "discount_rates",
-    "months_to_first_prod",
     "opex_per_bbl_usd", "opex_per_well_per_month_usd", "capex_per_well_usd",
 }
 
@@ -101,16 +99,19 @@ def _validate_deal_terms(body: dict) -> dict:
                     raise CaseFileError(f"interest.by_api[{api!r}] must be a decimal number for interest_type='minerals'")
                 _check_fraction(ov, f"interest.by_api[{api!r}]")
 
-    asset_list = body.get("asset_list")
+    # asset_list is optional. The wells a valuation covers are whatever
+    # deal_forecast_wells committed to the run; when Claude declares the list
+    # it expects, the orchestrator refuses a run that holds different wells —
+    # the guard against valuing the wrong run_id. Nothing else reads it.
+    asset_list = body.get("asset_list") or {}
     if not isinstance(asset_list, dict):
-        raise CaseFileError("asset_list must be an object")
-    has_apis = bool(asset_list.get("well_apis"))
-    has_sql = bool(asset_list.get("filter_sql"))
-    if has_apis and has_sql:
-        raise CaseFileError("asset_list must have exactly one of well_apis or filter_sql, not both")
-    if not has_apis and not has_sql:
-        raise CaseFileError("asset_list must have exactly one of well_apis or filter_sql")
-    if has_apis:
+        raise CaseFileError("asset_list must be an object like {'well_apis': [...]}")
+    if set(asset_list) - {"well_apis"}:
+        raise CaseFileError(
+            "asset_list takes only well_apis — the run's wells come from "
+            "deal_forecast_wells, there is nothing to filter server-side"
+        )
+    if "well_apis" in asset_list:
         apis = asset_list["well_apis"]
         if not isinstance(apis, list) or not all(isinstance(a, str) and a.strip() for a in apis):
             raise CaseFileError("asset_list.well_apis must be a list of non-empty strings")
@@ -118,12 +119,9 @@ def _validate_deal_terms(body: dict) -> dict:
         if len(deduped) > MAX_ASSET_WELLS:
             raise CaseFileError(
                 f"asset_list.well_apis has {len(deduped)} wells; at most {MAX_ASSET_WELLS} "
-                "per valuation — split the deal or use filter_sql with a tighter filter"
+                "per valuation — split the deal"
             )
-        # Intentional in-place write: the MCP tool persists/consumes the body dict, not the returned CaseFile — dedupe must land in the dict.
-        asset_list["well_apis"] = deduped
-    if has_sql and not isinstance(asset_list["filter_sql"], str):
-        raise CaseFileError("asset_list.filter_sql must be a string")
+        asset_list = {"well_apis": deduped}
 
     economics_overrides = body.get("economics_overrides", {}) or {}
     if not isinstance(economics_overrides, dict):
@@ -154,35 +152,6 @@ def _validate_deal_terms(body: dict) -> dict:
             if isinstance(rate, bool) or not isinstance(rate, (int, float)) or not (0.0 < rate < 1.0):
                 raise CaseFileError(
                     f"economics_overrides.discount_rates[{code!r}] must be a number in (0, 1), got {rate!r}"
-                )
-
-    # Per-status online-timing override: a per-deal replacement of the default
-    # months-to-first-prod deltas (DUC +18 / PUD +36), keyed by deal-sheet status
-    # code. Lets the user pull a permit online sooner ({"PUD": 1}) without moving
-    # the whole timeline via effective_date. PDP is rejected — producing wells
-    # start from their own history, not a scheduled date.
-    mtfp = economics_overrides.get("months_to_first_prod")
-    if mtfp is not None:
-        if not isinstance(mtfp, dict):
-            raise CaseFileError(
-                "economics_overrides.months_to_first_prod must be an object keyed by "
-                "non-producing well status (DUC/PUD), e.g. {'PUD': 1}"
-            )
-        unknown = set(mtfp) - _TIMING_STATUSES
-        if unknown == {"PDP"} or "PDP" in unknown:
-            raise CaseFileError(
-                "economics_overrides.months_to_first_prod cannot set 'PDP' — producing "
-                "wells come online from their actual production history, not a scheduled date"
-            )
-        if unknown:
-            raise CaseFileError(
-                f"economics_overrides.months_to_first_prod has unknown status key(s): {sorted(unknown)}"
-            )
-        for code, months in mtfp.items():
-            if isinstance(months, bool) or not isinstance(months, int) or months < 0:
-                raise CaseFileError(
-                    f"economics_overrides.months_to_first_prod[{code!r}] must be a "
-                    f"non-negative integer (months from the effective-date anchor), got {months!r}"
                 )
 
     # Price deck — the benchmark prices the deal is run against. Default (absent

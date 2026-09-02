@@ -7,9 +7,9 @@ from dateutil.relativedelta import relativedelta
 
 import server.valuation.orchestrator as orch
 from server.valuation.evidence import build_evidence, collect_analog_apis
-from server.valuation.forecast import make_curve
+from server.valuation.forecast import curve_to_dict, make_curve
 from server.valuation.orchestrator import (
-    ForecastValidationError, _serialize_curve, forecast_wells_for_run,
+    ForecastValidationError, forecast_wells_for_run,
 )
 from server.valuation.types import WellMeta
 
@@ -161,7 +161,7 @@ def test_entry_without_analog_cohort_still_commits(monkeypatch):
 # ── evidence assembly (pure) ─────────────────────────────────────────────────
 
 def _curve_dict(qi, di=0.05, b=1.0, stream="oil"):
-    return _serialize_curve(make_curve(qi, di, b, stream=stream, terminal_di_annual=0.05))
+    return curve_to_dict(make_curve(qi, di, b, stream=stream, terminal_di_annual=0.05))
 
 
 def _fc_entry(status, qi_oil, anchor, assertion_extra=None, entry_id="e1", rationale="r"):
@@ -290,20 +290,6 @@ def test_evidence_pv_none_when_by_well_omitted():
                          analog_meta={}, analog_prod={}, rate_centers=_RATES)
     assert out["entries"][0]["pv"] is None
     assert out["entries"][0]["pv_share"] is None
-
-
-def test_evidence_legacy_stage_without_assertion_survives():
-    hist = _hist(12)
-    forecast = {"forecasts": {"W1": {
-        "anchor_month": None, "status": "PRODUCING",
-        "oil": {"curve": _curve_dict(500.0)}, "gas": {"curve": _curve_dict(0.0)},
-    }}}
-    out = build_evidence(forecast=forecast, schedule=_schedule(["W1"]),
-                         meta_by_api={"W1": _meta("W1", "PRODUCING")}, prod={"W1": hist},
-                         analog_meta={}, analog_prod={}, rate_centers=_RATES)
-    (e,) = out["entries"]
-    assert e["assertion"] is None and e["kind"] == "producing"
-    assert "curve" not in e                            # no anchor → no curve series
 
 
 def test_collect_analog_apis():

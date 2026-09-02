@@ -40,8 +40,6 @@ def _expected() -> dict[str, object]:
         "capex_per_well_usd": e.capex_per_well_usd,
         "horizon_months": float(e.horizon_months),
         "terminal_di_annual": e.terminal_di_annual,
-        "duc_months_to_first_prod": float(e.duc_months_to_first_prod),
-        "permit_months_to_first_prod": float(e.permit_months_to_first_prod),
         "discount_rate_pdp": e.default_rate_centers["PDP"],
         "discount_rate_duc": e.default_rate_centers["DUC"],
         "discount_rate_pud": e.default_rate_centers["PUD"],

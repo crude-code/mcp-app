@@ -17,8 +17,7 @@ import numpy as np
 
 from server.valuation import config
 from server.valuation.econ import npv
-from server.valuation.forecast import curve_rate
-from server.valuation.types import DeclineCurve, ForecastProvenance
+from server.valuation.forecast import curve_from_dict, curve_rate
 
 # Display caps — evidence scales with the number of judgments, not wells, but
 # these keep a pathological payload bounded.
@@ -31,25 +30,10 @@ _MI_PER_DEG_LAT = 69.055
 _MI_PER_DEG_LON = 69.172       # at the equator; scaled by cos(lat)
 
 
-def _curve_from_dict(c: dict) -> DeclineCurve:
-    """Serialized curve dict (forecast stage) → DeclineCurve for evaluation.
-    Mirrors the orchestrator's tolerant deserialization (qi_peak fallback,
-    None switch month → inf) without importing it — evidence is display-only."""
-    switch = c.get("switch_month_from_peak")
-    return DeclineCurve(
-        qi=c["qi"] if "qi" in c else c["qi_peak"],
-        di=c["di"], b=c["b"],
-        terminal_di_monthly=c["terminal_di_monthly"],
-        switch_month_from_peak=float("inf") if switch is None else switch,
-        stream=c.get("stream", "oil"),
-        provenance=ForecastProvenance(source="asserted", strategy=None),
-    )
-
-
 def _series(curve_dict: dict | None, n: int) -> np.ndarray:
     if not curve_dict or n <= 0:
         return np.zeros(max(n, 0))
-    return np.asarray(curve_rate(_curve_from_dict(curve_dict), np.arange(n, dtype=float)))
+    return np.asarray(curve_rate(curve_from_dict(curve_dict), np.arange(n, dtype=float)))
 
 
 def _months_between(a: str, b: str) -> int:

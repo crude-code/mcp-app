@@ -21,9 +21,9 @@ from server.valuation import strip
 from server.valuation.casefile import MAX_ASSET_WELLS, parse_run_params
 from server.valuation.econ import cashflow_components, compute_gross_revenue, npv, resolve_well_interest
 from server.valuation.evidence import build_evidence, collect_analog_apis
-from server.valuation.forecast import make_curve, make_zero_curve, project
+from server.valuation.forecast import curve_from_dict, curve_to_dict, make_curve, make_zero_curve, project
 from server.valuation.run_record import RunAccessError, ValuationRunStore, require_run_owner
-from server.valuation.types import DeclineCurve, Forecast, ForecastProvenance
+from server.valuation.types import Forecast
 from server.valuation.wells import bulk_load_production, bulk_load_wells
 
 
@@ -75,72 +75,17 @@ def _validate_by_api_membership(by_api: dict | None, known_apis: set[str]) -> No
         )
 
 
-def _serialize_curve(c: DeclineCurve) -> dict:
-    """DeclineCurve → JSON-safe dict. Infinity switch month persists as None.
-    Provenance: only source + strategy are persisted; other fields are dropped."""
-    switch = c.switch_month_from_peak
-    return {
-        "qi": c.qi, "di": c.di, "b": c.b,
-        "terminal_di_monthly": c.terminal_di_monthly,
-        "switch_month_from_peak": switch if math.isfinite(switch) else None,
-        "stream": c.stream,
-        "provenance": {"source": c.provenance.source, "strategy": c.provenance.strategy},
-    }
-
-
-def _deserialize_curve(c: dict) -> DeclineCurve:
-    """Inverse of _serialize_curve. None switch month → float('inf').
-    Tolerant on two axes so durable pre-assertion runs still replay: the qi key
-    (fit-era stages persisted ``qi_peak``; that qi was a peak rate, which the
-    stage's per-stream ``peak_month`` re-anchors at load) and provenance
-    (synthesized when absent)."""
-    switch = c["switch_month_from_peak"]
-    if switch is None:
-        switch = float("inf")
-    prov = c.get("provenance") or {}
-    return DeclineCurve(
-        qi=c["qi"] if "qi" in c else c["qi_peak"],
-        di=c["di"], b=c["b"],
-        terminal_di_monthly=c["terminal_di_monthly"],
-        switch_month_from_peak=switch,
-        stream=c["stream"],
-        provenance=ForecastProvenance(
-            source=prov.get("source", "cohort"),
-            strategy=prov.get("strategy"),
-        ),
-    )
-
-
-def _place_curve(*, self_curve: dict, start_date: str, strategy: str,
-                 peak_date: str | None = None) -> dict:
-    """Build a serialized-forecast dict from a (dateless) serialized curve and a
-    start date. The forecast tools store dateless curves; deal_valuation supplies
-    start_date (PDP: the well's historical anchor; PUD: the status-derived online
-    date). peak_date defaults to start_date (PUDs/climbing: peak is at the anchor).
-    For producing wells with history, pass the historical peak month so project()
-    sees a non-zero peak_offset and continues the decline instead of restarting."""
-    return {
-        "curve": self_curve,
-        "peak_date": peak_date or start_date,
-        "start_date": start_date,
-        "strategy": strategy,
-    }
+def _place_curve(*, self_curve: dict, start_date: str) -> dict:
+    """A placed forecast: a (dateless) serialized curve plus the calendar month
+    where its t=0 sits. The forecast stage stores dateless curves keyed by
+    well with one `anchor_month`; deal_valuation places them here."""
+    return {"curve": self_curve, "start_date": start_date}
 
 
 def _deserialize_forecast(d: dict) -> Forecast:
-    """Inverse of _serialize_forecast. Handles `None` switch_month as `float('inf')`.
-    provenance is read from the curve dict when present (old serialized path) or
-    synthesized when absent (new dateless-curve path from deal_forecast_wells stages)."""
-    curve_prov = (d["curve"].get("provenance") or {})
-    return Forecast(
-        curve=_deserialize_curve(d["curve"]),
-        peak_date=date.fromisoformat(d["peak_date"]),
-        start_date=date.fromisoformat(d["start_date"]),
-        provenance=ForecastProvenance(
-            source=curve_prov.get("source", "cohort"),
-            strategy=d.get("strategy"),
-        ),
-    )
+    """Placed-forecast dict → Forecast."""
+    return Forecast(curve=curve_from_dict(d["curve"]),
+                    start_date=date.fromisoformat(d["start_date"]))
 
 
 _SCHEDULE_COLS = (
@@ -337,29 +282,20 @@ def _serialize_schedule(sched: dict, *, origin: date, horizon: int, rate_centers
     return result
 
 
-def _interest_from_record(case_file: dict | None, assumptions: dict) -> dict:
-    """Normalized interest inputs, sourced from the authoritative case file.
-
-    Returns ``{interest_type, wi_pct, nri_pct}`` (WI) or ``{interest_type,
-    decimal}`` (minerals), plus an optional ``by_api`` map of per-well overrides.
-    The case file is the source of truth (validated at the MCP boundary); for
-    legacy runs whose case file predates server-sourced interest, falls back to
-    the agent's ``assumptions`` for the blanket numbers.
-    """
-    case_interest = (case_file or {}).get("interest")
-    src = case_interest if isinstance(case_interest, dict) else assumptions
-    itype = (case_file or {}).get("interest_type") or assumptions.get("interest_type")
-
+def _interest_inputs(econ_overrides: dict) -> dict:
+    """Normalized interest inputs from the validated params: ``{interest_type,
+    wi_pct, nri_pct}`` (WI) or ``{interest_type, decimal}`` (minerals), plus
+    the optional ``by_api`` map of per-well overrides."""
+    itype = econ_overrides["interest_type"]
+    src = econ_overrides["interest"]
     out: dict = {"interest_type": itype}
     if itype == "wi":
         out["wi_pct"] = float(src["wi_pct"])
         out["nri_pct"] = float(src["nri_pct"])
     else:
         out["decimal"] = float(src["decimal"])
-
-    by_api = case_interest.get("by_api") if isinstance(case_interest, dict) else None
-    if by_api:
-        out["by_api"] = by_api
+    if src.get("by_api"):
+        out["by_api"] = src["by_api"]
     return out
 
 
@@ -389,8 +325,7 @@ def _economics_from_forecasts(*, forecasts: dict, needs_capex: dict,
     inputs["price_mode"] = price["mode"]
     inputs["strip_trade_date"] = price["trade_date"].isoformat() if price["trade_date"] else None
 
-    interest = _interest_from_record({"interest_type": econ_overrides.get("interest_type"),
-                                      "interest": econ_overrides.get("interest")}, {})
+    interest = _interest_inputs(econ_overrides)
     interest_type = interest["interest_type"]
     _validate_by_api_membership(interest.get("by_api"), set(forecasts))
 
@@ -806,7 +741,7 @@ def forecast_wells_for_run(*, run_id: str | None, forecasts: list[dict], user_id
                     # then uptime; equivalent either way, documented here.
                     curve = make_curve(p["qi"] * share * uptime, p["di"], p["b"],
                                        stream=s, terminal_di_annual=term)
-                well_entry[s] = {"curve": _serialize_curve(curve)}
+                well_entry[s] = {"curve": curve_to_dict(curve)}
             new_entries[api] = well_entry
 
         echo: dict = {"wells": list(wells_list), "anchor_month": anchor_str[:7], "undrilled": undrilled}
@@ -873,50 +808,37 @@ def forecast_wells_for_run(*, run_id: str | None, forecasts: list[dict], user_id
     }
 
 
-def _load_forecast_stage(*, forecast: dict, as_of, months_override):
+class StaleRunError(ValueError):
+    """The run's forecast stage predates asserted timing and cannot be valued."""
+
+
+def _load_forecast_stage(*, forecast: dict) -> tuple[dict, dict, dict]:
     """Place the single dateless `forecast` stage on the calendar for economics.
 
-    Asserted stages (the accept-and-echo path): every well carries an
-    ``anchor_month`` — producers anchor where qi applies, undrilled wells at
-    their asserted first-production month — and curves anchor at t=0
-    (peak == anchor), so start = peak = anchor.
-
-    Legacy fit-era stages replay unchanged: per-stream ``peak_month`` keeps
-    project()'s peak_offset correct (their qi was a peak rate, not an anchor
-    rate); wells with no anchor fall back to the status-derived planned
-    first-prod date (else as_of) — the only surviving use of the DUC/PERMITTED
-    config offsets; and ``needs_capex`` falls back to the fit-era
-    ``classification == "no_history"`` trigger."""
-    def _norm(d: str | None) -> str | None:
-        """Normalize a 'YYYY-MM' partial date to 'YYYY-MM-01' for fromisoformat."""
-        return d if (d is None or len(d) != 7) else d + "-01"
-
+    Every well carries an ``anchor_month`` — producers anchor where qi applies,
+    undrilled wells at their asserted first-production month — and curves
+    anchor at t=0, so start = anchor. ``needs_capex`` and ``status`` were
+    committed alongside by deal_forecast_wells. A stage without an anchor was
+    written before timing became an asserted parameter (2026-08-11); there is
+    no honest way to date it server-side, so it is refused with the fix."""
     forecasts: dict[str, dict] = {}
     needs_capex: dict[str, bool] = {}
     statuses: dict[str, str] = {}
     for api, fc in (forecast.get("forecasts") or {}).items():
-        strat = fc.get("strategy") or ("asserted" if "assertion" in fc else "pure_analog")
         anchor = fc.get("anchor_month")
-        if anchor:
-            start = _norm(anchor)
-            oil_peak = _norm(fc["oil"].get("peak_month")) or start
-            gas_peak = _norm(fc["gas"].get("peak_month")) or start
-            forecasts[api] = {
-                "oil": _place_curve(self_curve=fc["oil"]["curve"], start_date=start,
-                                    strategy=strat, peak_date=oil_peak),
-                "gas": _place_curve(self_curve=fc["gas"]["curve"], start_date=start,
-                                    strategy=strat, peak_date=gas_peak),
-            }
-        else:
-            online = config.planned_first_prod_date(
-                fc.get("status"), as_of=as_of, months_override=months_override)
-            start = str(online or as_of)
-            forecasts[api] = {
-                "oil": _place_curve(self_curve=fc["oil"]["curve"], start_date=start, strategy=strat),
-                "gas": _place_curve(self_curve=fc["gas"]["curve"], start_date=start, strategy=strat),
-            }
-        needs_capex[api] = bool(fc.get("needs_capex", fc.get("classification") == "no_history"))
-        statuses[api] = fc.get("status") or "PUD"
+        if not anchor:
+            raise StaleRunError(
+                f"well {api} in this run has no asserted anchor_month — the run predates "
+                "asserted timing. Re-assert its wells with deal_forecast_wells (a new run) "
+                "and value that."
+            )
+        start = anchor if len(anchor) != 7 else anchor + "-01"
+        forecasts[api] = {
+            "oil": _place_curve(self_curve=fc["oil"]["curve"], start_date=start),
+            "gas": _place_curve(self_curve=fc["gas"]["curve"], start_date=start),
+        }
+        needs_capex[api] = bool(fc["needs_capex"])
+        statuses[api] = fc["status"]
     return forecasts, needs_capex, statuses
 
 
@@ -933,15 +855,25 @@ def run_valuation_for_run(*, run_id: str, params: dict, user_id: int) -> dict:
     if not forecast:
         raise ValueError(f"run {run_id}: no forecast stage — call deal_forecast_wells first")
 
+    # The declared asset list, when Claude passes one, must be the run's wells:
+    # the guard against valuing the wrong run_id. Checked before any DB work.
+    declared = set(case.asset_list.get("well_apis") or [])
+    in_run = set(forecast.get("forecasts") or {})
+    if declared and declared != in_run:
+        missing, extra = sorted(declared - in_run)[:5], sorted(in_run - declared)[:5]
+        raise ValueError(
+            f"asset_list names {len(declared)} wells but run {run_id} holds {len(in_run)}"
+            + (f"; not in the run: {missing}" if missing else "")
+            + (f"; in the run but not listed: {extra}" if extra else "")
+            + " — value the run you forecast, or re-run deal_forecast_wells"
+        )
+
     econ_overrides = dict(params.get("economics_overrides") or {})
     # Fold interest into econ_overrides so the economics core is self-contained.
     econ_overrides["interest_type"] = interest_type
     econ_overrides["interest"] = params.get("interest")
-    as_of = config.resolve_as_of(econ_overrides.get("effective_date"), today=date.today())
-    months_override = econ_overrides.get("months_to_first_prod")
 
-    forecasts, needs_capex, statuses = _load_forecast_stage(
-        forecast=forecast, as_of=as_of, months_override=months_override)
+    forecasts, needs_capex, statuses = _load_forecast_stage(forecast=forecast)
 
     econ = _economics_from_forecasts(
         forecasts=forecasts, needs_capex=needs_capex,

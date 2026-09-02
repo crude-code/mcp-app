@@ -15,7 +15,7 @@ def _minimal_minerals():
     return {
         "interest_type": "minerals",
         "interest": {"decimal": 0.01875},
-        "asset_list": {"filter_sql": "WHERE operator='EOG'"},
+        "asset_list": {"well_apis": ["30-015-36916"]},
     }
 
 
@@ -50,16 +50,6 @@ def test_minerals_interest_requires_decimal():
     body = _minimal_minerals()
     body["interest"] = {}
     with pytest.raises(CaseFileError, match="decimal"):
-        parse_run_params(body)
-
-
-def test_asset_list_requires_exactly_one_of_apis_or_sql():
-    body = _minimal_wi()
-    body["asset_list"] = {}
-    with pytest.raises(CaseFileError, match="well_apis"):
-        parse_run_params(body)
-    body["asset_list"] = {"well_apis": ["x"], "filter_sql": "WHERE 1=1"}
-    with pytest.raises(CaseFileError, match="exactly one"):
         parse_run_params(body)
 
 
@@ -213,48 +203,6 @@ def test_discount_rates_value_out_of_range_rejected():
             parse_run_params(body)
 
 
-# ── per-status online-timing override (months_to_first_prod) ───────────────
-
-def test_months_to_first_prod_map_passes():
-    body = _minimal_wi()
-    body["economics_overrides"] = {"months_to_first_prod": {"PUD": 1, "DUC": 6}}
-    cf = parse_run_params(body)
-    assert cf.economics_overrides["months_to_first_prod"] == {"PUD": 1, "DUC": 6}
-
-
-def test_months_to_first_prod_zero_allowed():
-    body = _minimal_wi()
-    body["economics_overrides"] = {"months_to_first_prod": {"PUD": 0}}
-    assert parse_run_params(body).economics_overrides["months_to_first_prod"] == {"PUD": 0}
-
-
-def test_months_to_first_prod_must_be_object():
-    body = _minimal_wi()
-    body["economics_overrides"] = {"months_to_first_prod": 12}
-    with pytest.raises(CaseFileError, match="months_to_first_prod must be an object"):
-        parse_run_params(body)
-
-
-def test_months_to_first_prod_rejects_pdp():
-    body = _minimal_wi()
-    body["economics_overrides"] = {"months_to_first_prod": {"PDP": 1}}
-    with pytest.raises(CaseFileError, match="cannot set 'PDP'"):
-        parse_run_params(body)
-
-
-def test_months_to_first_prod_unknown_status_rejected():
-    body = _minimal_wi()
-    body["economics_overrides"] = {"months_to_first_prod": {"PDNP": 1}}
-    with pytest.raises(CaseFileError, match="unknown status"):
-        parse_run_params(body)
-
-
-def test_months_to_first_prod_value_must_be_nonneg_int():
-    for bad in (-1, 1.5, "2", True, None):
-        body = _minimal_wi()
-        body["economics_overrides"] = {"months_to_first_prod": {"PUD": bad}}
-        with pytest.raises(CaseFileError, match="months_to_first_prod"):
-            parse_run_params(body)
 
 
 # ── per-well interest (by_api overrides) ───────────────────────────────────
@@ -345,4 +293,16 @@ def test_price_deck_unknown_type_rejected():
     body = _minimal_wi()
     body["economics_overrides"] = {"price_deck": {"type": "futures"}}
     with pytest.raises(CaseFileError, match="price_deck.type"):
+        parse_run_params(body)
+
+
+def test_asset_list_is_optional_and_only_well_apis():
+    body = _minimal_wi()
+    del body["asset_list"]
+    assert parse_run_params(body).asset_list == {}
+    body["asset_list"] = {"filter_sql": "WHERE 1=1"}
+    with pytest.raises(CaseFileError, match="only well_apis"):
+        parse_run_params(body)
+    body["asset_list"] = ["42-389-12345"]
+    with pytest.raises(CaseFileError, match="must be an object"):
         parse_run_params(body)

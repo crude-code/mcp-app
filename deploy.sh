@@ -98,11 +98,11 @@ npm ci --prefix renderer
 npm run build --prefix renderer
 
 # Restart the MCP server only when paths it loaded into memory at startup
-# changed: server code, utils, prompts, the renderer HTML (read into
-# APP_HTML at module load), or pip requirements. Doc-only, nginx-only,
-# ingest-only, scripts-only, and tests-only changes deploy without
-# disconnecting active users.
-RESTART_PATHS_REGEX='^(server/|utils/|prompts/|renderer/|requirements\.txt$)'
+# changed: server code, utils, prompts, skills (the server instructions carry
+# a skills catalog composed at import), the renderer HTML (read into APP_HTML
+# at module load), or pip requirements. Doc-only, nginx-only, scripts-only,
+# and tests-only changes deploy without disconnecting active users.
+RESTART_PATHS_REGEX='^(server/|utils/|prompts/|skills/|renderer/|requirements\.txt$)'
 LAST_DEPLOYED_SHA_FILE=/home/ubuntu/crudecode/.last-mcp-deployed-sha
 
 NEEDS_RESTART=1

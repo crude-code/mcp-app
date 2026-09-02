@@ -58,14 +58,23 @@ def to_float(v):
         return None
 
 
-def to_month(v):
+def to_month(v) -> str | None:
+    """Lenient START expression -> 'YYYY-MM': 'MM/YYYY', 'MM/DD/YYYY' (two- or
+    four-digit year) or 'YYYY-MM-…'. Same forms the explorer's aries_payload.py
+    accepts — a START the explorer dates must anchor here too, or the well
+    would silently drop out of the translation. Unparseable -> None."""
     s = str(v or "").strip()
-    m = re.match(r"^(\d{1,2})/(\d{4})$", s)
-    if m:
-        return f"{int(m.group(2)):04d}-{int(m.group(1)):02d}"
     m = re.match(r"^(\d{4})-(\d{2})", s)
     if m:
         return f"{m.group(1)}-{m.group(2)}"
+    m = re.match(r"^(\d{1,2})/(\d{4})$", s)
+    if m:
+        return f"{int(m.group(2)):04d}-{int(m.group(1)):02d}"
+    m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{2,4})", s)
+    if m:
+        mo, yr = int(m.group(1)), int(m.group(3))
+        yr = yr + (2000 if yr < 50 else 1900) if yr < 100 else yr
+        return f"{yr:04d}-{mo:02d}"
     return None
 
 

@@ -19,8 +19,9 @@ Input `curves.json`:
       "anchor_month": "2026-08",        # -> START MM/YYYY
       "cums": {"oil_bbl": 293746, "gas_mcf": 450892},   # optional -> CUMS (thousands)
       "oil": {"qi": 5278.0, "di": 0.0516, "b": 0.9},     # engine terms; null to skip
-      "gas": {"qi": 16049.0, "di": 0.0584, "b": 0.9}
-    }]
+      "gas": {"qi": 16049.0, "di": 0.0584, "b": 0.9},
+      "floors": {"oil": 30.0, "gas": 100.0}             # optional economic-limit rates
+    }]                                                  # (B/M, M/M); defaults below
   }
 
 `--aries-dir _aries` (the explorer's triage output for the TARGET database)

@@ -163,3 +163,15 @@ def test_cli_tieout_flags_translation_health(tmp_path):
         capture_output=True, text=True)
     assert proc.returncode == 0, proc.stderr
     assert "mean |err| 0.000%" in proc.stdout
+
+
+def test_to_month_accepts_every_start_form_the_explorer_does():
+    """A START the explorer (aries_payload.to_month) can date must anchor here
+    too — a stricter parser silently dropped MM/DD/YYYY wells from the run."""
+    assert ac.to_month("01/2025") == "2025-01"
+    assert ac.to_month("01/15/2025") == "2025-01"
+    assert ac.to_month("1/15/25") == "2025-01"
+    assert ac.to_month("2025-01-01") == "2025-01"
+    assert ac.to_month("2025-01") == "2025-01"
+    assert ac.to_month("") is None and ac.to_month(None) is None
+    assert ac.to_month("Jan 2025") is None

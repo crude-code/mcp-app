@@ -116,7 +116,7 @@ npm ci --prefix renderer
 npm run build --prefix renderer
 
 # --- restart logic (mirrors deploy.sh, scoped to dev) --------------------
-RESTART_PATHS_REGEX='^(server/|utils/|prompts/|renderer/|requirements\.txt$)'
+RESTART_PATHS_REGEX='^(server/|utils/|prompts/|skills/|renderer/|requirements\.txt$)'
 LAST_DEPLOYED_SHA_FILE=/home/ubuntu/crudecode-dev/.last-mcp-deployed-sha
 
 NEEDS_RESTART=1

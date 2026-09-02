@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 import type { McpUiHostContext } from "@modelcontextprotocol/ext-apps";
 import { useApp } from "@modelcontextprotocol/ext-apps/react";
 import { MapView } from "./components/MapView";
+import pkg from "../package.json";
 
 function extractText(result: any): string {
   if (Array.isArray(result?.content)) {
@@ -60,7 +61,9 @@ export function CCApp() {
   }, []);
 
   const { app, isConnected, error: connError } = useApp({
-    appInfo: { name: "Crude Code", version: "0.1.0" },
+    // package.json's version is kept in lockstep with the server's __version__
+    // by tests/test_version_drift.py, so the host sees the release number.
+    appInfo: { name: "Crude Code", version: pkg.version },
     capabilities: {},
     onAppCreated,
     autoResize: false,

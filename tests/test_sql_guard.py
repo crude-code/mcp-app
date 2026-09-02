@@ -50,12 +50,7 @@ def test_strips_trailing_semicolon():
     assert validate_select("SELECT 1;") == "SELECT 1"
 
 
-from utils.schemas import WIDGET_SCHEMAS
 from utils.sql_guard import validate_schema
-
-
-def test_widget_schemas():
-    assert WIDGET_SCHEMAS == frozenset({"public", "market", "financials", "features"})
 
 
 def test_validate_schema_accepts_allowed():

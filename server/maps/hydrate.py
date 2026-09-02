@@ -9,7 +9,7 @@ from __future__ import annotations
 import json as _json
 
 from utils.db import query
-from utils.schemas import WIDGET_SCHEMAS
+from utils.schemas import MAP_SCHEMAS
 from utils.sql_guard import run_guarded, GuardError
 from server.maps.catalog import STATIC_LAYERS, build_static_layer_sql
 
@@ -90,7 +90,7 @@ def hydrate_map(spec: dict) -> dict:
             result = run_guarded(
                 layer["sql"],
                 schema="public",
-                allowed_schemas=WIDGET_SCHEMAS,
+                allowed_schemas=MAP_SCHEMAS,
                 row_cap=MAP_ROW_CAP,
                 size_cap_bytes=MAP_SIZE_CAP_BYTES,
                 timeout_ms=MAP_TIMEOUT_MS,

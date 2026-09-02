@@ -1,14 +1,14 @@
-"""Per-token in-memory store for hydrated specs.
+"""Per-token in-memory store for hydrated map specs.
 
-`map` validates + hydrates the map spec server-side, mints a token, and
-stashes the full hydrated spec here. The renderer reads `map_token` out of
-the tool result and calls `map_read_full(token)` once on mount to fetch the
-spec. (Name kept for history — it also backed briefings before that
-vertical was removed.)
+`map_render` validates + hydrates the map spec server-side, mints a token,
+and stashes the full hydrated spec here. The renderer reads `map_token` out
+of the tool result and calls `map_read_full(token)` once on mount to fetch
+the spec.
 
 Frozen-snapshot semantics: each render owns its own token; tokens never get
-overwritten by later calls. TTL bounds memory growth — typical session lasts
-well under the default 24h.
+overwritten by later calls. TTL bounds memory growth — a typical session
+lasts well under the default 24h. One server process, so a restart drops
+every token; the renderer shows "expired" and the user re-renders.
 """
 
 import secrets
@@ -16,8 +16,8 @@ import time
 from threading import Lock
 
 
-class BriefingHandleStore:
-    """GIL-safe per-token store of hydrated briefing specs.
+class MapHandleStore:
+    """GIL-safe per-token store of hydrated map specs.
 
     `mint(user_slug, spec)` stashes a fully-hydrated spec under a fresh token;
     `fetch(user_slug, token)` reads it back (scoped to the owning user).

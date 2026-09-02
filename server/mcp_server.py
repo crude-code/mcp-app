@@ -40,11 +40,12 @@ from utils.prompts import (
 # chat-only-host note (prompts/outer/chat_mode.md) so Claude delivers markdown.
 # Module-level so tests can flip the response branches without re-importing.
 _CHAT_MODE = _chat_mode()
-from utils.briefing_handle_store import BriefingHandleStore
+from utils.map_handle_store import MapHandleStore
 from utils.schemas import EXPLORATION_SCHEMAS
+from utils.rate_limit import RateLimiter
 from utils.sql_guard import GuardError, dry_run, run_guarded
 
-_briefing_handles = BriefingHandleStore()
+_map_handles = MapHandleStore()
 
 from server.valuation.orchestrator import (
     compose_artifact_payload_for_run, forecast_wells_for_run,
@@ -68,7 +69,7 @@ from server.blob_store import SupabaseBlobStore
 from server.extraction_store import ExtractionStore
 from server.room_store import RoomStore
 from server.upload_tokens import UploadTokenStore
-from server.accounts import RateLimiter, register_account_routes
+from server.accounts import register_account_routes
 from server.uploads import public_base_url, public_host, register_upload_routes
 from server.user_profile import IN_CHAT, UserProfileStore, notes_of, plan_update, profile_state
 from server.valuation.run_record import RunAccessError, ValuationRunStore, require_run_owner
@@ -649,7 +650,7 @@ def map_render(spec: dict) -> str:
         if _CHAT_MODE:
             return _json.dumps(_map_as_rows(hydrated), default=str)
 
-        token = _briefing_handles.mint(user_slug=user_slug, spec=hydrated)
+        token = _map_handles.mint(user_slug=user_slug, spec=hydrated)
         return _json.dumps({
             "surface": "map",
             "map_token": token,
@@ -673,7 +674,7 @@ def map_read_full(token: str) -> str:
     if not identity:
         return _json.dumps({"error": "Could not identify user"})
     user_slug = identity["user_slug"]
-    spec = _briefing_handles.fetch(user_slug=user_slug, token=token)
+    spec = _map_handles.fetch(user_slug=user_slug, token=token)
     if spec is None:
         return _json.dumps({"error": "unknown or expired token"})
     return _json.dumps({"spec": spec}, default=str)

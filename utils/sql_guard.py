@@ -18,7 +18,7 @@ import json as _json
 import re
 
 from utils.db import query as _db_query
-from utils.schemas import WIDGET_SCHEMAS
+from utils.schemas import MAP_SCHEMAS
 
 _FORBIDDEN_KEYWORDS_RE = re.compile(
     r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|GRANT|REVOKE|COPY|CALL|DO)\b",
@@ -92,7 +92,7 @@ class GuardError(ValueError):
     """Raised when a SQL statement violates a guard rule."""
 
 
-def validate_schema(schema: str, allowed: frozenset[str] = WIDGET_SCHEMAS) -> None:
+def validate_schema(schema: str, allowed: frozenset[str] = MAP_SCHEMAS) -> None:
     """Raise GuardError if ``schema`` isn't in the allowlist."""
     if schema not in allowed:
         raise GuardError(
@@ -114,7 +114,7 @@ def _strip_noise(sql: str) -> str:
     return s
 
 
-def validate_select(sql: str, allowed_schemas: frozenset[str] = WIDGET_SCHEMAS) -> str:
+def validate_select(sql: str, allowed_schemas: frozenset[str] = MAP_SCHEMAS) -> str:
     """Validate and normalize a read-only SQL statement.
 
     Returns the normalized statement (stripped, trailing ; removed).
@@ -210,7 +210,7 @@ def dry_run(
     sql: str,
     *,
     schema: str = "public",
-    allowed_schemas: frozenset[str] = WIDGET_SCHEMAS,
+    allowed_schemas: frozenset[str] = MAP_SCHEMAS,
     timeout_ms: int | None = DEFAULT_TIMEOUT_MS,
 ) -> None:
     """Validate a query and `EXPLAIN` it — does NOT execute.
@@ -235,7 +235,7 @@ def run_guarded(
     sql: str,
     *,
     schema: str = "public",
-    allowed_schemas: frozenset[str] = WIDGET_SCHEMAS,
+    allowed_schemas: frozenset[str] = MAP_SCHEMAS,
     row_cap: int = DEFAULT_ROW_CAP,
     size_cap_bytes: int = DEFAULT_SIZE_CAP_BYTES,
     timeout_ms: int | None = DEFAULT_TIMEOUT_MS,

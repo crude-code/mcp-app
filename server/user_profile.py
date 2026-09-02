@@ -1,12 +1,10 @@
 """Self-service profile updates — the caller's own platform.users row.
 
-The claim lane for the CrudeDocs funnel. `GET /new-account`
-(server/accounts.py) mints an anonymous row: email NULL, name "CrudeDoc
-visitor". That account works immediately but is unrecoverable — lose the
+The claim lane for accounts minted in chat. The retired `GET /new-account`
+lane (server/accounts.py, v0.4.x) inserted anonymous rows: email NULL, name
+"CrudeDoc visitor". Those accounts work but are unrecoverable — lose the
 connector URL and there is no way back in, and no channel to reach the
-person. `update_user` is how an email gets attached from inside the chat,
-which is what the intro CrudeDoc already promises ("an email can optionally
-be attached later, in chat").
+person. `update_user` is how an email gets attached from inside the chat.
 
 Auth: the slug in the connector URL *is* the credential, so a caller writes
 its own row and no other — user_id comes from the resolved identity, never
@@ -29,7 +27,6 @@ import json
 import re
 from datetime import datetime, timezone
 
-from server.accounts import PLACEHOLDER_NAME
 from utils.platform import _query
 
 # The shape the site's signup contract validates (crudecode-site
@@ -38,6 +35,10 @@ EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 NAME_MAX = 120
 IN_CHAT = "in_chat"
+
+# The name the retired mint stamped on its rows. Those rows are real users;
+# `name_is_placeholder` is how Claude knows a name was never chosen by a person.
+PLACEHOLDER_NAME = "CrudeDoc visitor"
 
 
 def normalize_email(raw: str) -> str:

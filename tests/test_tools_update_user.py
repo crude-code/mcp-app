@@ -5,7 +5,7 @@ import json
 import pytest
 
 import server.mcp_server as srv
-from server.accounts import RateLimiter
+from utils.rate_limit import RateLimiter
 
 
 _IDENTITY = {"user_slug": "anon1", "user_id": 7, "user_name": "CrudeDoc visitor",

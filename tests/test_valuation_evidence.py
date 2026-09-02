@@ -14,7 +14,7 @@ from server.valuation.orchestrator import (
 from server.valuation.types import WellMeta
 
 
-# ── shared fakes (pattern from test_valuation_forecast_unified) ──────────────
+# ── shared fakes (pattern from test_deal_forecast_wells) ─────────────────────
 
 class _FakeStore:
     def __init__(self):

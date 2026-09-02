@@ -12,7 +12,7 @@ a mid-transfer network failure can retry the same URL inside the TTL;
 Export links (server/exports.py) deliberately never consume: a browser retries,
 a person double-clicks, a download manager issues range requests, and all
 three must work. There the TTL alone bounds the grant.
-Same in-memory pattern as utils.briefing_handle_store (one server process;
+Same in-memory pattern as utils.map_handle_store (one server process;
 a lost token after a restart costs one cheap re-mint).
 """
 

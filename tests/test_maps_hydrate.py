@@ -80,9 +80,9 @@ def test_hydrate_map_builds_data_and_static_layers(monkeypatch):
 
     out = hydrate_map(_spec())
 
-    # Security invariant: data SQL runs under WIDGET_SCHEMAS (excludes shapes),
+    # Security invariant: layer SQL runs under MAP_SCHEMAS (excludes shapes),
     # never EXPLORATION_SCHEMAS.
-    assert captured["allowed_schemas"] is hydrate_mod.WIDGET_SCHEMAS
+    assert captured["allowed_schemas"] is hydrate_mod.MAP_SCHEMAS
 
     assert out["layers"][0]["feature_count"] == 1
     assert out["layers"][0]["geojson"]["features"][0]["properties"]["operator"] == "EOG"

@@ -61,7 +61,7 @@ def test_run_sql_passes_200_row_cap(patched_identity, monkeypatch):
     mcp_server.run_sql(sql="SELECT 1")
     assert captured["row_cap"] == 200
     assert captured["size_cap_bytes"] == 100_000
-    # Schema scope = exploration (wider than widget hydration).
+    # Schema scope = exploration (wider than map-layer hydration).
     from utils.schemas import EXPLORATION_SCHEMAS
     assert captured["allowed_schemas"] == EXPLORATION_SCHEMAS
 

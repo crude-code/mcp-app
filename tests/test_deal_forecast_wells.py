@@ -1,4 +1,4 @@
-# tests/test_valuation_forecast_unified.py — forecast_wells_for_run, accept-and-echo.
+# tests/test_deal_forecast_wells.py — forecast_wells_for_run, accept-and-echo.
 import numpy as np
 import pytest
 from datetime import date

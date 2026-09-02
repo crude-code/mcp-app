@@ -49,7 +49,7 @@ def test_map_happy_path_returns_token(patched_identity, monkeypatch):
 
 
 def test_map_read_full_returns_spec(patched_identity, monkeypatch):
-    token = mcp_server._briefing_handles.mint(
+    token = mcp_server._map_handles.mint(
         user_slug="test-slug", spec={"title": "T", "layers": []}
     )
     out = json.loads(mcp_server.map_read_full(token=token))
@@ -63,7 +63,7 @@ def test_map_read_full_unknown_token(patched_identity):
 
 def test_map_read_full_rejects_other_users_token(patched_identity):
     # patched_identity = "test-slug"; mint under a different slug
-    token = mcp_server._briefing_handles.mint(
+    token = mcp_server._map_handles.mint(
         user_slug="other-slug", spec={"title": "secret", "layers": []}
     )
     out = json.loads(mcp_server.map_read_full(token=token))

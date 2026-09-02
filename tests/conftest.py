@@ -53,3 +53,19 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if "db" in item.keywords:
             item.add_marker(skip_db)
+
+
+@pytest.fixture
+def identity(monkeypatch):
+    """A resolved caller for tool tests — the shape resolve_identity returns."""
+    import server.mcp_server as srv
+    monkeypatch.setattr(srv, "get_current_identity",
+                        lambda: {"user_id": 7, "user_slug": "test-slug",
+                                 "user_name": "Test User", "user_email": "test@example.com",
+                                 "org_name": "Test Org"})
+
+
+@pytest.fixture
+def no_identity(monkeypatch):
+    import server.mcp_server as srv
+    monkeypatch.setattr(srv, "get_current_identity", lambda: None)

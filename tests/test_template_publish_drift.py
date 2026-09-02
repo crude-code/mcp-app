@@ -98,3 +98,12 @@ def test_deploy_scripts_publish_skill_files_under_the_server_naming():
         assert "find skills -mindepth 2 -maxdepth 2 -type f ! -name 'SKILL.md'" in text, script
         assert 'sha256sum "$f" | cut -c1-12' in text, script
         assert 'skill-${SKILL_SHA}-$(basename "$f")' in text, script
+
+
+def test_the_frozen_template_is_artifact_safe():
+    """The template must run in the claude.ai artifact sandbox: react/recharts
+    only, no host APIs, no renderer CSS vars."""
+    jsx = ap.load_viewer()
+    assert "export default function App" in jsx
+    assert "callServerTool" not in jsx     # no host-API leakage
+    assert "var(--" not in jsx             # no CSS-var leakage

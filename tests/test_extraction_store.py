@@ -154,6 +154,12 @@ def test_blob_mode_round_trip_against_supabase():
     store = ExtractionStore(blobs)
     eid = store.save(user_id=VALUATION_TEST_USER_ID, extraction=_SAMPLE,
                      label="blob round trip")
-    rec = store.get(eid)
-    assert rec["extraction"][STORAGE_KEY_FIELD] == f"extractions/{eid}.json"
-    assert store.get_payload(eid) == _SAMPLE
+    try:
+        rec = store.get(eid)
+        assert rec["extraction"][STORAGE_KEY_FIELD] == f"extractions/{eid}.json"
+        assert store.get_payload(eid) == _SAMPLE
+    finally:
+        # The session purge deletes the row; the object would outlive it.
+        import httpx
+        httpx.delete(f"{blobs._base}/storage/v1/object/{blobs.bucket}/extractions/{eid}.json",
+                     headers=blobs._headers(), timeout=30.0)

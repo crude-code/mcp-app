@@ -2,7 +2,7 @@
 
 import pytest
 
-from utils.sql_guard import GuardError, validate_select
+from utils.sql_guard import GuardError, run_guarded, validate_schema, validate_select
 
 
 def test_rejects_insert():
@@ -48,9 +48,6 @@ def test_allows_with_cte():
 
 def test_strips_trailing_semicolon():
     assert validate_select("SELECT 1;") == "SELECT 1"
-
-
-from utils.sql_guard import validate_schema
 
 
 def test_validate_schema_accepts_allowed():
@@ -105,8 +102,6 @@ def test_allows_short_table_aliases_in_joins():
 def test_still_rejects_longer_blocked_schemas():
     # The new short-prefix bypass must NOT let through real blocked schemas,
     # which are all 6+ chars.
-    import pytest
-    from utils.sql_guard import GuardError
     for sql in (
         "SELECT * FROM platform.users",
         "SELECT * FROM shapes.basins",
@@ -114,9 +109,6 @@ def test_still_rejects_longer_blocked_schemas():
     ):
         with pytest.raises(GuardError):
             validate_select(sql)
-
-
-from utils.sql_guard import run_guarded
 
 
 ROW_CAP = 3

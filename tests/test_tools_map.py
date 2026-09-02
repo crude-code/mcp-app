@@ -1,19 +1,5 @@
 import json
-import pytest
 from server import mcp_server
-
-
-@pytest.fixture
-def patched_identity(monkeypatch):
-    monkeypatch.setattr(
-        mcp_server, "get_current_identity",
-        lambda: {"user_slug": "test-slug", "user_id": "test-user"},
-    )
-
-
-@pytest.fixture
-def no_identity(monkeypatch):
-    monkeypatch.setattr(mcp_server, "get_current_identity", lambda: None)
 
 
 VALID_SPEC = {
@@ -29,13 +15,13 @@ def test_map_rejects_without_identity(no_identity):
     assert "error" in out
 
 
-def test_map_rejects_bad_spec(patched_identity):
+def test_map_rejects_bad_spec(identity):
     out = json.loads(mcp_server.map_render(spec={"layers": []}))
     assert "error" in out
     assert "layers" in out["error"]
 
 
-def test_map_happy_path_returns_token(patched_identity, monkeypatch):
+def test_map_happy_path_returns_token(identity, monkeypatch):
     monkeypatch.setattr(mcp_server, "hydrate_map", lambda spec: {
         "title": "T", "basemap": "osm", "view": {"fit": "data"},
         "static_layers": [],
@@ -48,7 +34,7 @@ def test_map_happy_path_returns_token(patched_identity, monkeypatch):
     assert out["layers"] == [{"id": "wells", "label": "Wells", "feature_count": 3}]
 
 
-def test_map_read_full_returns_spec(patched_identity, monkeypatch):
+def test_map_read_full_returns_spec(identity, monkeypatch):
     token = mcp_server._map_handles.mint(
         user_slug="test-slug", spec={"title": "T", "layers": []}
     )
@@ -56,13 +42,13 @@ def test_map_read_full_returns_spec(patched_identity, monkeypatch):
     assert out["spec"]["title"] == "T"
 
 
-def test_map_read_full_unknown_token(patched_identity):
+def test_map_read_full_unknown_token(identity):
     out = json.loads(mcp_server.map_read_full(token="nope"))
     assert "error" in out
 
 
-def test_map_read_full_rejects_other_users_token(patched_identity):
-    # patched_identity = "test-slug"; mint under a different slug
+def test_map_read_full_rejects_other_users_token(identity):
+    # identity = "test-slug"; mint under a different slug
     token = mcp_server._map_handles.mint(
         user_slug="other-slug", spec={"title": "secret", "layers": []}
     )

@@ -6,18 +6,11 @@ import json
 import re
 from pathlib import Path
 
-import pytest
 
 import server.mcp_server as srv
 import utils.prompts as prompts
 
 _ROOT = Path(__file__).resolve().parent.parent
-
-
-@pytest.fixture
-def identity(monkeypatch):
-    monkeypatch.setattr(srv, "get_current_identity",
-                        lambda: {"user_slug": "acme", "user_id": 7})
 
 
 def _stub_valuation(monkeypatch):

@@ -1,31 +1,18 @@
 # tests/test_valuation_evidence.py — analog_cohort validation + evidence assembly.
 import numpy as np
 import pytest
-from datetime import date
 
 from dateutil.relativedelta import relativedelta
 
-import server.valuation.orchestrator as orch
 from server.valuation.evidence import build_evidence, collect_analog_apis
 from server.valuation.forecast import curve_to_dict, make_curve
 from server.valuation.orchestrator import (
     ForecastValidationError, forecast_wells_for_run,
 )
 from server.valuation.types import WellMeta
+from tests.valuation_fakes import FUTURE, TODAY, patch_engine
 
 
-# ── shared fakes (pattern from test_deal_forecast_wells) ─────────────────────
-
-class _FakeStore:
-    def __init__(self):
-        self.stages = {}
-        self.records = {}
-    def new_run(self, *, user_id, case_file):
-        self.records["run-1"] = {"run_id": "run-1", "user_id": user_id}
-        return "run-1"
-    def write_stage(self, run_id, *, stage, payload): self.stages[stage] = payload
-    def read_stage(self, run_id, *, stage): return self.stages.get(stage)
-    def get(self, run_id): return self.records.get(run_id)
 
 
 def _meta(api, status, lateral=10000.0, n_hist=0, geom=None, name=None, operator="MEWBOURNE"):
@@ -35,22 +22,8 @@ def _meta(api, status, lateral=10000.0, n_hist=0, geom=None, name=None, operator
                     geom_wkt=geom, operator=operator, well_name=name)
 
 
-def _patch(monkeypatch, metas, prod, store=None):
-    store = store or _FakeStore()
-    monkeypatch.setattr(orch, "ValuationRunStore", lambda: store)
-    monkeypatch.setattr(orch, "bulk_load_wells", lambda apis: [metas[a] for a in apis if a in metas])
-    monkeypatch.setattr(orch, "bulk_load_production",
-                        lambda apis: {a: prod.get(a, {"months": [], "oil_bbl": [], "gas_mcf": []})
-                                      for a in apis})
-    return store
-
-
-_TODAY = date.today().replace(day=1)
-_FUTURE = (_TODAY + relativedelta(months=6)).strftime("%Y-%m")
-
-
 def _hist(n, qi=900.0, d=0.06):
-    months = [(_TODAY - relativedelta(months=n - i)).isoformat() for i in range(n)]
+    months = [(TODAY - relativedelta(months=n - i)).isoformat() for i in range(n)]
     oil = list(qi * np.exp(-d * np.arange(n)))
     return {"months": months, "oil_bbl": oil, "gas_mcf": [0.0] * n}
 
@@ -60,7 +33,7 @@ def _pud_entry(**over):
         "wells": ["PUD1"],
         "oil": {"qi": 21000, "di": 0.24, "b": 1.2},
         "gas": None,
-        "anchor_month": _FUTURE,
+        "anchor_month": FUTURE,
         "rationale": "type curve from the kept analogs, qi scaled to the planned lateral",
         "analog_cohort": {
             "curve_label": "Wolfcamp A · 10,000 ft",
@@ -85,7 +58,7 @@ def _analog_world(monkeypatch, store=None, **meta_over):
     }
     metas.update(meta_over)
     prod = {"AN1": _hist(30), "AN2": _hist(28, qi=700.0)}
-    return _patch(monkeypatch, metas, prod, store=store)
+    return patch_engine(monkeypatch, metas, prod, store=store)
 
 
 def _violation_fields(excinfo):

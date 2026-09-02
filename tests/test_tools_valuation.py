@@ -70,18 +70,6 @@ def test_deal_valuation_tool_returns_artifact_payload(monkeypatch):
     assert out["viewer_url"].endswith(f"deal-sheet-{out['viewer_sha256'][:12]}.jsx")
 
 
-def test_deal_sheet_viewer_is_artifact_safe():
-    """The template must run in the claude.ai artifact sandbox: react/recharts
-    only, no host APIs, no renderer CSS vars."""
-    from server.valuation.artifact_payload import load_viewer
-    jsx = load_viewer()
-    assert "export default function App" in jsx
-    assert "callServerTool" not in jsx     # no host-API leakage
-    assert "var(--" not in jsx             # no CSS-var leakage
-
-
-
-
 def test_deal_valuation_refuses_a_run_the_caller_does_not_own(monkeypatch):
     """Ownership is proven inside run_valuation_for_run (it writes the run's
     economics stage); the tool turns the refusal into a plain error."""

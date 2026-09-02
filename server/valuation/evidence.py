@@ -12,10 +12,8 @@ Pure assembly — all DB loads are done by the caller (the orchestrator) and
 passed in, mirroring `deal_sheet.py`.
 """
 import math
-from datetime import date
 
 import numpy as np
-from dateutil.relativedelta import relativedelta
 
 from server.valuation import config
 from server.valuation.econ import npv
@@ -52,11 +50,6 @@ def _series(curve_dict: dict | None, n: int) -> np.ndarray:
     if not curve_dict or n <= 0:
         return np.zeros(max(n, 0))
     return np.asarray(curve_rate(_curve_from_dict(curve_dict), np.arange(n, dtype=float)))
-
-
-def _month_add(ym: str, months: int) -> str:
-    d = date.fromisoformat(ym[:7] + "-01") + relativedelta(months=months)
-    return d.strftime("%Y-%m")
 
 
 def _months_between(a: str, b: str) -> int:

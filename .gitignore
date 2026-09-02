@@ -9,15 +9,10 @@ __pycache__/
 
 # --- Node / renderer ---
 node_modules/
-renderer/src/App.css
-renderer/src/assets/
-renderer/public/icons.svg
 
 # --- Runtime / scratch ---
 logs/
 results/
-sessions/
-test_output/
 .DS_Store
 repomix-*
 

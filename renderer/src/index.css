@@ -49,11 +49,5 @@
   }
 }
 
-/* Tabular nums on every monospace element by default. */
-.font-mono,
-[class*="font-mono"] {
-  font-variant-numeric: tabular-nums;
-}
-
 @keyframes spin          { to { transform: rotate(360deg); } }
 

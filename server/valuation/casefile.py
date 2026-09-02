@@ -1,7 +1,9 @@
-"""Case file parsing for the valuation agent.
+"""Deal-terms validation for `deal_valuation`.
 
-Validates the JSON contract the MCP tool sends, returns a typed CaseFile
-the rest of the server can read without re-checking shapes.
+`parse_run_params` validates the `params` object the tool receives and
+returns a typed CaseFile the orchestrator can read without re-checking
+shapes: interest type + blanket interest (with optional per-well `by_api`
+overrides), the asset list, and the pinned `economics_overrides` schema.
 """
 from dataclasses import dataclass, field
 
@@ -22,14 +24,8 @@ class CaseFile:
     interest: dict                                  # {wi_pct, nri_pct} or {decimal}
     asset_list: dict                                # {well_apis: [...]} XOR {filter_sql: "..."}
     economics_overrides: dict = field(default_factory=dict)
-    transcript: list = field(default_factory=list)
-    queries_run: list = field(default_factory=list)
-    handoff: str = ""
-    source_documents: list = field(default_factory=list)
-    well_facts: dict = field(default_factory=dict)   # {"<api>": {"lateral_ft": float}} — fill-only DB overrides
 
 
-_ALLOWED_WELL_FACTS = {"lateral_ft"}
 _DISCOUNT_STATUSES = {"PDP", "DUC", "PUD"}
 _TIMING_STATUSES = {"DUC", "PUD"}        # only non-producing wells have a scheduled online date
 
@@ -60,9 +56,8 @@ def _check_money(v, label: str, *, allow_negative: bool = False) -> None:
 
 
 def _validate_deal_terms(body: dict) -> dict:
-    """Validate the deal-terms portion of a case file / run params:
-    interest_type, interest (incl. by_api), asset_list, economics_overrides.
-    Does NOT validate handoff/transcript. Raises CaseFileError. Returns the
+    """Validate the deal terms: interest_type, interest (incl. by_api),
+    asset_list, economics_overrides. Raises CaseFileError. Returns the
     validated/normalized fields."""
     if not isinstance(body, dict):
         raise CaseFileError(f"case file must be an object, got {type(body).__name__}")
@@ -278,70 +273,12 @@ def _validate_deal_terms(body: dict) -> dict:
 
 
 def parse_run_params(params: dict) -> CaseFile:
-    """Validate deal_valuation's ``params`` (interest + asset_list + economics_overrides)
-    WITHOUT the agent-framing fields (handoff/transcript). Raises CaseFileError on bad
-    input. Returns a CaseFile with empty transcript/handoff (their dataclass defaults)."""
+    """Validate deal_valuation's ``params`` (interest + asset_list +
+    economics_overrides). Raises CaseFileError on bad input."""
     terms = _validate_deal_terms(params)
     return CaseFile(
         interest_type=terms["interest_type"],
         interest=terms["interest"],
         asset_list=terms["asset_list"],
         economics_overrides=terms["economics_overrides"],
-    )
-
-
-def parse_case_file(body: dict) -> CaseFile:
-    """Validate + parse the case file body. Raises CaseFileError on any failure."""
-    terms = _validate_deal_terms(body)
-    interest_type = terms["interest_type"]
-    interest = terms["interest"]
-    asset_list = terms["asset_list"]
-    economics_overrides = terms["economics_overrides"]
-
-    handoff = body.get("handoff")
-    if not isinstance(handoff, str) or not handoff.strip():
-        raise CaseFileError("handoff is required and must be a non-empty string")
-
-    transcript = body.get("transcript")
-    if not isinstance(transcript, list) or len(transcript) == 0:
-        raise CaseFileError("transcript is required and must be a non-empty list")
-    for i, turn in enumerate(transcript):
-        if not isinstance(turn, dict):
-            raise CaseFileError(f"transcript[{i}] must be an object")
-        if turn.get("role") not in ("user", "assistant"):
-            raise CaseFileError(f"transcript[{i}].role must be 'user' or 'assistant'")
-        if not isinstance(turn.get("content"), str):
-            raise CaseFileError(f"transcript[{i}].content must be a string")
-
-    queries_run = body.get("queries_run", [])
-    if not isinstance(queries_run, list):
-        raise CaseFileError("queries_run must be a list")
-
-    source_documents = body.get("source_documents", []) or []
-    if not isinstance(source_documents, list):
-        raise CaseFileError("source_documents must be a list")
-
-    well_facts = body.get("well_facts", {}) or {}
-    if not isinstance(well_facts, dict):
-        raise CaseFileError("well_facts must be an object keyed by well API")
-    for api, facts in well_facts.items():
-        if not isinstance(facts, dict):
-            raise CaseFileError(f"well_facts[{api!r}] must be an object, e.g. {{'lateral_ft': 15398}}")
-        unknown = set(facts) - _ALLOWED_WELL_FACTS
-        if unknown:
-            raise CaseFileError(f"well_facts[{api!r}] has unknown key(s): {sorted(unknown)}")
-        lat = facts.get("lateral_ft")
-        if lat is not None and (isinstance(lat, bool) or not isinstance(lat, (int, float)) or lat <= 0):
-            raise CaseFileError(f"well_facts[{api!r}].lateral_ft must be a positive number, got {lat!r}")
-
-    return CaseFile(
-        interest_type=interest_type,
-        interest=interest,
-        asset_list=asset_list,
-        economics_overrides=economics_overrides,
-        transcript=transcript,
-        queries_run=queries_run,
-        handoff=handoff.strip(),
-        source_documents=source_documents,
-        well_facts=well_facts,
     )

@@ -33,6 +33,7 @@ def _get_pool() -> ConnectionPool:
             conninfo=conninfo,
             min_size=2,
             max_size=20,
+            open=True,
             check=ConnectionPool.check_connection,
         )
     return _pool
@@ -76,13 +77,3 @@ def query(
             except Exception:
                 pass
             raise
-
-
-def execute(sql: str | Composed, params: tuple | list | None = None, schema: str = "public") -> int:
-    """Run an INSERT/UPDATE/DELETE and return rows affected."""
-    pool = _get_pool()
-    with pool.connection() as conn:
-        conn.execute(SQL("SET search_path TO {}, public").format(Identifier(schema)))
-        cur = conn.execute(sql, params)
-        conn.commit()
-        return cur.rowcount

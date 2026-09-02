@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from datetime import date
 
-from server.valuation.forecast import aggregate, curve_rate, make_curve, make_zero_curve, project
+from server.valuation.forecast import curve_rate, make_curve, make_zero_curve, project
 from server.valuation.types import DeclineCurve, Forecast, ForecastProvenance
 
 
@@ -16,21 +16,6 @@ def _curve(qi=1000.0, di=0.05, b=0.8, switch=120.0, stream="oil"):
         stream=stream,
         provenance=ForecastProvenance(source="asserted", strategy="asserted"),
     )
-
-
-def test_decline_curve_has_no_lateral_norm_ft():
-    """Lateral normalization is gone from the model."""
-    assert not hasattr(_curve(), "lateral_norm_ft")
-
-
-def test_forecast_has_no_lateral_scale():
-    f = Forecast(
-        curve=_curve(),
-        peak_date=date(2024, 1, 1),
-        start_date=date(2024, 6, 1),
-        provenance=ForecastProvenance(source="asserted"),
-    )
-    assert not hasattr(f, "lateral_scale")
 
 
 # ── make_curve: the switch-month formula's one home ──────────────────────────
@@ -99,49 +84,6 @@ def test_project_horizon_months():
     assert len(rates) == 360
     assert rates[0] == pytest.approx(1000.0)     # anchor rate: q(0) == qi
     assert rates[0] > rates[-1]                  # decline
-
-
-def test_aggregate_sums_streams():
-    forecasts = [
-        Forecast(curve=_curve(qi=qi), peak_date=date(2024, 1, 1),
-                 start_date=date(2024, 1, 1),
-                 provenance=ForecastProvenance(source="asserted"))
-        for qi in (500.0, 700.0)
-    ]
-    months, totals = aggregate(forecasts, horizon_months=12)
-    assert len(months) == 12
-    assert totals[0] == pytest.approx(1200.0)    # exact: sum of qis at t=0
-
-
-def _flat_forecast(qi, start):
-    """A forecast with peak == start so project starts at qi (no peak offset)."""
-    c = _curve(qi=qi, switch=float("inf"))
-    return Forecast(curve=c, peak_date=start, start_date=start,
-                    provenance=ForecastProvenance(source="asserted"))
-
-
-def test_aggregate_origin_offsets_future_wells():
-    """A well coming online after the origin contributes zeros until that month,
-    then jumps in at qi — this is the calendar alignment economics relies on."""
-    origin = date(2026, 6, 1)
-    producing = _flat_forecast(1000.0, origin)               # online at month 0
-    future = _flat_forecast(2000.0, date(2028, 6, 1))        # online at month 24
-    months, totals = aggregate([producing, future], horizon_months=36, origin=origin)
-
-    assert months[0] == origin
-    assert totals[0] == pytest.approx(1000.0)  # month 0: only the producer, at qi
-    assert totals[23] < 1000.0                 # month 23: future still offline, producer declined
-    assert totals[24] - totals[23] > 1500.0    # month 24: future comes online at qi 2000
-
-
-def test_aggregate_origin_clamps_a_well_already_producing_before_origin():
-    """A well whose start_date precedes the origin (a producer flowing at the
-    as-of date) lands at month 0, not a negative index."""
-    origin = date(2026, 6, 1)
-    already_flowing = _flat_forecast(800.0, date(2024, 1, 1))   # started well before origin
-    months, totals = aggregate([already_flowing], horizon_months=12, origin=origin)
-    assert months[0] == origin
-    assert totals[0] > 0.0                     # contributes from month 0, not dropped
 
 
 def test_project_respects_peak_to_start_offset():

@@ -1,8 +1,8 @@
 """Server-owned catalog of static (reference) map layers.
 
 Claude names these; the server owns the SQL, the style, and the spatial clip
-to the data-layer extent. These queries touch `shapes.*` (which free-form
-widget SQL may NOT) and so run as trusted server queries via
+to the data-layer extent. These queries touch `shapes.*` (which a Claude-authored
+data-layer query may NOT) and so run as trusted server queries via
 utils.db.query — never through the SQL guard.
 
 `counties` is intentionally absent: there is no county-polygon geometry table

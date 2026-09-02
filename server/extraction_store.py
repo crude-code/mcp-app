@@ -150,19 +150,3 @@ class ExtractionStore:
         rec = rows[0]
         rec["extraction_id"] = str(rec["extraction_id"])
         return rec
-
-    def list_for_user(self, user_id: int) -> list[dict]:
-        """Newest-first index of a user's extractions — id, label, timestamps.
-        No payload blob, so it stays cheap at any count."""
-        rows = _query(
-            """
-            SELECT extraction_id, label, created_at, updated_at
-            FROM platform.dataroom_extractions
-            WHERE user_id = %s
-            ORDER BY created_at DESC
-            """,
-            params=[user_id],
-        )
-        for rec in rows:
-            rec["extraction_id"] = str(rec["extraction_id"])
-        return rows

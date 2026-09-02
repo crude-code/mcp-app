@@ -1,6 +1,4 @@
 """Bulk DB access for the engine. One SQL query per call, regardless of N."""
-import dataclasses
-
 from utils.db import query as _query
 from server.valuation.types import WellMeta
 
@@ -30,16 +28,15 @@ def bulk_load_wells(apis: list[str]) -> list[WellMeta]:
     quoted = _quote_apis(apis)
     sql = f"""
         WITH p AS (
-            SELECT well_api, COUNT(*) AS n_months, MAX(prod_date) AS last_prod
+            SELECT well_api, COUNT(*) AS n_months
             FROM public.production
             WHERE well_api IN ({quoted})
             GROUP BY well_api
         )
         SELECT
             w.well_api, w.well_name, w.well_status, w.basin, w.formation, w.county,
-            w.lateral_length_ft, w.spud_date, w.completion_date, w.first_prod_date, w.operator,
+            w.lateral_length_ft, w.operator,
             COALESCE(p.n_months, 0) AS n_history_months,
-            p.last_prod AS last_prod_date,
             -- Always a POINT: geom is a POINT for permits/verticals but a
             -- LINESTRING survey for drilled horizontals, and WellMeta.geom_wkt
             -- promises a point (evidence's schematic map parses POINT only).
@@ -57,12 +54,6 @@ def bulk_load_wells(apis: list[str]) -> list[WellMeta]:
     rows = _query(sql, schema="public", statement_timeout_ms=15_000)
     out: list[WellMeta] = []
     for r in rows:
-        spud = r.get("spud_date")
-        first_prod = r.get("first_prod_date")
-        # planned_first_prod_date is NOT computed here — it depends on the
-        # valuation as-of date (effective_date or today), which the loader
-        # doesn't know. The orchestrator stamps it by well status; see
-        # server.valuation.config.planned_first_prod_date.
         out.append(WellMeta(
             api=r["well_api"],
             status=r["well_status"],
@@ -70,37 +61,11 @@ def bulk_load_wells(apis: list[str]) -> list[WellMeta]:
             formation=r.get("formation"),
             county=r.get("county"),
             lateral_ft=float(r["lateral_length_ft"]) if r.get("lateral_length_ft") else None,
-            spud_date=spud,
-            completion_date=r.get("completion_date"),
-            first_prod_date=first_prod,
-            last_prod_date=r.get("last_prod_date"),
             n_history_months=int(r["n_history_months"]),
-            planned_first_prod_date=None,
             geom_wkt=r.get("geom_wkt"),
             operator=r.get("operator"),
             well_name=r.get("well_name"),
         ))
-    return out
-
-
-def apply_well_facts(metas: list[WellMeta], well_facts: dict) -> list[WellMeta]:
-    """Fill-only application of user-supplied per-well physical facts.
-
-    A supplied ``lateral_ft`` lands on a WellMeta ONLY when its DB-derived
-    ``lateral_ft`` is missing (None). The DB value always wins when present, so
-    well_facts is strictly a gap-filler for un-drilled permits whose lateral
-    isn't on record yet. Wells not present in ``well_facts`` pass through
-    untouched. Pure — no DB, no I/O.
-    """
-    if not well_facts:
-        return metas
-    out = []
-    for m in metas:
-        facts = well_facts.get(m.api)
-        if facts and m.lateral_ft is None and facts.get("lateral_ft") is not None:
-            out.append(dataclasses.replace(m, lateral_ft=float(facts["lateral_ft"])))
-        else:
-            out.append(m)
     return out
 
 

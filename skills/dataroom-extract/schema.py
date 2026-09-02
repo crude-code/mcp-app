@@ -14,7 +14,7 @@ economics_overrides. `Well.public_well_object` is left null in this sandbox
 """
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 

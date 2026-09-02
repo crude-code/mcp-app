@@ -1,7 +1,13 @@
 # tests/test_valuation_econ.py
 import numpy as np
 import pytest
-from server.valuation.econ import compute_gross_revenue, compute_net_cashflow, npv
+from server.valuation.econ import cashflow_components, compute_gross_revenue, npv
+
+
+def _net(**kw):
+    """The holder's net monthly cashflow — the one component the old
+    compute_net_cashflow wrapper returned."""
+    return cashflow_components(**kw)["net_cashflow"]
 
 
 def test_compute_gross_revenue_flat_deck():
@@ -27,9 +33,9 @@ def test_compute_gross_revenue_converts_mcf_to_mmbtu():
     assert np.allclose(rev_default, 1000.0 * config.ECON.gas_btu_factor * 4.0)
 
 
-def test_compute_net_cashflow_wi():
+def test_net_cashflow_wi():
     gross_rev = np.array([10_000.0, 10_000.0])
-    cf = compute_net_cashflow(
+    cf = _net(
         gross_rev=gross_rev,
         interest_type="wi",
         wi_pct=0.50, nri_pct=0.40,
@@ -45,9 +51,9 @@ def test_compute_net_cashflow_wi():
     assert cf[1] > 0
 
 
-def test_compute_net_cashflow_minerals():
+def test_net_cashflow_minerals():
     gross_rev = np.array([10_000.0, 10_000.0])
-    cf = compute_net_cashflow(
+    cf = _net(
         gross_rev=gross_rev,
         interest_type="minerals",
         decimal=0.05,
@@ -67,19 +73,19 @@ def test_npv_discounts_correctly():
     assert abs(npv(cf, annual_rate=0.0) - 1_200.0) < 0.01
 
 
-def test_compute_net_cashflow_wi_missing_params_raises():
+def test_net_cashflow_wi_missing_params_raises():
     with pytest.raises(ValueError, match="wi_pct"):
-        compute_net_cashflow(gross_rev=np.array([1.0]), interest_type="wi")
+        _net(gross_rev=np.array([1.0]), interest_type="wi")
 
 
-def test_compute_net_cashflow_minerals_missing_decimal_raises():
+def test_net_cashflow_minerals_missing_decimal_raises():
     with pytest.raises(ValueError, match="decimal"):
-        compute_net_cashflow(gross_rev=np.array([1.0]), interest_type="minerals")
+        _net(gross_rev=np.array([1.0]), interest_type="minerals")
 
 
-def test_compute_net_cashflow_unknown_type_raises():
+def test_net_cashflow_unknown_type_raises():
     with pytest.raises(ValueError, match="unknown interest_type"):
-        compute_net_cashflow(gross_rev=np.array([1.0]), interest_type="npi")
+        _net(gross_rev=np.array([1.0]), interest_type="npi")
 
 
 def test_cashflow_components_wi_breaks_out_line_items():
@@ -123,14 +129,6 @@ def test_cashflow_components_minerals_no_gpt_capex_opex():
     assert comp["capex"][0] == 0.0      # ignored for minerals
     assert comp["opex"][0] == 0.0
     assert np.allclose(comp["net_cashflow"], gross * 0.05 * (1 - 0.075))
-
-
-def test_compute_net_cashflow_matches_components():
-    from server.valuation.econ import cashflow_components, compute_net_cashflow
-    gross = np.array([10_000.0, 9_000.0])
-    kw = dict(gross_rev=gross, interest_type="wi", wi_pct=0.5, nri_pct=0.4,
-              capex_per_month=np.array([1_000.0, 0.0]), opex_per_month=np.array([200.0, 200.0]))
-    assert np.allclose(compute_net_cashflow(**kw), cashflow_components(**kw)["net_cashflow"])
 
 
 # ── per-well interest resolution (blanket + by_api overrides) ──────────────

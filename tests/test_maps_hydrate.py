@@ -1,6 +1,6 @@
 from server.maps.hydrate import (
     _rows_to_featurecollection,
-    _bbox_of,
+    bbox_of,
     _extent_wkt,
 )
 
@@ -30,11 +30,11 @@ def test_bbox_of_line_features():
                           "coordinates": [[-105, 40], [-104, 41]]}},
         ]
     }
-    assert _bbox_of(fc) == (-105, 40, -104, 41)
+    assert bbox_of(fc) == (-105, 40, -104, 41)
 
 
 def test_bbox_of_empty_is_none():
-    assert _bbox_of({"features": []}) is None
+    assert bbox_of({"features": []}) is None
 
 
 def test_extent_wkt_pads_and_closes_ring():

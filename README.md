@@ -65,8 +65,7 @@ cd renderer && npm install && npm run build   # -> dist/app.html
 .venv/bin/pytest -q
 ```
 
-Tests that need a database, the Anthropic API, or network access auto-skip when
-the corresponding environment variable is unset.
+Tests marked `db` need the database and auto-skip when `CC_DB_URL` is unset.
 
 ## Maintenance & contributions
 

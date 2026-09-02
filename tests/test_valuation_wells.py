@@ -1,48 +1,7 @@
 
 import pytest
 
-from server.valuation.types import WellMeta
-from server.valuation.wells import apply_well_facts, bulk_load_wells, bulk_load_production
-
-
-def _wf_meta(api, lateral_ft):
-    return WellMeta(
-        api=api, status="PERMITTED", basin="DJ", formation="NIOBRARA A",
-        county="WELD", lateral_ft=lateral_ft, spud_date=None,
-        completion_date=None, first_prod_date=None, last_prod_date=None,
-        n_history_months=0, planned_first_prod_date=None,
-        geom_wkt="POINT(-104.5 40.3)", operator="CHEVRON",
-    )
-
-
-def test_apply_well_facts_fills_when_db_null():
-    metas = [_wf_meta("33-053-10751", None)]
-    out = apply_well_facts(metas, {"33-053-10751": {"lateral_ft": 15398}})
-    assert out[0].lateral_ft == 15398.0
-
-
-def test_apply_well_facts_db_wins_when_present():
-    metas = [_wf_meta("33-053-10751", 9800.0)]
-    out = apply_well_facts(metas, {"33-053-10751": {"lateral_ft": 15398}})
-    assert out[0].lateral_ft == 9800.0
-
-
-def test_apply_well_facts_passes_through_unlisted_wells():
-    metas = [_wf_meta("33-053-10751", None)]
-    out = apply_well_facts(metas, {"99-999-99999": {"lateral_ft": 12000}})
-    assert out[0].lateral_ft is None
-
-
-def test_apply_well_facts_empty_map_is_noop():
-    metas = [_wf_meta("33-053-10751", None), _wf_meta("33-053-99999", 9800.0)]
-    out = apply_well_facts(metas, {})
-    assert [m.lateral_ft for m in out] == [None, 9800.0]
-
-
-def test_apply_well_facts_entry_without_lateral_is_noop():
-    metas = [_wf_meta("33-053-10751", None)]
-    out = apply_well_facts(metas, {"33-053-10751": {}})
-    assert out[0].lateral_ft is None
+from server.valuation.wells import bulk_load_wells, bulk_load_production
 
 
 @pytest.mark.db

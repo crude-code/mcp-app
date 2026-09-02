@@ -44,17 +44,3 @@ class TeamMessageStore:
             params=[user_id, minutes],
         )
         return int(rows[0]["n"])
-
-    def get(self, message_id: str) -> dict | None:
-        rows = _query(
-            "SELECT * FROM platform.team_messages WHERE message_id = %s",
-            params=[message_id],
-        )
-        if not rows:
-            return None
-        rec = rows[0]
-        if rec.get("message_id") is not None:
-            rec["message_id"] = str(rec["message_id"])
-        if isinstance(rec.get("context"), str):
-            rec["context"] = json.loads(rec["context"])
-        return rec

@@ -114,27 +114,6 @@ def cashflow_components(
     }
 
 
-def compute_net_cashflow(
-    *,
-    gross_rev: np.ndarray,
-    interest_type: Literal["wi", "minerals"],
-    capex_per_month: np.ndarray | None = None,
-    opex_per_month: np.ndarray | None = None,
-    tax_pct: float = config.ECON.tax_pct,
-    gpt_pct: float = config.ECON.gpt_pct,
-    wi_pct: float | None = None,
-    nri_pct: float | None = None,
-    decimal: float | None = None,
-) -> np.ndarray:
-    """Net monthly cashflow to the holder (the ``net_cashflow`` component)."""
-    return cashflow_components(
-        gross_rev=gross_rev, interest_type=interest_type,
-        capex_per_month=capex_per_month, opex_per_month=opex_per_month,
-        tax_pct=tax_pct, gpt_pct=gpt_pct, wi_pct=wi_pct, nri_pct=nri_pct,
-        decimal=decimal,
-    )["net_cashflow"]
-
-
 def npv(cashflow: np.ndarray, *, annual_rate: float) -> float:
     """Net present value of a monthly cashflow vector at a discrete annual rate,
     compounded monthly. Uses ordinary-annuity convention: each cashflow is

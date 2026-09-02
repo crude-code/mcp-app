@@ -30,9 +30,8 @@ class _FakeStore:
 
 def _meta(api, status, lateral=10000.0, n_hist=0, geom=None, name=None, operator="MEWBOURNE"):
     return WellMeta(api=api, status=status, basin="DELAWARE", formation="WOLFCAMP A",
-                    county="REEVES", lateral_ft=lateral, spud_date=None,
-                    completion_date=None, first_prod_date=None, last_prod_date=None,
-                    n_history_months=n_hist, planned_first_prod_date=None,
+                    county="REEVES", lateral_ft=lateral,
+                    n_history_months=n_hist,
                     geom_wkt=geom, operator=operator, well_name=name)
 
 

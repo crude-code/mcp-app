@@ -362,23 +362,6 @@ def test_build_schedule_totals_include_net_volumes():
                        sched["by_well"]["a"]["net_oil"] + sched["by_well"]["b"]["net_oil"])
 
 
-def test_well_meta_payload_includes_lateral_ft():
-    from server.valuation.orchestrator import _well_meta_payload
-    from server.valuation.types import WellMeta
-    m = WellMeta(
-        api="42-329-00001", status="PRODUCING", operator="OP",
-        basin="MIDLAND", formation="WOLFCAMP", county="MIDLAND",
-        lateral_ft=9800.0, spud_date=None, completion_date=None,
-        first_prod_date=None, last_prod_date=None, n_history_months=0,
-        planned_first_prod_date=None,
-    )
-    out = _well_meta_payload(["42-329-00001"], {"42-329-00001": m})
-    assert out["42-329-00001"]["lateral_ft"] == 9800.0
-    # missing well → None, not a crash
-    out2 = _well_meta_payload(["x"], {})
-    assert out2["x"]["lateral_ft"] is None
-
-
 # ── by_api membership: a typo'd API must not silently misprice ──────────────
 
 def test_validate_by_api_membership_raises_on_unknown_api():
@@ -452,26 +435,3 @@ def test_economics_from_forecasts_applies_gas_btu_factor():
 
 
 # ── _resolve_asset_list: cap + dedupe enforcement ──────────────────────────
-
-def test_resolve_asset_list_caps_well_apis():
-    from server.valuation.orchestrator import _resolve_asset_list
-    from server.valuation.casefile import MAX_ASSET_WELLS
-    apis = [f"42-{i:09d}" for i in range(MAX_ASSET_WELLS + 1)]
-    with pytest.raises(ValueError, match="at most"):
-        _resolve_asset_list({"well_apis": apis})
-
-
-def test_resolve_asset_list_dedupes():
-    from server.valuation.orchestrator import _resolve_asset_list
-    assert _resolve_asset_list({"well_apis": ["A", "B", "A"]}) == ["A", "B"]
-
-
-def test_resolve_asset_list_empty_raises_clear_error():
-    """{} (neither key) must be a clear ValueError, not KeyError("'filter_sql'")."""
-    from server.valuation.orchestrator import _resolve_asset_list
-    with pytest.raises(ValueError, match="well_apis or filter_sql"):
-        _resolve_asset_list({})
-
-
-
-

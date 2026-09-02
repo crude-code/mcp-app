@@ -48,25 +48,6 @@ def test_read_stage_rejects_unknown_stage():
 
 
 @pytest.mark.db
-def test_mark_complete_sets_status():
-    store = ValuationRunStore()
-    run_id = store.new_run(user_id=VALUATION_TEST_USER_ID, case_file={})
-    assert store.get(run_id)["status"] == "pending"   # minted as pending
-    store.mark_complete(run_id)
-    assert store.get(run_id)["status"] == "complete"
-
-
-@pytest.mark.db
-def test_mark_error_sets_status_and_message():
-    store = ValuationRunStore()
-    run_id = store.new_run(user_id=VALUATION_TEST_USER_ID, case_file={})
-    store.mark_error(run_id, error="something failed")
-    rec = store.get(run_id)
-    assert rec["status"] == "error"
-    assert rec["error"] == "something failed"
-
-
-@pytest.mark.db
 def test_get_returns_full_record():
     store = ValuationRunStore()
     run_id = store.new_run(user_id=VALUATION_TEST_USER_ID, case_file={"foo": "bar"})
@@ -82,19 +63,6 @@ def test_get_returns_none_for_missing_run():
     import uuid
     store = ValuationRunStore()
     assert store.get(str(uuid.uuid4())) is None
-
-
-@pytest.mark.db
-def test_update_case_file_clears_briefing_and_economics():
-    store = ValuationRunStore()
-    run_id = store.new_run(user_id=VALUATION_TEST_USER_ID, case_file={"interest_type": "wi"})
-    store.write_stage(run_id, stage="forecast", payload={"f": 1})
-    store.write_stage(run_id, stage="economics", payload={"e": 1})
-    store.write_stage(run_id, stage="briefing_spec", payload={"old": "spec"})
-    store.update_case_file(run_id, {"interest_type": "wi", "economics_overrides": {"oil_price": 80}})
-    assert store.read_stage(run_id, stage="briefing_spec") is None   # never serve stale
-    assert store.read_stage(run_id, stage="economics") is None       # must re-price
-    assert store.read_stage(run_id, stage="forecast") == {"f": 1}    # forecast survives terms change
 
 
 # ── require_run_owner: pure, against a duck-typed store ─────────────────────

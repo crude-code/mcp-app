@@ -12,11 +12,11 @@ __version__ = "0.7.1"
 
 import json as _json
 import logging as _logging
+import os as _os
 import sys
 from pathlib import Path
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-
+import sentry_sdk
 from fastmcp import FastMCP
 from fastmcp.server.apps import AppConfig
 from fastmcp.server.dependencies import get_http_request
@@ -44,7 +44,7 @@ from utils.briefing_handle_store import BriefingHandleStore
 from utils.schemas import EXPLORATION_SCHEMAS
 from utils.sql_guard import GuardError, dry_run, run_guarded
 
-_briefing_handles = BriefingHandleStore(ttl_seconds=86_400.0)  # 24h
+_briefing_handles = BriefingHandleStore()
 
 from server.valuation.orchestrator import (
     compose_artifact_payload_for_run, forecast_wells_for_run,
@@ -61,7 +61,7 @@ _DEAL_SHEET_VIEWER = load_viewer()
 _DEAL_SHEET_SHA256 = viewer_sha256()
 _DEAL_SHEET_URL = viewer_url(_DEAL_SHEET_SHA256)
 from server.maps.spec import parse_map_spec, MapSpecError
-from server.maps.hydrate import hydrate_map, MapHydrateError, _bbox_of as _map_bbox
+from server.maps.hydrate import hydrate_map, MapHydrateError, bbox_of as _map_bbox
 from server.skills import list_skills, load_skill, SkillNotFound
 from server import cuts as _cuts
 from server.blob_store import SupabaseBlobStore
@@ -94,8 +94,6 @@ _log_setup()
 # Sentry — exceptions in server code get reported with traceback + request
 # context. No-op if SENTRY_DSN_PYTHON is unset, so unconfigured dev boxes
 # stay silent.
-import os as _os
-import sentry_sdk
 _SENTRY_DSN = _os.environ.get("SENTRY_DSN_PYTHON")
 if _SENTRY_DSN:
     sentry_sdk.init(
@@ -865,8 +863,6 @@ def export_data(kind: str, run_id: str = "", sql: str = "",
 
 
 if __name__ == "__main__":
-    import os as _os
-
     _port = int(_os.environ.get("MCP_PORT", "9000"))
     _logging.getLogger("cc.server").info(
         "Crude Code MCP v%s starting on port %d%s", __version__, _port,

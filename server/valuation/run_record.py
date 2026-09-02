@@ -1,12 +1,18 @@
 """Durable per-deal state. Server-minted run_id, JSONB stage columns,
-scoped by user_id. Backed by platform.valuation_runs in Supabase."""
+scoped by user_id. Backed by platform.valuation_runs in Supabase.
+
+Three stages are live: `forecast` (deal_forecast_wells' merge target),
+`economics` and `wells` (both written by deal_valuation). The table also
+carries `briefing_spec`, `pdp_forecast`, `pud_forecast` and a `status` that
+stays 'pending' — columns from retired designs that nothing here reads or
+writes; dropping them is a migration, not a code change."""
 import json
 import uuid
 
 from utils.platform import _query
 
 
-_VALID_STAGES = {"wells", "forecast", "economics", "briefing_spec"}
+_VALID_STAGES = {"wells", "forecast", "economics"}
 
 
 class RunAccessError(LookupError):
@@ -58,20 +64,6 @@ class ValuationRunStore:
             params=[json.dumps(payload), run_id],
         )
 
-    def update_case_file(self, run_id: str, case_file: dict) -> None:
-        """Overwrite the run's case_file (the order form) and invalidate every
-        stage the new terms make stale: briefing_spec and economics always
-        (old numbers must never be served as the updated valuation)."""
-        _query(
-            f"""
-            UPDATE platform.valuation_runs
-            SET case_file = %s::jsonb, status = 'pending', updated_at = now(),
-                briefing_spec = NULL, economics = NULL
-            WHERE run_id = %s
-            """,
-            params=[json.dumps(case_file), run_id],
-        )
-
     def read_stage(self, run_id: str, *, stage: str) -> dict | None:
         """Read a JSONB stage column. Returns None if run doesn't exist or stage is null."""
         if stage not in _VALID_STAGES:
@@ -102,23 +94,3 @@ class ValuationRunStore:
         if rec.get("run_id") is not None:
             rec["run_id"] = str(rec["run_id"])
         return rec
-
-    def mark_complete(self, run_id: str) -> None:
-        """Set status='complete' — the run produced a briefing and finished.
-
-        Without this, a successful run stays at the 'pending' minted by
-        ``new_run`` (only ``mark_error`` ever moved it off), so the durable
-        record couldn't distinguish done from in-flight from failed."""
-        _query(
-            "UPDATE platform.valuation_runs SET status = 'complete', updated_at = now() "
-            "WHERE run_id = %s",
-            params=[run_id],
-        )
-
-    def mark_error(self, run_id: str, *, error: str) -> None:
-        """Set status='error' + error message."""
-        _query(
-            "UPDATE platform.valuation_runs SET status = 'error', error = %s, updated_at = now() "
-            "WHERE run_id = %s",
-            params=[error, run_id],
-        )

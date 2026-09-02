@@ -80,16 +80,6 @@ def test_get_returns_none_for_missing():
     assert store.get(str(uuid.uuid4())) is None
 
 
-@pytest.mark.db
-def test_list_for_user_is_index_only():
-    store = ExtractionStore()
-    eid = store.save(user_id=VALUATION_TEST_USER_ID, extraction=_SAMPLE, label="idx")
-    rows = store.list_for_user(VALUATION_TEST_USER_ID)
-    mine = [r for r in rows if r["extraction_id"] == eid]
-    assert mine and mine[0]["label"] == "idx"
-    assert "extraction" not in mine[0]             # no payload blob in the index
-
-
 # ── pointer-stub (blob) mode ─────────────────────────────────────────────────
 
 import json

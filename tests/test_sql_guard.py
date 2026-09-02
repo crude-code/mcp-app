@@ -132,7 +132,7 @@ def test_run_guarded_returns_rows_under_caps(monkeypatch):
     fake_rows = [{"x": 1}, {"x": 2}]
     monkeypatch.setattr("utils.sql_guard._run_query", lambda sql, schema, timeout_ms: fake_rows)
     result = run_guarded("SELECT 1 AS x", schema="public", row_cap=ROW_CAP, size_cap_bytes=SIZE_CAP)
-    assert result == {"rows": fake_rows, "count": 2, "truncated": False}
+    assert result == {"rows": fake_rows, "count": 2}
 
 
 def test_run_guarded_rejects_over_row_cap(monkeypatch):

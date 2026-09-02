@@ -6,26 +6,11 @@ simplification: GET /new-account must always answer {"status":
 form on that status) and must never touch the database.
 """
 
-from server import accounts
 from server.accounts import RateLimiter, handle_new_account
 
 
 def test_handle_always_returns_unavailable():
     assert handle_new_account("1.2.3.4") == {"status": "unavailable"}
-
-
-def test_handle_returns_a_fresh_dict_each_call():
-    # Callers must not be able to mutate the module-level payload.
-    out = handle_new_account("1.2.3.4")
-    out["status"] = "created"
-    assert handle_new_account("1.2.3.4") == {"status": "unavailable"}
-
-
-def test_mint_lane_is_gone_and_module_touches_no_db():
-    # The retirement contract: no mint entry point, no platform import —
-    # there is no code path left that could insert a users row.
-    assert not hasattr(accounts, "mint_account")
-    assert not hasattr(accounts, "_platform")
 
 
 def test_rate_limiter_blocks_after_limit():

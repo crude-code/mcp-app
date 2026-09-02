@@ -57,42 +57,6 @@ _COHORT_KEYS_ALL = _COHORT_KEYS_REQ | {"normalization", "excluded"}
 _NORMALIZATIONS = ("per_1000ft", "absolute")
 
 
-def _resolve_asset_list(asset_list: dict) -> list[str]:
-    if asset_list.get("well_apis"):
-        apis = list(dict.fromkeys(asset_list["well_apis"]))
-        if len(apis) > MAX_ASSET_WELLS:
-            raise ValueError(
-                f"asset_list has {len(apis)} wells; at most {MAX_ASSET_WELLS} per valuation"
-            )
-        return apis
-
-    # filter_sql is agent-authored — route through the SELECT-only guard.
-    if not asset_list.get("filter_sql"):
-        raise ValueError("asset_list must carry well_apis or filter_sql")
-    where = asset_list["filter_sql"].strip()
-    if not where.lower().startswith("where"):
-        where = "WHERE " + where
-    sql = f"SELECT well_api FROM public.wells {where}"
-
-    from utils.sql_guard import GuardError, run_guarded
-    from utils.schemas import EXPLORATION_SCHEMAS
-    try:
-        result = run_guarded(
-            sql,
-            schema="public",
-            allowed_schemas=EXPLORATION_SCHEMAS,
-            row_cap=MAX_ASSET_WELLS,
-            size_cap_bytes=500_000,
-        )
-    except GuardError as exc:
-        if "row cap" in str(exc):
-            raise ValueError(
-                f"filter_sql matched more than {MAX_ASSET_WELLS} wells — tighten the filter"
-            ) from exc
-        raise
-    return [r["well_api"] for r in result["rows"]]
-
-
 def _validate_by_api_membership(by_api: dict | None, known_apis: set[str]) -> None:
     """Every interest.by_api key must reference a well in the asset list.
 
@@ -506,7 +470,6 @@ def _well_meta_payload(apis: list[str], meta_by_api: dict) -> dict:
             "lateral_ft": m.lateral_ft if m else None,
         }
     return out
-
 
 
 def _norm_month_str(m) -> str | None:

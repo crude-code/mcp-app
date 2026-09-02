@@ -1,21 +1,25 @@
-# Direct dependencies:
-#   anthropic         — Claude API client (the host's scheduled ingest jobs share this venv)
-#   fastapi           — Renderer API server
-#   fastmcp           — MCP server framework
-#   numpy             — Arps decline math (server/valuation)
-#   pandas            — tabular ops (server/valuation)
-#   psycopg[binary]   — PostgreSQL driver (psycopg 3)
-#   psycopg-pool      — Connection pooling
-#   pydantic          — Data validation
-#   uvicorn           — ASGI server
-#   pytest            — test runner (dev)
-#   pytest-asyncio    — async test support (dev)
+# What this repo imports directly:
+#   fastmcp (+ starlette via it)  — MCP server framework and the HTTP routes
+#   numpy                         — Arps decline math (server/valuation)
+#   python-dateutil               — month arithmetic (server/valuation)
+#   psycopg[binary], psycopg-pool — PostgreSQL driver + pooling
+#   httpx                         — Supabase Storage REST (server/blob_store)
+#   boto3                         — SES team notifications (utils/ses)
+#   sentry-sdk                    — error reporting (optional at runtime)
+#   pydantic                      — skills/dataroom-extract/schema.py (sandbox-side)
+#   pytest                        — test runner (dev)
 #
-# Generated via: .venv/bin/pip freeze
+# Not imported here: anthropic, fastapi, pandas. They stay pinned because the
+# host's scheduled ingest jobs (deploy/systemd/, a package outside this repo)
+# run from this same venv. Drop them when that package carries its own
+# requirements.
+#
+# Everything else is the transitive closure, pinned from `pip freeze`.
 #
 anthropic>=0.96.0
 numpy==2.4.4
 pandas==3.0.3
+python-dateutil==2.9.0.post0
 aiofile==3.9.0
 annotated-doc==0.0.4
 annotated-types==0.7.0
@@ -88,6 +92,5 @@ watchfiles==1.1.1
 websockets==16.0
 zipp==3.23.0
 pytest==9.0.3
-pytest-asyncio==1.3.0
 sentry-sdk==2.58.0
 boto3==1.43.53

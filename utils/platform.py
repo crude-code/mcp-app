@@ -27,6 +27,7 @@ def _get_pool() -> ConnectionPool:
             conninfo=os.environ["SUPABASE_DATABASE_URL"],
             min_size=1,
             max_size=12,
+            open=True,
             configure=_configure_conn,
             check=ConnectionPool.check_connection,
         )
@@ -45,11 +46,9 @@ def _query(sql: str, params: list | None = None) -> list[dict]:
 
 
 def get_user_by_slug(slug: str) -> dict | None:
-    """Look up a user by their URL slug."""
+    """Look up a user by their URL slug — just the columns identity carries."""
     rows = _query(
-        "SELECT u.id, u.slug, u.user_key, u.name, u.email, u.role, u.org_id, "
-        "u.username, u.notes, u.last_login, "
-        "o.slug as org_slug, o.name as org_name "
+        "SELECT u.id, u.slug, u.name, u.email, o.name AS org_name "
         "FROM users u JOIN organizations o ON o.id = u.org_id "
         "WHERE u.slug = %s",
         [slug],
@@ -58,11 +57,12 @@ def get_user_by_slug(slug: str) -> dict | None:
 
 
 def resolve_identity(slug: str) -> dict | None:
-    """Resolve a URL slug to user + org context.
+    """Resolve a URL slug to the identity every tool reads:
+    ``{user_id, user_slug, user_name, user_email, org_name}``.
 
-    The slug is per-user (e.g. 'jane-doe'). The user maps to an org
-    via the org_id foreign key.
-    Returns None if the slug doesn't match any user.
+    The slug is per-user (e.g. 'jane-doe'); the org comes through the user's
+    org_id. Returns None if the slug doesn't match any user. Runs on every
+    tool call, so it carries only what a consumer actually reads.
     """
     user = get_user_by_slug(slug)
     if not user:
@@ -72,12 +72,6 @@ def resolve_identity(slug: str) -> dict | None:
         "user_slug": user["slug"],
         "user_name": user["name"],
         "user_email": user["email"],
-        "user_role": user["role"],
-        "user_username": user.get("username"),
-        "user_notes": user.get("notes"),
-        "user_last_login": user.get("last_login"),
-        "org_id": user["org_id"],
-        "org_slug": user["org_slug"],
         "org_name": user["org_name"],
     }
 

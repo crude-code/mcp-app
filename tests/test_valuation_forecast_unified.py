@@ -24,9 +24,8 @@ class _FakeStore:
 
 def _meta(api, status, lateral=12000.0):
     return WellMeta(api=api, status=status, basin="PRB", formation="NIOBRARA B",
-                    county="CAMPBELL", lateral_ft=lateral, spud_date=None,
-                    completion_date=None, first_prod_date=None, last_prod_date=None,
-                    n_history_months=0, planned_first_prod_date=None)
+                    county="CAMPBELL", lateral_ft=lateral,
+                    n_history_months=0)
 
 
 def _patch(monkeypatch, metas, prod, store=None):

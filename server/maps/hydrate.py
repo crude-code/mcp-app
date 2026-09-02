@@ -13,7 +13,7 @@ from utils.schemas import WIDGET_SCHEMAS
 from utils.sql_guard import run_guarded, GuardError
 from server.maps.catalog import STATIC_LAYERS, build_static_layer_sql
 
-# Geometry is far bulkier than tabular rows — the briefing 200-row / 50 KB cap
+# Geometry is far bulkier than tabular rows — sql_guard's default 200-row / 50 KB cap
 # would reject any real map. These caps bound payload size after the static
 # layers are already spatially clipped to the data extent.
 MAP_ROW_CAP = 5000
@@ -37,7 +37,7 @@ def _rows_to_featurecollection(rows: list[dict]) -> dict:
     return {"type": "FeatureCollection", "features": features}
 
 
-def _bbox_of(fc: dict):
+def bbox_of(fc: dict):
     minx = miny = float("inf")
     maxx = maxy = float("-inf")
     seen = False
@@ -98,7 +98,7 @@ def hydrate_map(spec: dict) -> dict:
         except GuardError as e:
             raise MapHydrateError(f"layer '{layer['id']}': {e}") from e
         fc = _rows_to_featurecollection(result["rows"])
-        box = _bbox_of(fc)
+        box = bbox_of(fc)
         if box:
             boxes.append(box)
         data_layers.append(

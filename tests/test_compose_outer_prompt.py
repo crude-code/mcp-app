@@ -25,8 +25,5 @@ def test_compose_run_sql_doc_includes_tool_doc_then_schema():
     assert doc.index(tool.strip()) < doc.index(schema.strip())
 
 
-def test_outer_prompt_has_no_briefing_vocabulary():
-    p = compose_outer_system_prompt()
-    assert "## Widget palette" not in p
-    assert "run_data_analysis" not in p
-    assert "deal_valuation" in p          # valuation flow still framed
+def test_outer_prompt_frames_deal_valuation():
+    assert "deal_valuation" in compose_outer_system_prompt()

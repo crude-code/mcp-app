@@ -5,9 +5,7 @@ from server.valuation.types import WellMeta
 def _meta(**kw):
     base = dict(
         api="42-001-00001", status="PRODUCING", basin="MIDLAND",
-        formation="WOLFCAMP", county="MIDLAND", lateral_ft=10000.0,
-        spud_date=None, completion_date=None, first_prod_date=None,
-        last_prod_date=None, n_history_months=24, planned_first_prod_date=None,
+        formation="WOLFCAMP", county="MIDLAND", lateral_ft=10000.0, n_history_months=24,
     )
     base.update(kw)
     return WellMeta(**base)

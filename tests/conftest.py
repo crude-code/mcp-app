@@ -16,26 +16,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from tests import VALUATION_TEST_USER_ID
 
 
-@pytest.fixture
-def fake_identity() -> dict:
-    """Identity payload matching what resolve_identity returns."""
-    return {
-        "user_id": 9999,
-        "user_slug": "test-user",
-        "user_name": "Test User",
-        "user_email": "test@example.com",
-        "user_username": "tester",
-        "user_notes": None,
-        "user_last_login": None,
-        "org_name": "Test Org",
-    }
-
-
-def pytest_addoption(parser):
-    parser.addoption("--run-network", action="store_true",
-                     help="Run tests marked @pytest.mark.network (hit live APIs)")
-
-
 @pytest.fixture(scope="session", autouse=True)
 def _purge_valuation_test_rows():
     """Delete every platform.valuation_runs / platform.dataroom_extractions row
@@ -66,17 +46,10 @@ def _purge_valuation_test_rows():
 
 
 def pytest_collection_modifyitems(config, items):
-    """Auto-skip db/anthropic/network tests if prerequisites are missing."""
+    """Auto-skip `db` tests when there is no database to hit."""
+    if os.environ.get("CC_DB_URL") or os.environ.get("EI_DB_URL"):
+        return
     skip_db = pytest.mark.skip(reason="CC_DB_URL not set")
-    skip_anthropic = pytest.mark.skip(reason="ANTHROPIC_API_KEY not set")
-    skip_network = pytest.mark.skip(reason="needs --run-network")
-    has_db = bool(os.environ.get("CC_DB_URL") or os.environ.get("EI_DB_URL"))
-    has_anthropic = bool(os.environ.get("ANTHROPIC_API_KEY"))
-    run_network = config.getoption("--run-network")
     for item in items:
-        if "db" in item.keywords and not has_db:
+        if "db" in item.keywords:
             item.add_marker(skip_db)
-        if "anthropic" in item.keywords and not has_anthropic:
-            item.add_marker(skip_anthropic)
-        if "network" in item.keywords and not run_network:
-            item.add_marker(skip_network)

@@ -1,4 +1,5 @@
-"""Shared SQL guardrails for outer-Claude SQL access and widget queries.
+"""Shared SQL guardrails for every query Claude authors: `run_sql`, the
+`export_data` query kind, and map data layers.
 
 Two layers of defense:
 1. ``validate_select`` — structural: SELECT/WITH only, single statement,
@@ -8,14 +9,15 @@ Two layers of defense:
 2. ``validate_schema`` — ensures the caller's requested schema (used for
    ``SET search_path``) is one we allow.
 
-This is belt-and-suspenders against outer Claude (or a widget query) trying
-to reach ``platform`` tables (users, orgs, dashboards) or system catalogs.
-Production DB-level defence (read-only role with GRANT USAGE only on
-public+market) is a follow-up; this module is the code-side floor.
+This is belt-and-suspenders against a Claude-authored query trying to reach
+``platform`` tables (users, orgs, run records) or system catalogs. It is the
+code-side floor; the database role's own GRANTs are the other half.
 """
 
+import json as _json
 import re
 
+from utils.db import query as _db_query
 from utils.schemas import WIDGET_SCHEMAS
 
 _FORBIDDEN_KEYWORDS_RE = re.compile(
@@ -141,7 +143,7 @@ def validate_select(sql: str, allowed_schemas: frozenset[str] = WIDGET_SCHEMAS) 
     # Reject double-quoted identifiers naming blocked schemas/catalogs.
     # We check the *original* SQL (before stripping) because a double-quoted
     # ident is structural syntax, not a string literal. A name in the caller's
-    # allowlist passes (e.g. inner-agent SQL with `shapes` permitted).
+    # allowlist passes (e.g. `run_sql`, whose allowlist includes `shapes`).
     for m in _QUOTED_BLOCKED_IDENT_RE.finditer(s):
         if m.group(1).lower() in allowed_schemas:
             continue
@@ -193,12 +195,7 @@ def validate_select(sql: str, allowed_schemas: frozenset[str] = WIDGET_SCHEMAS) 
     return s
 
 
-import json as _json
-
-from utils.db import query as _db_query
-
-
-# Caps visible to callers so they can align prompts / docs.
+# Default caps. Callers override per surface (run_sql, exports, maps).
 DEFAULT_ROW_CAP = 200
 DEFAULT_SIZE_CAP_BYTES = 50_000
 DEFAULT_TIMEOUT_MS = 5_000
@@ -218,11 +215,11 @@ def dry_run(
 ) -> None:
     """Validate a query and `EXPLAIN` it — does NOT execute.
 
-    Used by the persist endpoint to verify each widget's SQL parses and
-    plans against the live schema before accepting a briefing. Catches
-    column typos, alias-in-ORDER-BY mistakes, and anything else Postgres
-    resolves during planning, without paying the cost of actually running
-    the query.
+    `export_data` runs this at mint time for the `query` kind so a bad SELECT
+    fails in the conversation rather than behind a link the user has already
+    clicked. Catches column typos, alias-in-ORDER-BY mistakes, and anything
+    else Postgres resolves during planning, without paying the cost of
+    actually running the query.
 
     Raises ``GuardError`` on any validation or planner failure.
     """
@@ -246,7 +243,7 @@ def run_guarded(
     """Run a read-only query through the full guard stack.
 
     Validates schema + SQL, runs with a Postgres statement_timeout, enforces
-    row and JSON-size caps. Returns ``{"rows": [...], "count": N, "truncated": False}``.
+    row and JSON-size caps. Returns ``{"rows": [...], "count": N}``.
     Raises GuardError on any violation.
     """
     validate_schema(schema, allowed=allowed_schemas)
@@ -265,4 +262,4 @@ def run_guarded(
             f"query result is {size} bytes; size cap is {size_cap_bytes}. "
             f"Select fewer columns or summarize."
         )
-    return {"rows": rows, "count": len(rows), "truncated": False}
+    return {"rows": rows, "count": len(rows)}

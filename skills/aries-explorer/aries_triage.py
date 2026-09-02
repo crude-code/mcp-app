@@ -121,7 +121,7 @@ class AccessParserBackend:
     name = "access_parser"
 
     def __init__(self, db: Path):
-        from access_parser import AccessParser  # noqa: import checked by resolve
+        from access_parser import AccessParser  # availability checked by resolve()
         self.parser = AccessParser(str(db))
 
     def list_tables(self) -> list[str]:

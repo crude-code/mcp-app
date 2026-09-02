@@ -72,7 +72,7 @@ def _producer_world(monkeypatch, store=None):
 
 def test_producer_commit_echoes_consequences(monkeypatch):
     _producer_world(monkeypatch)
-    out = forecast_wells_for_run(run_id=None, forecasts=[_producer_entry()])
+    out = forecast_wells_for_run(run_id=None, user_id=7, forecasts=[_producer_entry()])
     assert out["run_id"] == "run-1"
     assert out["wells_committed"] == 1 and out["wells_in_run"] == 1
     assert out["by_status"] == {"PDP": 1, "DUC": 0, "PUD": 0}
@@ -91,7 +91,7 @@ def test_committed_curve_starts_at_asserted_qi_not_peak(monkeypatch):
     anchor rate, so the first projected month equals qi (~226), never the
     historical peak (~900)."""
     store = _producer_world(monkeypatch)
-    out = forecast_wells_for_run(run_id=None, forecasts=[_producer_entry()])
+    out = forecast_wells_for_run(run_id=None, user_id=7, forecasts=[_producer_entry()])
     fcs, needs_capex, _st = orch._load_forecast_stage(
         forecast=store.read_stage(out["run_id"], stage="forecast"),
         as_of=date.today(), months_override=None)
@@ -104,7 +104,7 @@ def test_committed_curve_starts_at_asserted_qi_not_peak(monkeypatch):
 
 def test_uptime_factor_scales_committed_qi(monkeypatch):
     store = _producer_world(monkeypatch)
-    forecast_wells_for_run(run_id=None, forecasts=[_producer_entry(uptime_factor=0.9)])
+    forecast_wells_for_run(run_id=None, user_id=7, forecasts=[_producer_entry(uptime_factor=0.9)])
     stored = store.stages["forecast"]["forecasts"]["H"]["oil"]["curve"]
     assert stored["qi"] == pytest.approx(_LAST_RATE * 0.9, rel=0.01)
     # raw assertion preserved unscaled in the audit block
@@ -118,7 +118,7 @@ def test_unasserted_gas_with_history_warns_and_zeroes(monkeypatch):
     prod = {"H": {"months": _HIST_MONTHS, "oil_bbl": _HIST_OIL,
                   "gas_mcf": [100.0] * _HIST_N}}
     store = _patch(monkeypatch, metas, prod)
-    out = forecast_wells_for_run(run_id=None, forecasts=[_producer_entry()])
+    out = forecast_wells_for_run(run_id=None, user_id=7, forecasts=[_producer_entry()])
     echo = out["committed"][0]
     assert any("gas not asserted" in w for w in echo["warnings"])
     assert store.stages["forecast"]["forecasts"]["H"]["gas"]["curve"]["qi"] == 0.0
@@ -129,7 +129,7 @@ def test_unasserted_gas_with_history_warns_and_zeroes(monkeypatch):
 def test_undrilled_permitted_well_asserts_online_month(monkeypatch):
     metas = {"P": _meta("P", "PERMITTED")}
     store = _patch(monkeypatch, metas, prod={})
-    out = forecast_wells_for_run(run_id=None, forecasts=[{
+    out = forecast_wells_for_run(run_id=None, user_id=7, forecasts=[{
         "wells": ["P"], "oil": {"qi": 800.0, "di": 0.10, "b": 1.1}, "gas": None,
         "anchor_month": _FUTURE,
         "rationale": "offsets set the level; operator cadence says ~6 months out",
@@ -154,7 +154,7 @@ def test_anchored_duc_still_needs_capex(monkeypatch):
     its AFE at the asserted online month."""
     metas = {"D": _meta("D", "DUC")}
     store = _patch(monkeypatch, metas, prod={})
-    forecast_wells_for_run(run_id=None, forecasts=[{
+    forecast_wells_for_run(run_id=None, user_id=7, forecasts=[{
         "wells": ["D"], "oil": {"qi": 500.0, "di": 0.08, "b": 1.0}, "gas": None,
         "anchor_month": _FUTURE, "rationale": "AFE in dataroom dates completion",
     }])
@@ -185,7 +185,7 @@ def _cohort_entry():
 
 def test_cohort_shares_are_trailing12_pro_rata(monkeypatch):
     _cohort_world(monkeypatch)
-    out = forecast_wells_for_run(run_id=None, forecasts=[_cohort_entry()])
+    out = forecast_wells_for_run(run_id=None, user_id=7, forecasts=[_cohort_entry()])
     shares = out["committed"][0]["shares"]["oil"]
     assert shares["C1"] == pytest.approx(0.6, abs=0.001)
     assert shares["C2"] == pytest.approx(0.3, abs=0.001)
@@ -195,7 +195,7 @@ def test_cohort_shares_are_trailing12_pro_rata(monkeypatch):
 
 def test_cohort_member_curves_sum_to_cohort_stream(monkeypatch):
     store = _cohort_world(monkeypatch)
-    forecast_wells_for_run(run_id=None, forecasts=[_cohort_entry()])
+    forecast_wells_for_run(run_id=None, user_id=7, forecasts=[_cohort_entry()])
     from server.valuation.forecast import curve_rate, make_curve
     from server.valuation import config
     t = np.arange(0, 25, dtype=float)
@@ -216,7 +216,7 @@ def test_cohort_dry_member_bounces_with_actionable_message(monkeypatch):
     }
     _patch(monkeypatch, metas, prod)
     with pytest.raises(ForecastValidationError) as exc:
-        forecast_wells_for_run(run_id=None, forecasts=[{
+        forecast_wells_for_run(run_id=None, user_id=7, forecasts=[{
             "wells": ["C1", "C2"], "oil": {"qi": 100.0, "di": 0.05, "b": 0.8}, "gas": None,
             "anchor_month": _ANCHOR, "rationale": "cohort",
         }])
@@ -231,11 +231,11 @@ def test_recommit_overwrites_one_well_and_keeps_others(monkeypatch):
     prod = {a: {"months": _HIST_MONTHS, "oil_bbl": _HIST_OIL, "gas_mcf": [0.0] * _HIST_N}
             for a in ("H", "H2")}
     store = _patch(monkeypatch, metas, prod)
-    out1 = forecast_wells_for_run(run_id=None, forecasts=[
+    out1 = forecast_wells_for_run(run_id=None, user_id=7, forecasts=[
         _producer_entry(),
         _producer_entry(wells=["H2"]),
     ])
-    out2 = forecast_wells_for_run(run_id=out1["run_id"], user_id=0, forecasts=[
+    out2 = forecast_wells_for_run(run_id=out1["run_id"], user_id=7, forecasts=[
         _producer_entry(oil={"qi": 150.0, "di": 0.05, "b": 0.8}),
     ])
     assert out2["wells_committed"] == 1 and out2["wells_in_run"] == 2
@@ -274,7 +274,7 @@ def test_unknown_and_foreign_run_id_are_rejected(monkeypatch):
 def test_structural_violations_are_named(monkeypatch, mutation, field_frag):
     _producer_world(monkeypatch)
     with pytest.raises(ForecastValidationError) as exc:
-        forecast_wells_for_run(run_id=None, forecasts=[_producer_entry(**mutation)])
+        forecast_wells_for_run(run_id=None, user_id=7, forecasts=[_producer_entry(**mutation)])
     assert any(v["field"].startswith(field_frag) for v in exc.value.violations), \
         exc.value.violations
 
@@ -282,7 +282,7 @@ def test_structural_violations_are_named(monkeypatch, mutation, field_frag):
 def test_producer_future_anchor_rejected(monkeypatch):
     _producer_world(monkeypatch)
     with pytest.raises(ForecastValidationError) as exc:
-        forecast_wells_for_run(run_id=None, forecasts=[_producer_entry(anchor_month=_FUTURE)])
+        forecast_wells_for_run(run_id=None, user_id=7, forecasts=[_producer_entry(anchor_month=_FUTURE)])
     assert "must not be in the future" in exc.value.violations[0]["message"]
 
 
@@ -290,7 +290,7 @@ def test_undrilled_past_anchor_rejected(monkeypatch):
     metas = {"P": _meta("P", "PERMITTED")}
     _patch(monkeypatch, metas, prod={})
     with pytest.raises(ForecastValidationError) as exc:
-        forecast_wells_for_run(run_id=None, forecasts=[{
+        forecast_wells_for_run(run_id=None, user_id=7, forecasts=[{
             "wells": ["P"], "oil": {"qi": 800.0, "di": 0.10, "b": 1.1}, "gas": None,
             "anchor_month": "2024-01", "rationale": "x",
         }])
@@ -301,7 +301,7 @@ def test_all_or_nothing_on_mixed_call(monkeypatch):
     """One bad entry poisons the whole call: nothing persisted, every violation listed."""
     store = _producer_world(monkeypatch)
     with pytest.raises(ForecastValidationError) as exc:
-        forecast_wells_for_run(run_id=None, forecasts=[
+        forecast_wells_for_run(run_id=None, user_id=7, forecasts=[
             _producer_entry(),
             {"wells": ["H"], "oil": {"qi": 1.0, "di": 0.05, "b": 5.0}, "gas": None,
              "anchor_month": _ANCHOR, "rationale": "bad b"},
@@ -315,7 +315,7 @@ def test_all_or_nothing_on_mixed_call(monkeypatch):
 def test_duplicate_well_across_entries_rejected(monkeypatch):
     _producer_world(monkeypatch)
     with pytest.raises(ForecastValidationError) as exc:
-        forecast_wells_for_run(run_id=None, forecasts=[
+        forecast_wells_for_run(run_id=None, user_id=7, forecasts=[
             _producer_entry(), _producer_entry(oil={"qi": 100.0, "di": 0.05, "b": 0.8}),
         ])
     assert any("already appears" in v["message"] for v in exc.value.violations)
@@ -324,7 +324,7 @@ def test_duplicate_well_across_entries_rejected(monkeypatch):
 def test_unknown_api_rejected(monkeypatch):
     _producer_world(monkeypatch)
     with pytest.raises(ForecastValidationError) as exc:
-        forecast_wells_for_run(run_id=None, forecasts=[_producer_entry(wells=["NOPE"])])
+        forecast_wells_for_run(run_id=None, user_id=7, forecasts=[_producer_entry(wells=["NOPE"])])
     assert "not found in public.wells" in exc.value.violations[0]["message"]
 
 
@@ -368,13 +368,28 @@ def test_legacy_stage_replays_with_peak_offset_and_capex_fallback():
 def test_forecast_then_deal_valuation_round_trip(monkeypatch):
     metas = {"H": _meta("H", "PRODUCING"), "P": _meta("P", "PERMITTED")}
     prod = {"H": {"months": _HIST_MONTHS, "oil_bbl": _HIST_OIL, "gas_mcf": [0.0] * _HIST_N}}
-    store = _patch(monkeypatch, metas, prod)
-    out = forecast_wells_for_run(run_id=None, forecasts=[
+    _patch(monkeypatch, metas, prod)
+    out = forecast_wells_for_run(run_id=None, user_id=7, forecasts=[
         _producer_entry(),
         {"wells": ["P"], "oil": {"qi": 800.0, "di": 0.10, "b": 1.1}, "gas": None,
          "anchor_month": _FUTURE, "rationale": "offset level, operator cadence"},
     ])
-    res = orch.run_valuation_for_run(run_id=out["run_id"], params={
+    res = orch.run_valuation_for_run(run_id=out["run_id"], user_id=7, params={
         "interest_type": "minerals", "interest": {"decimal": 0.05},
         "asset_list": {"well_apis": ["H", "P"]}, "economics_overrides": {}})
     assert "total" in res["npv_at_centers"]
+
+
+def test_run_valuation_refuses_a_run_the_caller_does_not_own(monkeypatch):
+    """The valuation writes the run's economics stage, so it proves ownership
+    before reading anything — with no DB in the loop here, reaching the
+    forecast stage would be the failure."""
+    metas = {"H": _meta("H", "PRODUCING")}
+    store = _patch(monkeypatch, metas, {})
+    store.records["run-1"] = {"run_id": "run-1", "user_id": 7}
+    params = {"interest_type": "minerals", "interest": {"decimal": 0.05},
+              "asset_list": {"well_apis": ["H"]}, "economics_overrides": {}}
+    with pytest.raises(orch.RunAccessError, match="another user"):
+        orch.run_valuation_for_run(run_id="run-1", params=params, user_id=8)
+    with pytest.raises(orch.RunAccessError, match="unknown run_id"):
+        orch.run_valuation_for_run(run_id="run-9", params=params, user_id=7)

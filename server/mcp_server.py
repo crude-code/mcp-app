@@ -70,8 +70,8 @@ from server.room_store import RoomStore
 from server.upload_tokens import UploadTokenStore
 from server.accounts import RateLimiter, register_account_routes
 from server.uploads import public_base_url, public_host, register_upload_routes
-from server.user_profile import UserProfileStore, plan_update, profile_state
-from server.valuation.run_record import ValuationRunStore
+from server.user_profile import IN_CHAT, UserProfileStore, notes_of, plan_update, profile_state
+from server.valuation.run_record import RunAccessError, ValuationRunStore, require_run_owner
 from server import export_tokens as _export_tokens
 from server import exports as _exports
 from server.team_messages import CATEGORIES as MESSAGE_CATEGORIES, TeamMessageStore
@@ -143,10 +143,9 @@ register_account_routes(mcp)
 _app_path = Path(__file__).resolve().parent.parent / "renderer" / "dist" / "app.html"
 APP_HTML = _app_path.read_text() if _app_path.exists() else "<html><body><p>App not built. Run: cd renderer && npm run build</p></body></html>"
 
-_app_config_app_only = AppConfig(
-    resource_uri="ui://app/view.html",
-    visibility=["app"],
-)
+# Visible to the app only, and renders nothing itself — the map iframe calls
+# it to fetch its spec, so there is no resource to point at.
+_app_config_app_only = AppConfig(visibility=["app"])
 
 _app_config_map = AppConfig(resource_uri="ui://app/map.html")
 
@@ -556,8 +555,7 @@ def update_user(email: str = "", name: str = "") -> str:
         updated = dict(current)
         if plan["email"]:
             updated["email"] = plan["email"]
-            updated["notes"] = {**(current.get("notes") or {}),
-                                "email_source": "in_chat"}
+            updated["notes"] = {**notes_of(current), "email_source": IN_CHAT}
         if plan["name"]:
             updated["name"] = plan["name"]
         _update_user_log.info("profile updated user=%s fields=%s",
@@ -685,6 +683,9 @@ def map_read_full(token: str) -> str:
 
 # ── valuation tools (synchronous) ────────────────────────────────────────────
 
+_valuation_log = _logging.getLogger("cc.valuation")
+
+
 @mcp.tool(description=_load_prompt("outer/tool_deal_forecast_wells.md"))
 def deal_forecast_wells(forecasts: list[dict], run_id: str | None = None) -> str:
     """Accept asserted decline parameters, echo consequences. See
@@ -704,6 +705,7 @@ def deal_forecast_wells(forecasts: list[dict], run_id: str | None = None) -> str
                             "the full call."),
             })
         except Exception as e:  # noqa: BLE001
+            _valuation_log.error("deal_forecast_wells failed: %s", e)
             return _json.dumps({"error": str(e)})
         return _json.dumps(result, default=str)
 
@@ -717,7 +719,7 @@ def deal_valuation(run_id: str, params: dict) -> str:
     user_slug = identity["user_slug"]
     with trace("deal_valuation", user=user_slug):
         try:
-            run_valuation_for_run(run_id=run_id, params=params)
+            run_valuation_for_run(run_id=run_id, params=params, user_id=identity["user_id"])
             data = compose_artifact_payload_for_run(run_id)
             # The sheet's download row. Minting is arithmetic, so it costs
             # nothing to always offer one — no extra tool call, no guessing at
@@ -759,7 +761,10 @@ def deal_valuation(run_id: str, params: dict) -> str:
                 "viewer_url": _DEAL_SHEET_URL,
                 "viewer_sha256": _DEAL_SHEET_SHA256,
             }, default=str)
+        except RunAccessError as e:
+            return _json.dumps({"error": str(e)})
         except Exception as e:  # noqa: BLE001
+            _valuation_log.error("deal_valuation failed: %s", e)
             return _json.dumps({"error": str(e)})
 
 
@@ -822,8 +827,17 @@ def export_data(kind: str, run_id: str = "", sql: str = "",
             return _json.dumps({
                 "error": f"unknown kind {kind!r}; expected one of {list(_exports.KINDS)}"
             })
-        if kind in ("volumes", "parameters", "bundle") and not run_id.strip():
-            return _json.dumps({"error": f"kind {kind!r} needs a run_id"})
+        if kind in _export_tokens.SIGNABLE_KINDS:
+            if not run_id.strip():
+                return _json.dumps({"error": f"kind {kind!r} needs a run_id"})
+            # The link this mints reads the run record for as long as it
+            # lives, so the caller has to own the run — possession of a run_id
+            # (they appear in chat, in deal sheets, in other users' links) is
+            # not ownership. The route re-checks at fetch time.
+            try:
+                require_run_owner(_run_store, run_id.strip(), identity["user_id"])
+            except RunAccessError as e:
+                return _json.dumps({"error": str(e)})
         if kind == "query" and not sql.strip():
             return _json.dumps({"error": "kind 'query' needs a sql SELECT"})
 

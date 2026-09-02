@@ -20,6 +20,7 @@ import io
 import zipfile
 from datetime import datetime, timezone
 
+from server.valuation.run_record import RunAccessError, require_run_owner
 from utils.schemas import EXPLORATION_SCHEMAS
 from utils.sql_guard import run_guarded
 
@@ -56,6 +57,10 @@ _PARAM_HEADER = (
 
 class ExportError(RuntimeError):
     """Anything that makes an export impossible to assemble honestly."""
+
+
+class ExportForbidden(ExportError):
+    """The grant's user does not own the run it names."""
 
 
 def to_csv(header, rows) -> str:
@@ -297,9 +302,14 @@ def assemble(kind: str, meta: dict, *, run_store=None) -> tuple[str | bytes, int
     for the CSV kinds, bytes for `bundle`; the route labels it via
     `media_type_for`.
 
-    `meta` is the token grant's payload: `run_id` for the run-derived kinds,
-    `sql`/`schema` for a query. `run_store` is injected so the route stays
-    testable without a database.
+    `meta` is the token grant's payload: `run_id` plus the granting `user_id`
+    for the run-derived kinds, `sql`/`schema` for a query. `run_store` is
+    injected so the route stays testable without a database.
+
+    A run-scoped grant is honoured only if its user owns the run. The mint
+    already checked this, but a signed link lives for a year and is minted
+    once, so the fetch checks again: it is the check that outlives the code
+    that minted the link.
     """
     if kind not in KINDS:
         raise ExportError(f"unknown export kind {kind!r}; expected one of {list(KINDS)}")
@@ -312,6 +322,11 @@ def assemble(kind: str, meta: dict, *, run_store=None) -> tuple[str | bytes, int
         raise ExportError(f"export kind {kind!r} needs a run_id")
     if run_store is None:
         raise ExportError("no run store available")
+    try:
+        require_run_owner(run_store, run_id, meta.get("user_id"))
+    except RunAccessError as exc:
+        raise ExportForbidden(
+            "This download link isn't valid for the run it names.") from exc
 
     if kind == "bundle":
         economics = run_store.read_stage(run_id, stage="economics")

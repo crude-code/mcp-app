@@ -115,3 +115,12 @@ def test_mail_failure_never_fails_the_claim(wired, monkeypatch):
     monkeypatch.setattr(srv, "send_notification", boom)
     out = json.loads(srv.update_user(email="ace@acme.com"))
     assert out["changed"] == ["email"]           # the row is what matters
+
+
+def test_notes_returned_as_a_json_string_still_attach(wired):
+    """Some drivers hand jsonb back as text; the merge after a successful
+    write must not be the thing that fails the call."""
+    wired["row"] = {"id": 7, "email": None, "name": "Ace", "notes": '{"seen": 1}'}
+    out = json.loads(srv.update_user(email="ace@acme.com"))
+    assert out["changed"] == ["email"]
+    assert out["email_locked"] is False           # in_chat source recorded

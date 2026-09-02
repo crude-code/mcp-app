@@ -50,8 +50,10 @@ def normalize_name(raw: str) -> str:
     return " ".join((raw or "").split())
 
 
-def _notes(row: dict) -> dict:
-    """jsonb comes back as a dict; tolerate a string from older drivers."""
+def notes_of(row: dict) -> dict:
+    """The row's `notes` jsonb as a dict — tolerating the JSON string some
+    drivers hand back, so every reader (locking, the tool's merge) sees one
+    shape."""
     raw = row.get("notes")
     if isinstance(raw, str):
         try:
@@ -70,7 +72,7 @@ def email_is_locked(row: dict) -> bool:
     """
     if not row.get("email"):
         return False
-    return _notes(row).get("email_source") != IN_CHAT
+    return notes_of(row).get("email_source") != IN_CHAT
 
 
 def profile_state(row: dict, changed: list[str] | None = None) -> dict:

@@ -40,6 +40,7 @@ Routes:
 
 import asyncio
 import hashlib
+import html
 import json
 import logging
 import os
@@ -48,7 +49,7 @@ import tempfile
 from urllib.parse import urlparse
 
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
+from starlette.responses import HTMLResponse, JSONResponse, Response
 
 from fastmcp.server.dependencies import get_http_request
 
@@ -131,8 +132,10 @@ _EXPORT_ERROR_PAGE = """<!doctype html>
 
 
 def _reject_download(status: int, message: str) -> HTMLResponse:
-    """Browser-facing refusal. Same statuses as `_reject`, readable body."""
-    return HTMLResponse(_EXPORT_ERROR_PAGE.format(message=message),
+    """Browser-facing refusal. Same statuses as `_reject`, readable body. The
+    message is escaped: assembly errors quote the token's run_id, which was
+    whatever the minting call passed."""
+    return HTMLResponse(_EXPORT_ERROR_PAGE.format(message=html.escape(message)),
                         status_code=status, headers={"Cache-Control": "no-store"})
 
 
@@ -335,7 +338,7 @@ def register_upload_routes(mcp, *, tokens, extraction_store,
             except export_tokens.ExportTokenError as e:
                 return _reject_download(410, str(e))
             kind = claims["kind"]
-            meta = {"kind": kind, "run_id": claims["run_id"]}
+            meta = {"kind": kind, "run_id": claims["run_id"], "user_id": claims["user_id"]}
             user_slug = claims["user_slug"]
         else:
             grant = tokens.claim(token, purpose="export")
@@ -343,7 +346,8 @@ def register_upload_routes(mcp, *, tokens, extraction_store,
                 return _reject_download(
                     410, "This download link has expired, or the server has "
                          "restarted since it was created.")
-            kind, meta, user_slug = grant.meta.get("kind", ""), grant.meta, grant.user_slug
+            kind, user_slug = grant.meta.get("kind", ""), grant.user_slug
+            meta = {**grant.meta, "user_id": grant.user_id}
 
         try:
             # Assembly can hit the database (run record, or a re-run query), so
@@ -352,6 +356,8 @@ def register_upload_routes(mcp, *, tokens, extraction_store,
             body, rows = await asyncio.to_thread(
                 exports.assemble, kind, meta, run_store=run_store,
             )
+        except exports.ExportForbidden as e:
+            return _reject_download(403, str(e))
         except exports.ExportError as e:
             return _reject_download(422, str(e))
         except Exception as e:  # noqa: BLE001

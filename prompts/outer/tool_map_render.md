@@ -10,7 +10,7 @@ Build each layer's SELECT in `run_sql`, confirm it returns rows with the columns
 you want, then pass that exact verified query here. Never hand `map_render` a query you
 haven't run.
 
-Call `map(spec)` where `spec` is:
+Call `map_render(spec)` where `spec` is:
 
 {
   "title": "EOG — Weld County",

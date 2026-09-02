@@ -97,7 +97,7 @@ def _violation_fields(excinfo):
 
 def test_analog_cohort_commits_and_persists(monkeypatch):
     store = _analog_world(monkeypatch)
-    result = forecast_wells_for_run(run_id=None, forecasts=[_pud_entry()], user_id=0)
+    result = forecast_wells_for_run(run_id=None, user_id=7, forecasts=[_pud_entry()])
     echo = result["committed"][0]["analog_cohort"]
     assert echo == {"curve_label": "Wolfcamp A · 10,000 ft", "kept": 2, "excluded": 1}
     saved = store.stages["forecast"]["forecasts"]["PUD1"]["assertion"]
@@ -122,7 +122,7 @@ def test_analog_cohort_commits_and_persists(monkeypatch):
 def test_analog_cohort_structural_violations(monkeypatch, mutation, field_frag):
     _analog_world(monkeypatch)
     with pytest.raises(ForecastValidationError) as e:
-        forecast_wells_for_run(run_id=None, forecasts=[_pud_entry(**mutation)], user_id=0)
+        forecast_wells_for_run(run_id=None, user_id=7, forecasts=[_pud_entry(**mutation)])
     assert any(field_frag in f for f in _violation_fields(e))
 
 
@@ -131,7 +131,7 @@ def test_analog_cohort_subject_as_own_analog_bounces(monkeypatch):
     entry = _pud_entry()
     entry["analog_cohort"]["kept"] = ["AN1", "PUD1"]
     with pytest.raises(ForecastValidationError) as e:
-        forecast_wells_for_run(run_id=None, forecasts=[entry], user_id=0)
+        forecast_wells_for_run(run_id=None, user_id=7, forecasts=[entry])
     assert any("own analog" in v["message"] for v in e.value.violations)
 
 
@@ -140,14 +140,14 @@ def test_analog_cohort_unknown_api_bounces(monkeypatch):
     entry = _pud_entry()
     entry["analog_cohort"]["kept"] = ["AN1", "NOPE"]
     with pytest.raises(ForecastValidationError) as e:
-        forecast_wells_for_run(run_id=None, forecasts=[entry], user_id=0)
+        forecast_wells_for_run(run_id=None, user_id=7, forecasts=[entry])
     assert any("NOPE not found" in v["message"] for v in e.value.violations)
 
 
 def test_analog_cohort_kept_analog_without_history_bounces(monkeypatch):
     _analog_world(monkeypatch, AN2=_meta("AN2", "PRODUCING", n_hist=0))
     with pytest.raises(ForecastValidationError) as e:
-        forecast_wells_for_run(run_id=None, forecasts=[_pud_entry()], user_id=0)
+        forecast_wells_for_run(run_id=None, user_id=7, forecasts=[_pud_entry()])
     assert any("no reported production" in v["message"] for v in e.value.violations)
 
 
@@ -155,7 +155,7 @@ def test_entry_without_analog_cohort_still_commits(monkeypatch):
     store = _analog_world(monkeypatch)
     entry = _pud_entry()
     del entry["analog_cohort"]
-    forecast_wells_for_run(run_id=None, forecasts=[entry], user_id=0)
+    forecast_wells_for_run(run_id=None, user_id=7, forecasts=[entry])
     assert store.stages["forecast"]["forecasts"]["PUD1"]["assertion"]["analog_cohort"] is None
 
 

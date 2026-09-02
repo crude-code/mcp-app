@@ -22,8 +22,8 @@ from server.valuation.casefile import MAX_ASSET_WELLS, parse_run_params
 from server.valuation.econ import cashflow_components, compute_gross_revenue, npv, resolve_well_interest
 from server.valuation.evidence import build_evidence, collect_analog_apis
 from server.valuation.forecast import make_curve, make_zero_curve, project
-from server.valuation.run_record import ValuationRunStore
-from server.valuation.types import DeclineCurve, Forecast, ForecastProvenance, WellMeta
+from server.valuation.run_record import RunAccessError, ValuationRunStore, require_run_owner
+from server.valuation.types import DeclineCurve, Forecast, ForecastProvenance
 from server.valuation.wells import bulk_load_production, bulk_load_wells
 
 
@@ -480,7 +480,9 @@ def _economics_from_forecasts(*, forecasts: dict, needs_capex: dict,
 def compose_artifact_payload_for_run(run_id: str) -> dict:
     """Read the wells + economics stages and build the slim artifact payload
     `deal_valuation` returns for Claude to build a deal-sheet artifact from.
-    See `server.valuation.artifact_payload.build_artifact_payload`."""
+    See `server.valuation.artifact_payload.build_artifact_payload`. Does not
+    check ownership itself: the tool calls it right after
+    `run_valuation_for_run` has proven the caller owns the run."""
     from server.valuation.artifact_payload import build_artifact_payload
 
     store = ValuationRunStore()
@@ -647,7 +649,7 @@ def _validate_analog_cohort_structure(i: int, ac, entry_wells: list, violations:
                              f"{sorted(subject_overlap)[:5]}")
 
 
-def forecast_wells_for_run(*, run_id: str | None, forecasts: list[dict], user_id: int = 0) -> dict:
+def forecast_wells_for_run(*, run_id: str | None, forecasts: list[dict], user_id: int) -> dict:
     """Accept-and-echo. Bounds-validate Claude's asserted parameters, persist
     them into the run's single ``forecast`` stage, and return the consequences
     of what was committed (future volumes — never fit quality).
@@ -669,12 +671,10 @@ def forecast_wells_for_run(*, run_id: str | None, forecasts: list[dict], user_id
     # Run ownership before anything heavy: a write into a nonexistent run would
     # silently UPDATE 0 rows; a write into someone else's run would be worse.
     if run_id is not None:
-        rec = store.get(run_id)
-        if rec is None:
-            raise ForecastValidationError([{"field": "run_id", "message": f"unknown run_id: {run_id}"}])
-        owner = rec.get("user_id")
-        if owner is None or int(owner) != int(user_id):
-            raise ForecastValidationError([{"field": "run_id", "message": "run_id belongs to another user"}])
+        try:
+            require_run_owner(store, run_id, user_id)
+        except RunAccessError as e:
+            raise ForecastValidationError([{"field": "run_id", "message": str(e)}]) from e
 
     violations: list[dict] = []
     for i, entry in enumerate(forecasts):
@@ -962,13 +962,15 @@ def _load_forecast_stage(*, forecast: dict, as_of, months_override):
     return forecasts, needs_capex, statuses
 
 
-def run_valuation_for_run(*, run_id: str, params: dict) -> dict:
+def run_valuation_for_run(*, run_id: str, params: dict, user_id: int) -> dict:
     """Read the single forecast stage, place wells on the calendar, run economics,
     assemble the deal sheet. params is the validated deal terms (interest +
-    economics_overrides + asset_list)."""
+    economics_overrides + asset_list). Raises RunAccessError unless ``user_id``
+    owns the run — this call writes the run's economics and wells stages."""
     case = parse_run_params(params)        # raises CaseFileError on bad params
     interest_type = case.interest_type
     store = ValuationRunStore()
+    require_run_owner(store, run_id, user_id)
     forecast = store.read_stage(run_id, stage="forecast")
     if not forecast:
         raise ValueError(f"run {run_id}: no forecast stage — call deal_forecast_wells first")

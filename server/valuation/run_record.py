@@ -9,6 +9,29 @@ from utils.platform import _query
 _VALID_STAGES = {"wells", "forecast", "economics", "briefing_spec"}
 
 
+class RunAccessError(LookupError):
+    """The run_id is unknown, or the run belongs to another user."""
+
+
+def require_run_owner(store, run_id: str, user_id: int | None) -> dict:
+    """Load ``run_id`` and prove ``user_id`` owns it; the record on success,
+    ``RunAccessError`` otherwise.
+
+    Every path that reads or writes a run by id goes through here — the
+    forecast merge, the valuation, and both ends of the export lane. Run ids
+    are unguessable UUIDs, but they travel in tool responses, deal sheets and
+    download links, so holding one is not proof of ownership. ``store`` is
+    duck-typed (anything with ``get``) so tests can pass an in-memory fake.
+    """
+    rec = store.get(run_id)
+    if rec is None:
+        raise RunAccessError(f"unknown run_id: {run_id}")
+    owner = rec.get("user_id")
+    if owner is None or user_id is None or int(owner) != int(user_id):
+        raise RunAccessError("run_id belongs to another user")
+    return rec
+
+
 class ValuationRunStore:
     def new_run(self, *, user_id: int, case_file: dict) -> str:
         """Mint a new run_id and insert a pending row. Returns the run_id as a UUID string."""

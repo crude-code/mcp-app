@@ -8,6 +8,7 @@ a sandbox: it does not consume its token, it sets a filename, and it refuses
 a link whose grant has gone.
 """
 import csv
+import json
 import io
 import zipfile
 
@@ -73,11 +74,18 @@ _FORECAST = {
 
 
 class FakeRunStore:
-    def __init__(self, stages=None):
+    """Stages for any run_id; every run is owned by `owner` (7, matching the
+    grants the tests mint), or unknown when `owner` is None."""
+
+    def __init__(self, stages=None, owner=7):
         self.stages = stages or {}
+        self.owner = owner
 
     def read_stage(self, run_id, *, stage):
         return self.stages.get(stage)
+
+    def get(self, run_id):
+        return None if self.owner is None else {"run_id": run_id, "user_id": self.owner}
 
 
 @pytest.fixture
@@ -465,3 +473,61 @@ def test_export_ttl_outlives_the_upload_default():
                         meta={"kind": "volumes"}, ttl_seconds=24 * 3600)
     grant = tokens.claim(token, purpose="export")
     assert grant is not None and grant.ttl_seconds == 24 * 3600
+
+
+# ── ownership: a run_id is not a credential ─────────────────────────────────
+
+def test_signed_link_for_someone_elses_run_is_refused(rig, monkeypatch):
+    """The fetch-time check: a signed grant names its user, and the run must
+    be theirs. Tokens minted before the mint-time check existed die here."""
+    client, _tokens, _ = rig
+    monkeypatch.setenv("CC_EXPORT_SECRET", "test-signing-key")
+    foreign = export_tokens.mint(kind="bundle", run_id="run-1", user_id=8,
+                                 user_slug="intruder")
+    r = client.get(f"/export/{foreign}/crudecode-bundle.zip")
+    assert r.status_code == 403
+    assert "valid for the run it names" in r.text
+    own = export_tokens.mint(kind="bundle", run_id="run-1", user_id=7, user_slug="acme")
+    assert client.get(f"/export/{own}/crudecode-bundle.zip").status_code == 200
+
+
+def test_ticket_for_an_unknown_run_is_refused(rig):
+    client, tokens, _ = rig
+    mcp = FastMCP("export-unknown")
+    uploads.register_upload_routes(mcp, tokens=tokens, extraction_store=None,
+                                   run_store=FakeRunStore(owner=None))
+    r = TestClient(mcp.http_app()).get(f"/export/{_token(tokens)}/x.csv")
+    assert r.status_code == 403
+
+
+def test_export_data_refuses_to_mint_for_a_run_the_caller_does_not_own(monkeypatch):
+    import server.mcp_server as srv
+    monkeypatch.setattr(srv, "get_current_identity",
+                        lambda: {"user_id": 7, "user_slug": "acme"})
+    monkeypatch.setattr(srv, "_run_store", FakeRunStore(owner=8))
+    out = json.loads(srv.export_data(kind="bundle", run_id="run-1"))
+    assert out == {"error": "run_id belongs to another user"}
+    monkeypatch.setattr(srv, "_run_store", FakeRunStore(owner=None))
+    out = json.loads(srv.export_data(kind="volumes", run_id="run-1"))
+    assert out == {"error": "unknown run_id: run-1"}
+
+
+def test_export_data_mints_for_the_owner(monkeypatch):
+    import server.mcp_server as srv
+    monkeypatch.setattr(srv, "get_current_identity",
+                        lambda: {"user_id": 7, "user_slug": "acme"})
+    monkeypatch.setattr(srv, "_run_store", FakeRunStore(owner=7))
+    out = json.loads(srv.export_data(kind="bundle", run_id="run-1", label="Tonka"))
+    assert out["kind"] == "bundle"
+    assert "/export/" in out["download_url"]
+    assert out["filename"].endswith(".zip")
+
+
+def test_error_page_escapes_the_message():
+    """Assembly errors quote the run_id the minting call passed, so the page
+    must never render the message as markup."""
+    r = uploads._reject_download(422, 'run <img src=x onerror="alert(1)"> has no stage')
+    assert r.status_code == 422
+    body = r.body.decode()
+    assert "<img" not in body
+    assert "&lt;img src=x onerror=&quot;alert(1)&quot;&gt;" in body

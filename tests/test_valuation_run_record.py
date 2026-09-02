@@ -1,5 +1,5 @@
 import pytest
-from server.valuation.run_record import ValuationRunStore
+from server.valuation.run_record import RunAccessError, ValuationRunStore, require_run_owner
 from tests import VALUATION_TEST_USER_ID
 
 
@@ -95,3 +95,30 @@ def test_update_case_file_clears_briefing_and_economics():
     assert store.read_stage(run_id, stage="briefing_spec") is None   # never serve stale
     assert store.read_stage(run_id, stage="economics") is None       # must re-price
     assert store.read_stage(run_id, stage="forecast") == {"f": 1}    # forecast survives terms change
+
+
+# ── require_run_owner: pure, against a duck-typed store ─────────────────────
+
+class _Runs:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def get(self, run_id):
+        return self.rows.get(run_id)
+
+
+def test_require_run_owner_returns_the_record_for_the_owner():
+    store = _Runs({"r1": {"run_id": "r1", "user_id": 7}})
+    assert require_run_owner(store, "r1", 7)["run_id"] == "r1"
+    assert require_run_owner(store, "r1", "7")["run_id"] == "r1"    # int-tolerant
+
+
+@pytest.mark.parametrize("run_id,user_id,msg", [
+    ("nope", 7, "unknown run_id: nope"),
+    ("r1", 8, "belongs to another user"),
+    ("r1", None, "belongs to another user"),
+])
+def test_require_run_owner_refuses(run_id, user_id, msg):
+    store = _Runs({"r1": {"run_id": "r1", "user_id": 7}})
+    with pytest.raises(RunAccessError, match=msg):
+        require_run_owner(store, run_id, user_id)

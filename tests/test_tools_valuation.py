@@ -80,3 +80,17 @@ def test_deal_sheet_viewer_is_artifact_safe():
     assert "var(--" not in jsx             # no CSS-var leakage
 
 
+
+
+def test_deal_valuation_refuses_a_run_the_caller_does_not_own(monkeypatch):
+    """Ownership is proven inside run_valuation_for_run (it writes the run's
+    economics stage); the tool turns the refusal into a plain error."""
+    monkeypatch.setattr(srv, "get_current_identity",
+                        lambda: {"user_slug": "acme", "user_id": 7})
+
+    def _refuse(**kw):
+        assert kw["user_id"] == 7                 # the caller's id, never an argument
+        raise srv.RunAccessError("run_id belongs to another user")
+    monkeypatch.setattr(srv, "run_valuation_for_run", _refuse)
+    out = json.loads(srv.deal_valuation(run_id="someone-elses", params={}))
+    assert out == {"error": "run_id belongs to another user"}

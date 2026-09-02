@@ -28,9 +28,11 @@ See [`CLAUDE.md`](./CLAUDE.md) for the full architecture reference.
 
 - **`run_sql`** — guarded, SELECT-only, capped exploration query
 - **`deal_forecast_wells`** / **`deal_valuation`** — accept asserted decline parameters (Claude is the reservoir engineer; the server is the calculator), echo their consequences, and run economics — returning the data behind a claude.ai deal-sheet artifact
+- **`export_data`** — hands the user a download link (a zip of the run's full monthly schedule, or one CSV slice) instead of a chat payload
 - **`map_render`** — a MapLibre GL well/unit/PLSS map
 - **`get_skill`** — fetches a packaged, occasional-use procedure (e.g. dataroom extraction)
-- **`dataroom_save_extraction`** — persists a dataroom extraction so the deal record outlives the chat
+- **`get_cut`** — serves a published Crude Cut's rebuild recipe so a session can re-run the analysis against live data
+- **`dataroom_open`** / **`dataroom_save_extraction`** — captures a dataroom zip on the platform, then persists its extraction so the deal record outlives the chat
 - **`message_team`** — files bugs, feedback, and data requests to the team (durable row + best-effort email)
 - **`update_user`** — attaches an email or name to the caller's own account, so an account created in chat can be recovered
 

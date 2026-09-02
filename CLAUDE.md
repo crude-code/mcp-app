@@ -70,8 +70,11 @@ Tools (all return JSON strings):
   timing cadence).
 - **deal_valuation** — Takes `run_id` (from `deal_forecast_wells`) and `params`
   (interest type + blanket numbers, optional `by_api` per-well overrides,
-  optional `economics_overrides`). Runs econ on the forecast stage in the run
-  record, assembles the artifact payload (`build_artifact_payload` in
+  optional `economics_overrides`, optional `asset_list.well_apis` — when
+  given, the run must hold exactly those wells, the guard against valuing
+  the wrong run). Proves the caller owns the run first (it writes the run's
+  economics and wells stages), refuses a stage written before timing was
+  asserted, runs econ on the forecast stage, assembles the artifact payload (`build_artifact_payload` in
   `server/valuation/artifact_payload.py` — exec facts, `economics` carrying
   `npv_at_centers`, the full deck×status×rate `cube`, `decks`,
   `default_deck`, `default_rates`, and `statuses`, plus `assumptions` for
@@ -120,7 +123,11 @@ Tools (all return JSON strings):
   (`server/export_tokens.py`) — kind, run id, user and expiry travel inside it
   under an HMAC the server recomputes, so nothing is stored and a link keeps
   working across restarts for a year. That durability is what lets a deal
-  sheet carry a download row. `query` keeps the in-memory ticket and its
+  sheet carry a download row. Ownership is checked at both ends: the mint
+  refuses a run the caller does not own, and the route re-checks the grant's
+  user against the run at fetch time (a 403 page), so a link minted for
+  someone else's run never serves — including links minted before the
+  mint-time check existed. `query` keeps the in-memory ticket and its
   24-hour TTL, because its grant is an arbitrary SELECT: too large for a URL
   and not a thing to publish in one. Signing needs `CC_EXPORT_SECRET` in the
   environment; with none set every kind falls back to the ticket and the deal
@@ -266,8 +273,8 @@ touches the database. The route survives because copied prompts in the
 wild still carry mint URLs — old doc revisions' scripted fallback reads
 "unavailable" and narrates the crudecode.dev signup form instead of
 dead-ending. Accounts minted while the lane was live keep working
-(update_user is their recovery-email claim lane). `server/accounts.py`
-also still hosts `RateLimiter`, which update_user uses.
+(update_user is their recovery-email claim lane). The module is only that
+stub; the rate limiter update_user uses lives in `utils/rate_limit.py`.
 
 Also retired (2026-08-29, the **Crude Cuts pivot**, v0.6.0): `get_doc` —
 the CrudeDoc-serving tool (lived v0.5.0 only; implementation in git
@@ -325,18 +332,23 @@ calculator. Pure, unit-tested modules:
 - **`forecast.py`** — the calculator: `make_curve` (asserted params →
   curve; owns the terminal-switch formula), `make_zero_curve` (unasserted
   stream), `curve_rate` (hyperbolic + terminal-exponential tail),
-  `project` / `aggregate` (calendar-aware).
+  `project` (a placed curve → monthly rates from its start month), and
+  `curve_to_dict` / `curve_from_dict` — the one persisted curve shape,
+  shared by the orchestrator, the evidence builder and the export lane.
 - **`consequences.py`** — the echo math, pure: effective annual decline,
   next-12/24 cums, trailing-window and cum-through comparators, EUR/EUR-ft,
   cohort `allocation_shares`. Conventions (t=1..N for producers, t=0.. for
   undrilled online months; EUR replaces post-anchor actuals, never
   double-counts) are pinned in its module docstring.
-- **`casefile.py`** — `parse_case_file` / `CaseFile`: validate + type the JSON
-  contract `deal_valuation` sends (interest_type, blanket `interest` + optional
-  `by_api` overrides, `asset_list` as `well_apis` XOR `filter_sql`,
-  economics_overrides). The authoritative interest source.
-- **`econ.py`** — `compute_gross_revenue`, `compute_net_cashflow` (WI vs
-  minerals branch), `npv`, `resolve_well_interest`. Defaults from `config.ECON`.
+- **`casefile.py`** — `parse_run_params` / `CaseFile`: validate + type
+  `deal_valuation`'s `params` (interest_type, blanket `interest` + optional
+  `by_api` overrides, the pinned `economics_overrides` schema, and an
+  optional `asset_list.well_apis` — a declaration the orchestrator checks
+  against the run's wells so the wrong `run_id` is refused; nothing is
+  filtered server-side). The authoritative interest source.
+- **`econ.py`** — `compute_gross_revenue`, `cashflow_components` (WI vs
+  minerals branch, every cashflow line item), `npv`, `resolve_well_interest`.
+  Defaults from `config.ECON`.
 - **`deal_sheet.py`** — pure assembly helpers for the artifact payload (no
   DB): exec facts (`roll_up_facts`) and `default_rates`. Consumed by
   `artifact_payload.py`.
@@ -380,24 +392,36 @@ calculator. Pure, unit-tested modules:
 - **`config.py`** — `EconConfig` (`ECON` singleton): the single source for every
   economic parameter (flat oil/gas deck, diffs, tax/GPT, opex/capex, 360-month
   horizon, the terminal decline `terminal_di_annual` — the calculator's one
-  own number — per-status discount ladders, the cube's oil-price deck, and
-  the DUC=+18mo / PERMITTED=+36mo timing fallbacks that now date only legacy
-  runs — new forecasts carry an asserted online month). Read as
-  `config.ECON.<field>`; never re-hardcode at a call site.
+  own number — per-status discount ladders and the cube's oil-price deck).
+  Read as `config.ECON.<field>`; never re-hardcode at a call site. Also
+  `rate_ladder` / `rate_label` (the cube's percent-string keys, one
+  formatter for every surface that indexes them) and `resolve_as_of`.
+  Online timing is not configured here: every well's first month arrives
+  as its asserted `anchor_month`.
 - **`strip.py`** — NYMEX strip price path (`load_strip_curve` etc.); the default
   price deck.
 - **`orchestrator.py`** — `forecast_wells_for_run` (validate → allocate →
   merge-write → echo; raises `ForecastValidationError` carrying every
   violation) / `run_valuation_for_run` / `compose_artifact_payload_for_run`:
-  the functions the tools wrap. `_load_forecast_stage` is the one reader of
-  the forecast stage and replays legacy fit-era stages unchanged (tolerant
-  `qi_peak` serde, per-stream peak offsets, status-derived timing fallback,
-  `classification`→`needs_capex` fallback). Resolves interest per well
-  (`by_api` else blanket) from the authoritative case file and persists
+  the functions the tools wrap. Both entry points take the caller's
+  `user_id` and prove ownership with `require_run_owner` before touching a
+  run. `_load_forecast_stage` is the one reader of the forecast stage: every
+  well carries its asserted `anchor_month`, `needs_capex` and `status`; a
+  stage written before timing was asserted (pre-2026-08-11) is refused with
+  `StaleRunError` naming the fix (re-assert into a new run) — there is no
+  server-side fallback that invents an online date. Resolves interest per
+  well (`by_api` else blanket) from the validated params and persists
   net_oil/net_gas so net volumes are exact under per-well interest.
 - **`run_record.py`** — `ValuationRunStore`: mint/read/write the
   `platform.valuation_runs` row. Durable per-deal state keyed by a server-minted
   UUID `run_id`; tools carry only `run_id` + the compact summary each returns.
+  `require_run_owner(store, run_id, user_id)` / `RunAccessError` is the one
+  ownership check, used by the forecast merge, the valuation and both ends
+  of the export lane: a run id travels in tool responses, deal sheets and
+  download links, so holding one is not proof of ownership. The table still
+  carries `briefing_spec`, `pdp_forecast`, `pud_forecast` and a `status`
+  that stays `pending` — columns from retired designs nothing reads or
+  writes; dropping them is a migration.
 
 ### Maps (`server/maps/`)
 
@@ -438,8 +462,8 @@ subfolder with a `SKILL.md` in to add a skill; nothing else registers it.
   last actuals) — with a `--facts` digest the model reads before writing
   `notes.json` (the judgment layer). Claude fills the emitted payload into
   the frozen `AriesViewer.jsx` as `DATA`/`TITLE`/`TLDR` (`example.json` is
-  generated from a synthetic fixture by the payload script itself, so it
-  can't drift). Doctrine: the database's forecasts and economics are the
+  a hand-kept sample of the payload shape; nothing regenerates it, so check
+  it when `build()`'s keys change). Doctrine: the database's forecasts and economics are the
   author's claims — displayed, never adopted into a valuation (the one
   sanctioned exception is `aries-to-valuation`, below, on explicit request).
 - **`aries-to-valuation/`** — lane 1 of the ARIES→valuation integration:
@@ -528,10 +552,11 @@ subfolder with a `SKILL.md` in to add a skill; nothing else registers it.
 
 LLM-facing text, loaded via `utils/prompts.py` (`load("outer/...")`).
 - **`outer/`** — text outer Claude reads: `system_prompt.md` (lead-analyst
-  posture, available-data summary) + one docstring per tool
-  (`tool_run_sql.md`, `tool_deal_forecast_wells.md`, `tool_deal_valuation.md`,
-  `tool_map_render.md`, `tool_get_skill.md`, `tool_dataroom_save_extraction.md`). `compose_outer_system_prompt()`
-  assembles `system_prompt.md` + a live skills catalog (built from
+  posture, available-data summary), one `tool_<name>.md` per tool (twelve
+  today; every description is loaded through `utils.prompts.tool_doc`), and
+  `chat_mode.md` — the section every tool description and the instructions
+  gain under `CC_CHAT_MODE=1`. `compose_outer_system_prompt()` assembles
+  `system_prompt.md` + a live skills catalog (built from
   `server/skills.list_skills()`) into the MCP server `instructions`.
 - **`outer/shared_schema.md`** — the DB schema reference, kept in sync with
   `utils/schemas.py` by `tests/test_schema_drift.py`. It is appended to the
@@ -554,20 +579,25 @@ sentence must carry the routing keywords a user's ask would match.
 
 ### Shared Utilities (`utils/`)
 - **schemas.py** — Single source of truth for queryable DB schemas.
-  `WIDGET_SCHEMAS` (widgets, re-run on every render) and `EXPLORATION_SCHEMAS`
-  (`run_sql`, adds `shapes`). Drift guard: `tests/test_schema_drift.py`.
+  `MAP_SCHEMAS` (map data layers; also `sql_guard`'s default) and
+  `EXPLORATION_SCHEMAS` (`run_sql` and the export lane; adds `shapes`).
+  Drift guard: `tests/test_schema_drift.py`.
 - **db.py** — Connection pool (the Crude Code Postgres). `query(sql, params?, schema?,
   statement_timeout_ms?)` returns list of dicts, coerces Decimal → float.
 - **sql_guard.py** — Shared SELECT validator + `run_guarded` executor +
-  `dry_run`. Validates structure (SELECT/WITH only, single statement, no
+  `dry_run` (used by `export_data` to plan a `query` export at mint time).
+  Validates structure (SELECT/WITH only, single statement, no
   DML/DDL/smuggling/dangerous functions) and schema (defaults to
-  `WIDGET_SCHEMAS`; exploration passes `EXPLORATION_SCHEMAS`), then runs with
+  `MAP_SCHEMAS`; exploration passes `EXPLORATION_SCHEMAS`), then runs with
   `statement_timeout` and row/JSON-size caps.
-- **briefing_handle_store.py** — In-memory per-user `BriefingHandleStore`
-  mapping short-lived tokens to hydrated specs (24h TTL). `mint(user_slug,
+- **map_handle_store.py** — In-memory per-user `MapHandleStore` mapping
+  short-lived tokens to hydrated map specs (24h TTL). `mint(user_slug,
   spec)` / `fetch(user_slug, token)` — synchronous, spec always in hand at
-  mint time. Today it serves only map specs, backing `map_render` / `map_read_full`
-  (name kept for history, from when it also backed briefings).
+  mint time; backs `map_render` / `map_read_full`.
+- **rate_limit.py** — `RateLimiter`, a fixed-window in-memory per-key
+  counter (update_user's probe cap). A restart resets it, which is fine for
+  slowing a probe; `message_team` counts rows instead because its cap must
+  survive restarts.
 - **prompts.py** — Loads `prompts/` files. `compose_outer_system_prompt()`
   assembles `outer/system_prompt.md` + a live skills catalog (no schema —
   the instructions channel is unreliable; see **Prompt delivery channels**
@@ -604,7 +634,8 @@ these typed tables. Those landing schemas are deliberately outside
 ## Running Locally
 
 One-time setup (after cloning): `.venv/bin/pip install -r requirements.txt`
-(installs numpy/scipy/pandas and the rest). Then:
+(fastmcp, numpy, psycopg and the rest; the header there says which pins
+this repo imports and which ride along for the host's ingest jobs). Then:
 ```bash
 .venv/bin/python server/mcp_server.py &   # MCP on 9000
 ```
@@ -644,7 +675,9 @@ row on the sheet. Rotating it invalidates every outstanding signed link.
   `crudecode.dev/templates/` — both scripts publish into the
   same dir; only the prod deploy syncs the apex vhost config), rebuild the
   renderer, and restart the MCP server only when a path it actually loaded
-  into memory changed since the last successful deploy (tracked in
+  into memory changed since the last successful deploy (`server/`, `utils/`,
+  `prompts/`, `skills/` — the instructions carry a skills catalog composed
+  at import — `renderer/`, `requirements.txt`; tracked in
   `.last-mcp-deployed-sha`).
 - **Chat mode (`CC_CHAT_MODE=1`).** A deployment-wide switch for hosts that
   can't render claude.ai artifacts or the MCP-app map (third-party chat front
@@ -659,25 +692,34 @@ row on the sheet. Rotating it invalidates every outstanding signed link.
   so removing the line and pushing `dev` turns it off. Prod never reads it.
 - **`deploy/nginx/`** — the canonical prod/dev vhost configs, synced onto the
   host by the deploy scripts.
-- **`deploy/systemd/`** — timer units for this deployment's own scheduled jobs
-  (market/well ingestion, activity digests, staleness checks). They invoke an
-  `ingest` package that lives outside this repo — populating the database is
-  out of scope here (see Market data above).
+- **`deploy/systemd/`** — unit files for the host, kept as documentation of
+  host state: neither deploy script installs them. `crudecode-mcp-dev.service`
+  runs the dev MCP server (the prod unit is not in the repo). The timer units
+  belong to the host's scheduled ingest jobs, which invoke an `ingest`
+  package that lives outside every repo in the workbench and run from this
+  checkout's venv — the reason `anthropic` / `pandas` / `fastapi` stay
+  pinned in `requirements.txt` although nothing here imports them. They name
+  the private pipeline's sources and cadences, so they are candidates to
+  move to that repo. Populating the database is out of scope here (see
+  Market data above).
 
 ## Testing
 
 ### Pytest suite (`tests/`)
 Run: `.venv/bin/pytest -q`.
-- `tests/conftest.py` — adds repo root to `sys.path`, exposes `fake_identity`,
-  auto-skips tests marked `db` (no `CC_DB_URL`), `anthropic` (no
-  `ANTHROPIC_API_KEY`), and `network` (no `--run-network`); purges sentinel
-  `valuation_runs` rows at session end.
+- `tests/conftest.py` — adds repo root to `sys.path`, exposes the
+  `identity` / `no_identity` fixtures (a resolved caller for tool tests),
+  auto-skips tests marked `db` (no `CC_DB_URL`); purges sentinel
+  `valuation_runs` / extraction / room / team-message rows at session end.
+  `tests/valuation_fakes.py` holds the in-memory run store and the
+  `patch_engine` monkeypatch the engine tests share.
 - Coverage spans the live surface: `run_sql` + the valuation tools
-  (`deal_forecast_wells` accept-and-echo — validation matrix, cohort allocation,
-  merge/overwrite, legacy-stage replay — and `deal_valuation`), the
-  calculator (forecast/consequences/econ/artifact-payload/strip), maps,
-  `sql_guard`,
-  `briefing_handle_store` (map tokens), the dataroom persistence path —
+  (`deal_forecast_wells` accept-and-echo in `test_deal_forecast_wells.py` —
+  validation matrix, cohort allocation, merge/overwrite, run ownership, the
+  stale-run refusal, the `asset_list` cross-check — and `deal_valuation`),
+  the calculator (`test_valuation_curves.py`, consequences, econ,
+  artifact payload, strip), maps, `sql_guard`, `map_handle_store` (map
+  tokens), `rate_limit`, the dataroom persistence path —
   store, mint tools (`dataroom_save_extraction`, `dataroom_open`), upload
   tokens, HTTP upload handlers (kit, room, echo), room store, CSV
   transport, and the packer round-trip + `--upload` mode against a live

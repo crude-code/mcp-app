@@ -257,11 +257,6 @@ def _partition_net_cashflow(by_well: dict, statuses: dict) -> dict[str, np.ndarr
     return buckets
 
 
-def _rate_label(rate: float) -> str:
-    """Decimal annual rate → the cube's percent-string key (0.175 → '17.5')."""
-    return f"{rate * 100:g}"
-
-
 def _status_pv_cube(schedules_by_deck: dict[str, dict], statuses: dict, rate_centers: dict) -> dict:
     """The risked-PV cube: ``deck → status code → rate label → NPV (USD)``.
 
@@ -273,7 +268,7 @@ def _status_pv_cube(schedules_by_deck: dict[str, dict], statuses: dict, rate_cen
     for deck_label, sched in schedules_by_deck.items():
         buckets = _partition_net_cashflow(sched["by_well"], statuses)
         cube[deck_label] = {
-            code: {_rate_label(r): npv(buckets[code], annual_rate=r)
+            code: {config.rate_label(r): npv(buckets[code], annual_rate=r)
                    for r in config.rate_ladder(center)}
             for code, center in rate_centers.items()
         }
@@ -420,7 +415,7 @@ def _economics_from_forecasts(*, forecasts: dict, needs_capex: dict,
     )
     deck = config.default_deck_label(price["mode"])
     by_status_center = {
-        code: float(npv_by_status[deck][code][_rate_label(config.rate_ladder(center)[1])])
+        code: float(npv_by_status[deck][code][config.rate_label(config.rate_ladder(center)[1])])
         for code, center in rate_centers.items()
     }
     npv_at_centers = {"by_status": by_status_center, "total": float(sum(by_status_center.values()))}

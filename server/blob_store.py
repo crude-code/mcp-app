@@ -46,24 +46,8 @@ class SupabaseBlobStore:
             raise BlobStoreError(f"bucket setup failed ({resp.status_code}): {resp.text[:300]}")
         self._bucket_checked = True
 
-    def put_file(self, key: str, path: str, *, content_type: str = "application/zip") -> None:
-        """Stream a local file into the bucket under `key` (upsert)."""
-        if not self.configured():
-            raise BlobStoreError("SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY not set")
-        self.ensure_bucket()
-        with open(path, "rb") as fh:
-            resp = httpx.post(
-                f"{self._base}/storage/v1/object/{self.bucket}/{key}",
-                headers={**self._headers(), "Content-Type": content_type,
-                         "x-upsert": "true"},
-                content=fh,
-                timeout=httpx.Timeout(30.0, write=600.0),
-            )
-        if resp.status_code not in (200, 201):
-            raise BlobStoreError(f"blob put failed ({resp.status_code}): {resp.text[:300]}")
-
-    def put_bytes(self, key: str, data: bytes, *, content_type: str = "application/json") -> None:
-        """Write an in-memory payload into the bucket under `key` (upsert)."""
+    def _put(self, key: str, content, *, content_type: str) -> None:
+        """Upsert `content` (bytes or an open binary file) under `key`."""
         if not self.configured():
             raise BlobStoreError("SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY not set")
         self.ensure_bucket()
@@ -71,11 +55,20 @@ class SupabaseBlobStore:
             f"{self._base}/storage/v1/object/{self.bucket}/{key}",
             headers={**self._headers(), "Content-Type": content_type,
                      "x-upsert": "true"},
-            content=data,
+            content=content,
             timeout=httpx.Timeout(30.0, write=600.0),
         )
         if resp.status_code not in (200, 201):
             raise BlobStoreError(f"blob put failed ({resp.status_code}): {resp.text[:300]}")
+
+    def put_file(self, key: str, path: str, *, content_type: str = "application/zip") -> None:
+        """Stream a local file into the bucket under `key` (upsert)."""
+        with open(path, "rb") as fh:
+            self._put(key, fh, content_type=content_type)
+
+    def put_bytes(self, key: str, data: bytes, *, content_type: str = "application/json") -> None:
+        """Write an in-memory payload into the bucket under `key` (upsert)."""
+        self._put(key, data, content_type=content_type)
 
     def get_bytes(self, key: str) -> bytes:
         """Fetch an object's bytes from the bucket."""

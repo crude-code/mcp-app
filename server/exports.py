@@ -5,8 +5,9 @@ window, the artifact payload's trim — exists because tool responses land in
 the model's context window. An export has no such constraint, so it must not
 travel that way: `export_data` mints a capability URL, the bytes are
 assembled *here* and streamed down `GET /export/{token}/{filename}`, and the
-tool returns a URL plus a row count — a few hundred bytes of context no
-matter how large the file is. Same discipline as the upload lane
+tool returns a URL, a filename and the link's lifetime — a few hundred bytes
+of context no matter how large the file is (the row count rides in the
+response's `X-Export-Rows` header). Same discipline as the upload lane
 (server/uploads.py), pointed the other way.
 
 Assembly happens at fetch time rather than mint time, so nothing sits at

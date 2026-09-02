@@ -21,15 +21,20 @@ from pathlib import Path
 
 SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"
 
-# Same base and env override as the deal-sheet template lane
-# (server/valuation/artifact_payload.py) — apex on purpose: sandbox egress
-# allowlists that cover crudecode.dev don't extend to the mcp subdomains.
+# Where the deploy scripts publish every frozen file — skill supporting files
+# here, the deal-sheet template in server/valuation/artifact_payload.py — as
+# static, content-addressed copies. Served from the apex on purpose: sandbox
+# egress allowlists that cover crudecode.dev don't extend to the mcp
+# subdomains. CC_TEMPLATE_BASE_URL overrides the base for local testing.
 _DEFAULT_TEMPLATE_BASE = "https://crudecode.dev/templates"
 
 
+def template_base_url() -> str:
+    return os.environ.get("CC_TEMPLATE_BASE_URL", _DEFAULT_TEMPLATE_BASE).rstrip("/")
+
+
 def _published_file_url(filename: str, sha256_hex: str) -> str:
-    base = os.environ.get("CC_TEMPLATE_BASE_URL", _DEFAULT_TEMPLATE_BASE).rstrip("/")
-    return f"{base}/skill-{sha256_hex[:12]}-{filename}"
+    return f"{template_base_url()}/skill-{sha256_hex[:12]}-{filename}"
 
 
 class SkillNotFound(Exception):

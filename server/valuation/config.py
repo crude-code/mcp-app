@@ -92,6 +92,13 @@ def rate_ladder(center: float) -> tuple[float, float, float]:
     return (round(center - spread, 6), round(center, 6), round(center + spread, 6))
 
 
+def rate_label(rate: float) -> str:
+    """Decimal annual rate → the percent-string key the PV cube, the status
+    rows' `rates` and `default_rates` all share (0.175 → '17.5'). One
+    formatter so the template's selector always finds its cube cell."""
+    return f"{rate * 100:g}"
+
+
 def resolve_rate_centers(econ_overrides: dict | None) -> dict[str, float]:
     """Per-status discount-rate centers for a deal: a user-supplied
     ``economics_overrides.discount_rates`` map (per status) overrides the

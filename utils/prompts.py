@@ -7,7 +7,7 @@ _DIR = Path(__file__).resolve().parent.parent / "prompts"
 
 
 def load(path: str) -> str:
-    """Load a prompt file by relative path, e.g. load("mcp/instructions.md")."""
+    """Load a prompt file by relative path, e.g. load("outer/system_prompt.md")."""
     return (_DIR / path).read_text().strip()
 
 

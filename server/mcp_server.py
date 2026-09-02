@@ -1,7 +1,9 @@
 """Crude Code MCP Server.
 
-Synchronous tool registry — run_sql, deal_forecast_wells, deal_valuation, map_render, get_skill,
-get_cut, plus the renderer-only read tool (map_read_full). No inner agents.
+Synchronous tool registry: run_sql, get_skill, get_cut, dataroom_open,
+dataroom_save_extraction, message_team, update_user, map_render,
+deal_forecast_wells, deal_valuation, export_data, plus the renderer-only
+read tool map_read_full. No inner agents.
 """
 
 # Release version. A dev → main merge is a release: bump this and the
@@ -29,7 +31,6 @@ from utils.prompts import (
     chat_mode as _chat_mode,
     compose_outer_system_prompt,
     compose_run_sql_doc,
-    load as _load_prompt,
     tool_doc as _tool_doc,
 )
 
@@ -129,6 +130,13 @@ def get_request_slug() -> str:
         return "unknown"
 
 
+def _err(message: str) -> str:
+    """The one error shape every tool returns: `{"error": message}`. The
+    exception is deal_forecast_wells' validation bounce, which carries the
+    violation list alongside a fixed error code."""
+    return _json.dumps({"error": message})
+
+
 # ── MCP Server ───────────────────────────────────────────────────────────────
 
 mcp = FastMCP("Crude Code", instructions=compose_outer_system_prompt())
@@ -175,12 +183,12 @@ def run_sql(sql: str, schema: str = "public") -> str:
     results land in the chat thread."""
     identity = get_current_identity()
     if not identity:
-        return _json.dumps({"error": "Could not identify user"})
+        return _err("Could not identify user")
 
     user_slug = identity["user_slug"]
 
     if not sql or not sql.strip():
-        return _json.dumps({"error": "sql is required"})
+        return _err("sql is required")
 
     with trace("run_sql", user=user_slug):
         try:
@@ -192,10 +200,10 @@ def run_sql(sql: str, schema: str = "public") -> str:
                 size_cap_bytes=100_000,
             )
         except GuardError as e:
-            return _json.dumps({"error": str(e)})
+            return _err(str(e))
         except Exception as e:
             _run_sql_log.error("run_sql failed: %s", e)
-            return _json.dumps({"error": str(e)})
+            return _err(str(e))
 
         return _json.dumps(
             {"rows": result["rows"], "count": result["count"]},
@@ -208,7 +216,7 @@ def run_sql(sql: str, schema: str = "public") -> str:
 _get_skill_log = _logging.getLogger("cc.get_skill")
 
 
-@mcp.tool(description=_load_prompt("outer/tool_get_skill.md"))
+@mcp.tool(description=_tool_doc("outer/tool_get_skill.md"))
 def get_skill(name: str = "") -> str:
     """Return a packaged skill bundle (instructions + files), or the catalog
     when called with no/unknown name. Static repo files — no DB or identity
@@ -224,7 +232,7 @@ def get_skill(name: str = "") -> str:
                 return _json.dumps({"available_skills": list_skills()})
         except Exception as e:
             _get_skill_log.error("get_skill failed: %s", e)
-            return _json.dumps({"error": str(e)})
+            return _err(str(e))
 
 
 
@@ -233,7 +241,7 @@ def get_skill(name: str = "") -> str:
 _get_cut_log = _logging.getLogger("cc.get_cut")
 
 
-@mcp.tool(description=_load_prompt("outer/tool_get_cut.md"))
+@mcp.tool(description=_tool_doc("outer/tool_get_cut.md"))
 def get_cut(cut: str = "") -> str:
     """Serve a Crude Cut's rebuild recipe from platform.crudecuts to the
     connected session, or the catalog of live cuts when called with no or an
@@ -258,7 +266,7 @@ def get_cut(cut: str = "") -> str:
             return _json.dumps(row)
         except Exception as e:
             _get_cut_log.error("get_cut failed: %s", e)
-            return _json.dumps({"error": str(e)})
+            return _err(str(e))
 
 # ── dataroom_save_extraction ─────────────────────────────────────────────────
 
@@ -311,7 +319,7 @@ def _known_room_response(identity: dict, existing: dict, label: str) -> str:
     return _json.dumps(payload)
 
 
-@mcp.tool(description=_load_prompt("outer/tool_dataroom_open.md"))
+@mcp.tool(description=_tool_doc("outer/tool_dataroom_open.md"))
 def dataroom_open(label: str, sha256: str, size_bytes: int) -> str:
     """Register a dataroom zip before reading it. Known content hash →
     the room is already captured ({status: "known"}, no upload); new hash →
@@ -320,23 +328,23 @@ def dataroom_open(label: str, sha256: str, size_bytes: int) -> str:
     was uploaded by anyone else."""
     identity = get_current_identity()
     if not identity:
-        return _json.dumps({"error": "Could not identify user"})
+        return _err("Could not identify user")
 
     with trace("dataroom_open", user=identity["user_slug"]):
         clean_label = (label or "").strip()
         clean_sha = (sha256 or "").strip().lower()
         if not clean_label:
-            return _json.dumps({"error": "label is required — use the deal/teaser title"})
+            return _err("label is required — use the deal/teaser title")
         if len(clean_sha) != _SHA256_HEX_LEN or any(c not in "0123456789abcdef" for c in clean_sha):
-            return _json.dumps({"error": "sha256 must be the 64-char hex digest of the zip"})
+            return _err("sha256 must be the 64-char hex digest of the zip")
         if not isinstance(size_bytes, int) or size_bytes <= 0:
-            return _json.dumps({"error": "size_bytes must be the zip's byte count"})
+            return _err("size_bytes must be the zip's byte count")
 
         try:
             existing = _room_store.find_by_hash(clean_sha)
         except Exception as e:  # noqa: BLE001
             _dataroom_open_log.error("dataroom_open lookup failed: %s", e)
-            return _json.dumps({"error": str(e)})
+            return _err(str(e))
 
         if existing:
             return _known_room_response(identity, existing, clean_label)
@@ -348,7 +356,7 @@ def dataroom_open(label: str, sha256: str, size_bytes: int) -> str:
             )
         except Exception as e:  # noqa: BLE001
             _dataroom_open_log.error("dataroom_open insert failed: %s", e)
-            return _json.dumps({"error": str(e)})
+            return _err(str(e))
 
         token = _upload_tokens.mint(
             user_id=identity["user_id"], user_slug=identity["user_slug"],
@@ -365,7 +373,7 @@ def dataroom_open(label: str, sha256: str, size_bytes: int) -> str:
         })
 
 
-@mcp.tool(description=_load_prompt("outer/tool_dataroom_save_extraction.md"))
+@mcp.tool(description=_tool_doc("outer/tool_dataroom_save_extraction.md"))
 def dataroom_save_extraction(label: str, extraction_id: str = "", room_id: str = "") -> str:
     """Mint a one-time HTTP upload URL for a persist_pack.py kit. The kit
     bytes travel out-of-band (a POST from the sandbox) and never transit the
@@ -375,12 +383,12 @@ def dataroom_save_extraction(label: str, extraction_id: str = "", room_id: str =
     call did (server/uploads.py)."""
     identity = get_current_identity()
     if not identity:
-        return _json.dumps({"error": "Could not identify user"})
+        return _err("Could not identify user")
 
     with trace("dataroom_save_extraction", user=identity["user_slug"]):
         clean_label = (label or "").strip()
         if not clean_label:
-            return _json.dumps({"error": "label is required — use the deal/teaser title"})
+            return _err("label is required — use the deal/teaser title")
 
         token = _upload_tokens.mint(
             user_id=identity["user_id"],
@@ -411,7 +419,7 @@ _MESSAGE_RATE_CAP = 10          # per window
 _MESSAGE_RATE_WINDOW_MIN = 60
 
 
-@mcp.tool(description=_load_prompt("outer/tool_message_team.md"))
+@mcp.tool(description=_tool_doc("outer/tool_message_team.md"))
 def message_team(subject: str, body: str, category: str = "other",
                  context: dict | None = None) -> str:
     """File a user message to the Crude Code team: durable row first
@@ -419,25 +427,25 @@ def message_team(subject: str, body: str, category: str = "other",
     mailbox. Destination is hardwired — never a general email capability."""
     identity = get_current_identity()
     if not identity:
-        return _json.dumps({"error": "Could not identify user"})
+        return _err("Could not identify user")
 
     with trace("message_team", user=identity["user_slug"], category=category):
         clean_subject = (subject or "").strip()
         clean_body = (body or "").strip()
         if not clean_subject or not clean_body:
-            return _json.dumps({"error": "subject and body are both required"})
+            return _err("subject and body are both required")
         if category not in MESSAGE_CATEGORIES:
-            return _json.dumps({"error": f"category must be one of {sorted(MESSAGE_CATEGORIES)}"})
+            return _err(f"category must be one of {sorted(MESSAGE_CATEGORIES)}")
 
         try:
             if _team_messages.count_recent(
                 identity["user_id"], minutes=_MESSAGE_RATE_WINDOW_MIN,
             ) >= _MESSAGE_RATE_CAP:
-                return _json.dumps({"error": (
+                return _err((
                     f"rate limit: more than {_MESSAGE_RATE_CAP} messages in "
                     f"{_MESSAGE_RATE_WINDOW_MIN} minutes — batch further items "
                     "into one message or wait"
-                )})
+                ))
             message_id = _team_messages.save(
                 user_id=identity["user_id"],
                 category=category,
@@ -447,7 +455,7 @@ def message_team(subject: str, body: str, category: str = "other",
             )
         except Exception as e:
             _message_team_log.error("message_team store failed: %s", e)
-            return _json.dumps({"error": str(e)})
+            return _err(str(e))
 
         # Best-effort email — the row above is the record; a mail hiccup must
         # never read as a failed filing.
@@ -488,7 +496,7 @@ _update_user_log = _logging.getLogger("cc.update_user")
 _update_user_limiter = RateLimiter(limit=20, window_s=3600)
 
 
-@mcp.tool(description=_load_prompt("outer/tool_update_user.md"))
+@mcp.tool(description=_tool_doc("outer/tool_update_user.md"))
 def update_user(email: str = "", name: str = "") -> str:
     """Read or write the caller's own profile row. No arguments = read.
 
@@ -496,7 +504,7 @@ def update_user(email: str = "", name: str = "") -> str:
     for the attach-don't-reassign rule and why a stored email is unverified."""
     identity = get_current_identity()
     if not identity:
-        return _json.dumps({"error": "Could not identify user"})
+        return _err("Could not identify user")
     user_id = identity["user_id"]
     user_slug = identity["user_slug"]
 
@@ -505,9 +513,9 @@ def update_user(email: str = "", name: str = "") -> str:
             current = _user_profiles.read(user_id)
         except Exception as e:  # noqa: BLE001 — DB errors surface here
             _update_user_log.error("update_user read failed: %s", e)
-            return _json.dumps({"error": str(e)})
+            return _err(str(e))
         if current is None:
-            return _json.dumps({"error": "Could not identify user"})
+            return _err("Could not identify user")
 
         # No arguments: a read of current state. Deliberately not an error and
         # deliberately not rate-limited — it is what lets Claude check before
@@ -516,14 +524,14 @@ def update_user(email: str = "", name: str = "") -> str:
             return _json.dumps(profile_state(current))
 
         if not _update_user_limiter.allow(user_slug):
-            return _json.dumps({"error": (
+            return _err((
                 "rate limit: too many profile updates in the last hour — "
                 "wait before trying again"
-            )})
+            ))
 
         plan = plan_update(current=current, email=email, name=name)
         if "error" in plan:
-            return _json.dumps({"error": plan["error"]})
+            return _err(plan["error"])
 
         # One address, one account: the site's signup path already refuses an
         # email that exists in platform.users, so claiming one here would
@@ -533,13 +541,13 @@ def update_user(email: str = "", name: str = "") -> str:
                 owner = _user_profiles.email_owner(plan["email"])
             except Exception as e:  # noqa: BLE001
                 _update_user_log.error("update_user owner check failed: %s", e)
-                return _json.dumps({"error": str(e)})
+                return _err(str(e))
             if owner is not None and owner != user_id:
-                return _json.dumps({"error": (
+                return _err((
                     "that email is already on another CrudeCode account — "
                     "if it's yours, use that account's connector URL, or file "
                     "a message_team request to merge them"
-                )})
+                ))
 
         if not plan["changed"]:
             return _json.dumps(profile_state(current))
@@ -549,7 +557,7 @@ def update_user(email: str = "", name: str = "") -> str:
                                  name=plan["name"])
         except Exception as e:  # noqa: BLE001
             _update_user_log.error("update_user write failed: %s", e)
-            return _json.dumps({"error": str(e)})
+            return _err(str(e))
 
         updated = dict(current)
         if plan["email"]:
@@ -566,7 +574,7 @@ def update_user(email: str = "", name: str = "") -> str:
         if plan["email"] and not current.get("email"):
             try:
                 send_notification(
-                    f"[claim] {plan['email']} claimed a CrudeDoc account",
+                    f"[claim] {plan['email']} claimed a chat-minted CrudeCode account",
                     f"Slug: {user_slug}\nName: {updated.get('name') or 'unknown'}\n"
                     f"Email: {plan['email']} (unverified)\n",
                 )
@@ -576,7 +584,7 @@ def update_user(email: str = "", name: str = "") -> str:
         return _json.dumps(profile_state(updated, changed=plan["changed"]))
 
 
-# ── map ────────────────────────────────────────────────────────────────────
+# ── map_render / map_read_full ─────────────────────────────────────────────
 
 
 # Chat mode's stand-in for the map: the rows behind the features, capped like
@@ -634,7 +642,7 @@ def map_render(spec: dict) -> str:
     """Synchronous map render. Validate -> hydrate -> mint handle -> summary."""
     identity = get_current_identity()
     if not identity:
-        return _json.dumps({"error": "Could not identify user"})
+        return _err("Could not identify user")
     user_slug = identity["user_slug"]
 
     with trace("map_render", user=user_slug):
@@ -642,10 +650,10 @@ def map_render(spec: dict) -> str:
             parsed = parse_map_spec(spec)
             hydrated = hydrate_map(parsed)
         except (MapSpecError, MapHydrateError) as e:
-            return _json.dumps({"error": str(e)})
+            return _err(str(e))
         except Exception as e:  # noqa: BLE001 — DB errors surface here too
             _map_log.error("map failed: %s", e)
-            return _json.dumps({"error": str(e)})
+            return _err(str(e))
 
         if _CHAT_MODE:
             return _json.dumps(_map_as_rows(hydrated), default=str)
@@ -672,11 +680,11 @@ def map_read_full(token: str) -> str:
     """Renderer-only, non-blocking full-spec fetch from the handle store."""
     identity = get_current_identity()
     if not identity:
-        return _json.dumps({"error": "Could not identify user"})
+        return _err("Could not identify user")
     user_slug = identity["user_slug"]
     spec = _map_handles.fetch(user_slug=user_slug, token=token)
     if spec is None:
-        return _json.dumps({"error": "unknown or expired token"})
+        return _err("unknown or expired token")
     return _json.dumps({"spec": spec}, default=str)
 
 
@@ -685,13 +693,13 @@ def map_read_full(token: str) -> str:
 _valuation_log = _logging.getLogger("cc.valuation")
 
 
-@mcp.tool(description=_load_prompt("outer/tool_deal_forecast_wells.md"))
+@mcp.tool(description=_tool_doc("outer/tool_deal_forecast_wells.md"))
 def deal_forecast_wells(forecasts: list[dict], run_id: str | None = None) -> str:
     """Accept asserted decline parameters, echo consequences. See
     prompts/outer/tool_deal_forecast_wells.md."""
     identity = get_current_identity()
     if not identity:
-        return _json.dumps({"error": "Could not identify user"})
+        return _err("Could not identify user")
     user_id = identity["user_id"]
     with trace("deal_forecast_wells", user=identity["user_slug"]):
         try:
@@ -705,7 +713,7 @@ def deal_forecast_wells(forecasts: list[dict], run_id: str | None = None) -> str
             })
         except Exception as e:  # noqa: BLE001
             _valuation_log.error("deal_forecast_wells failed: %s", e)
-            return _json.dumps({"error": str(e)})
+            return _err(str(e))
         return _json.dumps(result, default=str)
 
 
@@ -714,7 +722,7 @@ def deal_valuation(run_id: str, params: dict) -> str:
     """Union forecasts → econ → slim artifact payload. See prompts/outer/tool_deal_valuation.md."""
     identity = get_current_identity()
     if not identity:
-        return _json.dumps({"error": "Could not identify user"})
+        return _err("Could not identify user")
     user_slug = identity["user_slug"]
     with trace("deal_valuation", user=user_slug):
         try:
@@ -761,10 +769,10 @@ def deal_valuation(run_id: str, params: dict) -> str:
                 "viewer_sha256": _DEAL_SHEET_SHA256,
             }, default=str)
         except RunAccessError as e:
-            return _json.dumps({"error": str(e)})
+            return _err(str(e))
         except Exception as e:  # noqa: BLE001
             _valuation_log.error("deal_valuation failed: %s", e)
-            return _json.dumps({"error": str(e)})
+            return _err(str(e))
 
 
 # ── export_data ──────────────────────────────────────────────────────────────
@@ -811,7 +819,7 @@ def _mint_export_url(identity, *, kind: str, run_id: str = "", sql: str = "",
     return f"{public_base_url()}/export/{token}/{filename}", filename, durable
 
 
-@mcp.tool(description=_load_prompt("outer/tool_export_data.md"))
+@mcp.tool(description=_tool_doc("outer/tool_export_data.md"))
 def export_data(kind: str, run_id: str = "", sql: str = "",
                 schema: str = "public", label: str = "") -> str:
     """Mint a browser-clickable download URL — a CSV, or a zip for `bundle`.
@@ -819,7 +827,7 @@ def export_data(kind: str, run_id: str = "", sql: str = "",
     the model's context; this call returns only a link and a filename."""
     identity = get_current_identity()
     if not identity:
-        return _json.dumps({"error": "Could not identify user"})
+        return _err("Could not identify user")
 
     with trace("export_data", user=identity["user_slug"]):
         if kind not in _exports.KINDS:
@@ -828,7 +836,7 @@ def export_data(kind: str, run_id: str = "", sql: str = "",
             })
         if kind in _export_tokens.SIGNABLE_KINDS:
             if not run_id.strip():
-                return _json.dumps({"error": f"kind {kind!r} needs a run_id"})
+                return _err(f"kind {kind!r} needs a run_id")
             # The link this mints reads the run record for as long as it
             # lives, so the caller has to own the run — possession of a run_id
             # (they appear in chat, in deal sheets, in other users' links) is
@@ -836,9 +844,9 @@ def export_data(kind: str, run_id: str = "", sql: str = "",
             try:
                 require_run_owner(_run_store, run_id.strip(), identity["user_id"])
             except RunAccessError as e:
-                return _json.dumps({"error": str(e)})
+                return _err(str(e))
         if kind == "query" and not sql.strip():
-            return _json.dumps({"error": "kind 'query' needs a sql SELECT"})
+            return _err("kind 'query' needs a sql SELECT")
 
         # Validate a query at mint time so a broken SELECT fails here, in the
         # conversation, rather than behind a link the user has already clicked.
@@ -846,7 +854,7 @@ def export_data(kind: str, run_id: str = "", sql: str = "",
             try:
                 dry_run(sql, schema=schema, allowed_schemas=EXPLORATION_SCHEMAS)
             except GuardError as e:
-                return _json.dumps({"error": str(e)})
+                return _err(str(e))
 
         url, filename, durable = _mint_export_url(
             identity, kind=kind, run_id=run_id, sql=sql, schema=schema, label=label)

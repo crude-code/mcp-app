@@ -112,20 +112,15 @@ def roll_up_facts(well_meta: dict, interest: dict, rate_centers: dict) -> tuple[
             **disp,
             "gross_wells": int(gross.get(code, 0)),
             "net_wells": round(net_by_code.get(code, 0.0), 2),
-            "rates": [_fmt_rate(r) for r in config.rate_ladder(rate_centers[code])],
+            "rates": [config.rate_label(r) for r in config.rate_ladder(rate_centers[code])],
         })
     return facts, statuses
-
-
-def _fmt_rate(rate: float) -> str:
-    """0.175 → '17.5' — must match orchestrator._rate_label (the cube's keys)."""
-    return f"{rate * 100:g}"
 
 
 def default_rates(rate_centers: dict) -> dict:
     """Default selection = each status's center rung. Derived from
     `config.rate_ladder(center)[1]` (the rounded middle rung) so the label is
     byte-identical to the matching `rates` entry and the cube key."""
-    return {code: _fmt_rate(config.rate_ladder(center)[1]) for code, center in rate_centers.items()}
+    return {code: config.rate_label(config.rate_ladder(center)[1]) for code, center in rate_centers.items()}
 
 
